@@ -1,9 +1,10 @@
 ---
 id: task-2
 title: Implement Config class for user identity and basic defaults
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
 dependencies: []
 ---
