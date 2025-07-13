@@ -26,7 +26,12 @@ CI = "https://github.com/osks/ctenv/actions"
 ctenv = "ctenv:cli"
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = [
+    "pytest",
+    "pytest-mock", 
+    "pytest-cov",
+    "ruff",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "ctenv.__version__"}

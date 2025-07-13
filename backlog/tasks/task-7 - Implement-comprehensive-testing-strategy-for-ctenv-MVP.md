@@ -1,11 +1,17 @@
 ---
 id: task-7
 title: Implement comprehensive testing strategy for ctenv MVP
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
-dependencies: [task-1, task-2, task-3, task-4, task-5]
+dependencies:
+  - task-1
+  - task-2
+  - task-3
+  - task-4
+  - task-5
 ---
 
 ## Description
