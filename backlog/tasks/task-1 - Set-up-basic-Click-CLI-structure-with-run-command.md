@@ -1,9 +1,10 @@
 ---
 id: task-1
 title: Set up basic Click CLI structure with run command
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
 dependencies: []
 ---
