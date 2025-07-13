@@ -5,7 +5,7 @@ description = "ctenv is a tool for running a program in a container as current u
 readme = "README.md"
 authors = [{name = "Oskar Skoog"}]
 license = "Apache-2.0"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = []
 dependencies = [
     "click"
