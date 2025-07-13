@@ -1,9 +1,10 @@
 ---
 id: task-5
 title: 'Add basic volume mounting (current dir to /repo, gosu binary)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
 dependencies: []
 ---

@@ -167,6 +167,22 @@ class ContainerRunner:
         if not shutil.which("docker"):
             raise FileNotFoundError("Docker not found in PATH. Please install Docker.")
         
+        # Verify gosu binary exists
+        gosu_path = Path(run_config['GOSU'])
+        if not gosu_path.exists():
+            raise FileNotFoundError(f"gosu binary not found at {gosu_path}. Please ensure gosu is available.")
+        
+        if not gosu_path.is_file():
+            raise FileNotFoundError(f"gosu path {gosu_path} is not a file.")
+        
+        # Verify current directory exists
+        current_dir = Path(run_config['DIR'])
+        if not current_dir.exists():
+            raise FileNotFoundError(f"Directory {current_dir} does not exist.")
+        
+        if not current_dir.is_dir():
+            raise FileNotFoundError(f"Path {current_dir} is not a directory.")
+        
         # Generate container name
         run_config['NAME'] = self.config.get_container_name(run_config['DIR'])
         
