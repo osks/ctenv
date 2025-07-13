@@ -1,9 +1,10 @@
 ---
 id: task-3
 title: Create ContainerRunner class with Docker support
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
 dependencies: []
 ---

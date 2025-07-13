@@ -10,6 +10,9 @@ __version__ = "0.1"
 import os
 import pwd
 import grp
+import subprocess
+import sys
+import shutil
 from pathlib import Path
 
 import click
@@ -79,6 +82,104 @@ class Config:
         
         return config
 
+
+def build_entrypoint_script(config: dict) -> str:
+    """Generate bash script for container entrypoint."""
+    script = f'''#!/bin/bash
+set -e
+
+# Create group if needed
+if getent group {config['GROUP_ID']} >/dev/null 2>&1; then
+    GROUP_NAME=$(getent group {config['GROUP_ID']} | cut -d: -f1)
+else
+    groupadd -g {config['GROUP_ID']} {config['GROUP_NAME']}
+    GROUP_NAME={config['GROUP_NAME']}
+fi
+
+# Create user if needed
+if ! getent passwd {config['USER_NAME']} >/dev/null 2>&1; then
+    useradd --no-create-home --home-dir {config['USER_HOME']} \\
+        --shell /bin/bash -u {config['USER_ID']} -g {config['GROUP_ID']} \\
+        -o -c "" {config['USER_NAME']}
+fi
+
+# Setup home directory
+export HOME={config['USER_HOME']}
+if [ ! -d "$HOME" ]; then
+    mkdir -p "$HOME"
+    chown {config['USER_ID']}:{config['GROUP_ID']} "$HOME"
+fi
+
+# Set ownership of home directory (non-recursive)
+chown {config['USER_NAME']} "$HOME"
+
+# Set environment
+export PS1="[ctenv] $ "
+
+# Execute command as user
+exec {config['GOSU_MOUNT']} {config['USER_NAME']} {config['COMMAND']}
+'''
+    return script
+
+
+class ContainerRunner:
+    """Manages Docker container operations."""
+    
+    def __init__(self, config: Config):
+        self.config = config
+    
+    def build_run_args(self, run_config: dict) -> list:
+        """Build Docker run arguments."""
+        args = [
+            "docker", "run",
+            "--rm",
+            "--init", 
+            "--platform=linux/amd64",
+            f"--name={run_config['NAME']}"
+        ]
+        
+        # Volume mounts
+        args.extend([
+            f"--volume={run_config['DIR']}:{run_config['DIR_MOUNT']}:z,rw",
+            f"--volume={run_config['GOSU']}:{run_config['GOSU_MOUNT']}:z,ro",
+            f"--workdir={run_config['DIR_MOUNT']}"
+        ])
+        
+        # TTY flags if running interactively
+        if sys.stdin.isatty():
+            args.extend(["-t", "-i"])
+        
+        # Set entrypoint to /bin/sh
+        args.extend(["--entrypoint", "/bin/sh"])
+        
+        # Container image
+        args.append(run_config['IMAGE'])
+        
+        # Generate and pass the entrypoint script
+        entrypoint_script = build_entrypoint_script(run_config)
+        args.extend(["-c", entrypoint_script])
+        
+        return args
+    
+    def run_container(self, run_config: dict) -> subprocess.CompletedProcess:
+        """Execute Docker container with the given configuration."""
+        # Check if Docker is available
+        if not shutil.which("docker"):
+            raise FileNotFoundError("Docker not found in PATH. Please install Docker.")
+        
+        # Generate container name
+        run_config['NAME'] = self.config.get_container_name(run_config['DIR'])
+        
+        # Build Docker arguments
+        docker_args = self.build_run_args(run_config)
+        
+        # Execute Docker command
+        try:
+            result = subprocess.run(docker_args, check=False)
+            return result
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Container execution failed: {e}")
+
 @click.group()
 @click.version_option(version=__version__)
 def cli():
@@ -121,20 +222,37 @@ def run(image, command, debug):
     }
     merged_config = config.merge_options(cli_options)
     
-    # Show what would be executed
     click.echo(f"[ctenv] run")
-    click.echo(f"Image: {merged_config['IMAGE']}")
-    click.echo(f"Command: {merged_config['COMMAND']}")
     
     if debug:
+        click.echo(f"Image: {merged_config['IMAGE']}")
+        click.echo(f"Command: {merged_config['COMMAND']}")
         click.echo("\nConfiguration:")
         click.echo(f"  User: {config.user_name} (UID: {config.user_id})")
         click.echo(f"  Group: {config.group_name} (GID: {config.group_id})")
         click.echo(f"  Home: {config.user_home}")
         click.echo(f"  Script dir: {config.script_dir}")
         click.echo(f"  Container name: {config.get_container_name(merged_config['DIR'])}")
+        
+        # Show what Docker command would be executed
+        runner = ContainerRunner(config)
+        merged_config['NAME'] = config.get_container_name(merged_config['DIR'])
+        docker_args = runner.build_run_args(merged_config)
+        click.echo(f"\nDocker command:")
+        click.echo(f"  {' '.join(docker_args)}")
+        return
     
-    click.echo("TODO: Implement container execution")
+    # Execute container
+    try:
+        runner = ContainerRunner(config)
+        result = runner.run_container(merged_config)
+        sys.exit(result.returncode)
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

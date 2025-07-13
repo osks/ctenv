@@ -1,9 +1,10 @@
 ---
 id: task-4
 title: Implement embedded bash entrypoint script generation
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
 dependencies: []
 ---
