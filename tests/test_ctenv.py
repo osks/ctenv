@@ -1,5 +1,5 @@
 from click.testing import CliRunner
-from ctenv.cli import cli
+from ctenv import cli
 
 
 def test_version():
