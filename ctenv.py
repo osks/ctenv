@@ -130,6 +130,8 @@ class ContainerRunner:
 
     def build_run_args(self, run_config: dict) -> list:
         """Build Docker run arguments."""
+        import tempfile
+        
         args = [
             "docker",
             "run",
@@ -139,30 +141,45 @@ class ContainerRunner:
             f"--name={run_config['NAME']}",
         ]
 
-        # Volume mounts
-        args.extend(
-            [
-                f"--volume={run_config['DIR']}:{run_config['DIR_MOUNT']}:z,rw",
-                f"--volume={run_config['GOSU']}:{run_config['GOSU_MOUNT']}:z,ro",
-                f"--workdir={run_config['DIR_MOUNT']}",
-            ]
-        )
-
-        # TTY flags if running interactively
-        if sys.stdin.isatty():
-            args.extend(["-t", "-i"])
-
-        # Set entrypoint to /bin/sh
-        args.extend(["--entrypoint", "/bin/sh"])
-
-        # Container image
-        args.append(run_config["IMAGE"])
-
-        # Generate and pass the entrypoint script
+        # Generate and write entrypoint script to temporary file
         entrypoint_script = build_entrypoint_script(run_config)
-        args.extend(["-c", entrypoint_script])
+        script_fd, script_path = tempfile.mkstemp(suffix='.sh', text=True)
+        try:
+            with os.fdopen(script_fd, 'w') as f:
+                f.write(entrypoint_script)
+            os.chmod(script_path, 0o755)
+            
+            # Store script path for cleanup later
+            run_config['_SCRIPT_PATH'] = script_path
+            
+            # Volume mounts
+            args.extend(
+                [
+                    f"--volume={run_config['DIR']}:{run_config['DIR_MOUNT']}:z,rw",
+                    f"--volume={run_config['GOSU']}:{run_config['GOSU_MOUNT']}:z,ro",
+                    f"--volume={script_path}:/entrypoint.sh:z,ro",
+                    f"--workdir={run_config['DIR_MOUNT']}",
+                ]
+            )
 
-        return args
+            # TTY flags if running interactively
+            if sys.stdin.isatty():
+                args.extend(["-t", "-i"])
+
+            # Set entrypoint to our script
+            args.extend(["--entrypoint", "/entrypoint.sh"])
+
+            # Container image
+            args.append(run_config["IMAGE"])
+
+            return args
+        except Exception:
+            # Cleanup on error
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+            raise
 
     def run_container(self, run_config: dict) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
@@ -200,6 +217,14 @@ class ContainerRunner:
             return result
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Container execution failed: {e}")
+        finally:
+            # Clean up temporary script file
+            script_path = run_config.get('_SCRIPT_PATH')
+            if script_path:
+                try:
+                    os.unlink(script_path)
+                except OSError:
+                    pass
 
 
 @click.group()
@@ -230,10 +255,14 @@ def run(image, command, debug):
 
     # Create config and merge options
     config = Config()
-    cli_options = {"IMAGE": image, "COMMAND": " ".join(command)}
+    cli_options = {
+        "IMAGE": image, 
+        "COMMAND": " ".join(command),
+        "DIR": os.getcwd()  # Use current working directory
+    }
     merged_config = config.merge_options(cli_options)
 
-    click.echo(f"[ctenv] run")
+    click.echo("[ctenv] run")
 
     if debug:
         click.echo(f"Image: {merged_config['IMAGE']}")
@@ -251,7 +280,7 @@ def run(image, command, debug):
         runner = ContainerRunner(config)
         merged_config["NAME"] = config.get_container_name(merged_config["DIR"])
         docker_args = runner.build_run_args(merged_config)
-        click.echo(f"\nDocker command:")
+        click.echo("\nDocker command:")
         click.echo(f"  {' '.join(docker_args)}")
         return
 

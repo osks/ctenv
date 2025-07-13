@@ -11,6 +11,21 @@ test: dev
 	@echo "Running tests..."
 	@uv run pytest tests/ -v
 
+.PHONY: test-unit
+test-unit: dev
+	@echo "Running unit tests only..."
+	@uv run pytest tests/ -v -m unit
+
+.PHONY: test-integration
+test-integration: dev
+	@echo "Running integration tests..."
+	@uv run pytest tests/ -v -m integration
+
+.PHONY: test-cov
+test-cov: dev
+	@echo "Running tests with coverage..."
+	@uv run pytest tests/ -v --cov=ctenv --cov-report=term-missing
+
 .PHONY: lint
 lint: dev
 	@echo "Checking code style..."
