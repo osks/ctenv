@@ -5,7 +5,15 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-ctenv is a tool for running a program in a container as current user
+ctenv is a tool for running programs in Docker/Podman containers while preserving user identity and file permissions.
+
+## Features
+
+- **User Identity Preservation**: Automatically maps your current user/group into the container
+- **Directory Mounting**: Mounts your current directory into the container at `/repo`
+- **File Permissions**: Files created in containers have correct ownership on the host
+- **Self-Contained**: Only requires `gosu` binary for privilege dropping
+- **Container Runtime Support**: Works with both Docker and Podman
 
 ## Installation
 
@@ -13,29 +21,63 @@ Install this tool using `pip`:
 ```bash
 pip install ctenv
 ```
+
 ## Usage
+
+```bash
+# Run an interactive bash session
+ctenv run
+
+# Run a specific command
+ctenv run -- ls -la
+
+# Use a custom container image
+ctenv run --image ubuntu:latest -- whoami
+
+# Run with Alpine Linux
+ctenv run --image alpine:latest -- sh
+```
 
 For help, run:
 ```bash
 ctenv --help
 ```
-You can also use:
-```bash
-python -m ctenv --help
-```
+
 ## Development
 
-To contribute to this tool, first checkout the code. Then create a new virtual environment:
+### Quick Start
+
 ```bash
+# Clone the repository
+git clone <repository-url>
 cd ctenv
-python -m venv venv
-source venv/bin/activate
+
+# Setup development environment (requires uv)
+make dev
+
+# Run tests
+make test
 ```
-Now install the dependencies and test dependencies:
+
+### Manual Setup
+
+If you prefer manual setup or don't have `make`:
+
 ```bash
-pip install -e '.[test]'
+# Install uv if you haven't already
+pip install uv
+
+# Create virtual environment and install dependencies
+uv venv
+uv pip install -e '.[test]'
+source .venv/bin/activate
+
+# Run tests
+uv run pytest tests/ -v
 ```
-To run the tests:
-```bash
-python -m pytest
-```
+
+## Requirements
+
+- **uv**: Modern Python package manager (recommended)
+- **Docker or Podman**: Container runtime
+- **gosu**: Binary for privilege dropping

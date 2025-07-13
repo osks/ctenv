@@ -1,9 +1,10 @@
 ---
 id: task-6
 title: Test MVP with basic commands and verify file permissions
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-13'
 labels: []
 dependencies: []
 ---
