@@ -4,16 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ctenv"
-version = "0.1"
 description = "ctenv is a tool for running a program in a container as current user"
 readme = "README.md"
 authors = [{name = "Oskar Skoog", email = "oskar@osd.se"}]
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.9"
 classifiers = []
 dependencies = [
-    "click"
+    "click",
 ]
+dynamic = ["version"]
 
 [project.urls]
 Homepage = "https://github.com/osks/ctenv"
@@ -22,7 +23,10 @@ Issues = "https://github.com/osks/ctenv/issues"
 CI = "https://github.com/osks/ctenv/actions"
 
 [project.scripts]
-ctenv = "ctenv.cli:cli"
+ctenv = "ctenv:cli"
 
 [project.optional-dependencies]
 test = ["pytest"]
+
+[tool.setuptools.dynamic]
+version = {attr = "ctenv.__version__"}
