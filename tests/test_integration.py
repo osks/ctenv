@@ -12,9 +12,7 @@ def test_basic_container_execution(test_images, temp_workspace):
             "python",
             str(Path(__file__).parent.parent / "ctenv.py"),
             "run",
-            "--image",
-            "ubuntu:latest",
-            "--",
+            "test",
             "whoami",
         ],
         capture_output=True,
@@ -34,9 +32,7 @@ def test_working_directory_is_repo(test_images, temp_workspace):
             "python",
             str(Path(__file__).parent.parent / "ctenv.py"),
             "run",
-            "--image",
-            "ubuntu:latest",
-            "--",
+            "test",
             "pwd",
         ],
         capture_output=True,
@@ -59,9 +55,7 @@ def test_file_permission_preservation(test_images, temp_workspace):
             "python",
             str(Path(__file__).parent.parent / "ctenv.py"),
             "run",
-            "--image",
-            "ubuntu:latest",
-            "--",
+            "test",
             "touch",
             f"/repo/{test_file}",
         ],
@@ -88,12 +82,8 @@ def test_environment_variables_passed(test_images, temp_workspace):
             "python",
             str(Path(__file__).parent.parent / "ctenv.py"),
             "run",
-            "--image",
-            "ubuntu:latest",
-            "--",
-            "sh",
-            "-c",
-            "echo $HOME",
+            "test",
+            "env",
         ],
         capture_output=True,
         text=True,
@@ -101,7 +91,8 @@ def test_environment_variables_passed(test_images, temp_workspace):
     )
 
     assert result.returncode == 0
-    # Should show the user's home directory was set in the container
+    # Should show environment variables including HOME
+    assert "HOME=" in result.stdout
 
 
 @pytest.mark.integration
@@ -114,9 +105,9 @@ def test_error_handling_invalid_image(temp_workspace):
             "run",
             "--image",
             "nonexistent:image",
-            "--",
-            "echo",
             "test",
+            "echo",
+            "hello",
         ],
         capture_output=True,
         text=True,
@@ -143,9 +134,7 @@ def test_volume_mounting(test_images, temp_workspace):
             "python",
             str(Path(__file__).parent.parent / "ctenv.py"),
             "run",
-            "--image",
-            "ubuntu:latest",
-            "--",
+            "test",
             "cat",
             "/repo/host_file.txt",
         ],
