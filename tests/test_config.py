@@ -118,16 +118,13 @@ def test_load_config_file_invalid_toml():
 
 @pytest.mark.unit
 def test_resolve_config_values_defaults():
-    """Test resolving config values from defaults with default context."""
+    """Test resolving config values with default context (no config file defaults)."""
     config_data = {
-        "defaults": {
-            "image": "ubuntu:latest",
-            "network": "bridge",
-            "sudo": True
-        },
         "contexts": {
             "default": {
-                "image": "ubuntu:latest"
+                "image": "ubuntu:latest",
+                "network": "bridge",
+                "sudo": True
             }
         }
     }
@@ -141,17 +138,13 @@ def test_resolve_config_values_defaults():
 
 @pytest.mark.unit
 def test_resolve_config_values_context():
-    """Test resolving config values with context."""
+    """Test resolving config values with context (no config file defaults)."""
     config_data = {
-        "defaults": {
-            "image": "ubuntu:latest",
-            "network": "none",
-            "sudo": False
-        },
         "contexts": {
             "dev": {
                 "image": "node:18",
                 "network": "bridge",
+                "sudo": False,
                 "env": ["DEBUG=1"]
             }
         }
@@ -159,10 +152,10 @@ def test_resolve_config_values_context():
     
     resolved = resolve_config_values(config_data, "dev")
     
-    assert resolved["image"] == "node:18"  # Overridden by context
-    assert resolved["network"] == "bridge"  # Overridden by context
-    assert resolved["sudo"] is False  # From defaults
-    assert resolved["env"] == ["DEBUG=1"]  # From context
+    assert resolved["image"] == "node:18"
+    assert resolved["network"] == "bridge"
+    assert resolved["sudo"] is False
+    assert resolved["env"] == ["DEBUG=1"]
 
 
 @pytest.mark.unit
@@ -179,14 +172,14 @@ def test_resolve_config_values_unknown_context():
 
 @pytest.mark.unit
 def test_config_from_cli_options_with_file():
-    """Test Config creation with config file."""
+    """Test Config creation with config file (contexts only, no defaults section)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         
-        # Create config file
+        # Create config file with context-specific settings
         config_file = tmpdir / "config.toml"
         config_content = """
-[defaults]
+[contexts.default]
 image = "alpine:latest"
 network = "bridge"
 sudo = true
@@ -206,9 +199,9 @@ sudo = true
         
         # CLI should override config file
         assert config.image == "ubuntu:22.04"
-        # Config file values should be used for non-overridden options
-        assert config.sudo is True  # From config file
-        assert config.network == "bridge"  # From config file
+        # Config file values should be used for non-overridden options (from default context)
+        assert config.sudo is True  # From default context in config file
+        assert config.network == "bridge"  # From default context in config file
 
 
 @pytest.mark.unit
@@ -250,18 +243,19 @@ env = ["CI=true"]
 @pytest.mark.unit
 def test_builtin_default_context():
     """Test that builtin default context is always available."""
-    from ctenv import get_builtin_default_context, load_merged_config
+    import tempfile
+    from ctenv import get_builtin_default_context, ConfigFile
     
-    # Test builtin default context content
+    # Test builtin default context content (just the context definition)
     builtin = get_builtin_default_context()
-    assert "contexts" in builtin
-    assert "default" in builtin["contexts"]
-    assert builtin["contexts"]["default"]["image"] == "ubuntu:latest"
+    assert builtin["image"] == "ubuntu:latest"
     
-    # Test that load_merged_config always includes default context
-    merged = load_merged_config()
-    assert "contexts" in merged
-    assert "default" in merged["contexts"]
+    # Test that ConfigFile.load always includes default context (with no config files)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        config_file = ConfigFile.load(start_dir=tmpdir)  # No config files in empty dir
+        assert "default" in config_file.contexts
+        assert config_file.contexts["default"]["image"] == "ubuntu:latest"
 
 
 @pytest.mark.unit
