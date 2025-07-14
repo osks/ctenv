@@ -20,7 +20,8 @@ def test_version():
 @pytest.mark.unit
 def test_config_user_detection():
     """Test that Config correctly detects user information."""
-    config = Config.from_cli_options()
+    # Use explicit image to avoid config file interference
+    config = Config.from_cli_options(image="ubuntu:latest")
 
     assert config.user_name == os.getenv("USER")
     assert config.user_id == os.getuid()

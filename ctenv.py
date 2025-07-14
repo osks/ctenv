@@ -14,9 +14,10 @@ import subprocess
 import sys
 import shutil
 import logging
+import tomllib
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import click
 
@@ -33,6 +34,67 @@ def get_current_user_info():
         "group_id": group_info.gr_gid,
         "user_home": user_info.pw_dir,
     }
+
+
+def find_config_file(start_dir: Optional[Path] = None) -> Optional[Path]:
+    """Find ctenv config file using git-style upward traversal."""
+    if start_dir is None:
+        start_dir = Path.cwd()
+    
+    current = start_dir.resolve()
+    
+    # Search upward for .ctenv/config.toml
+    while True:
+        config_path = current / ".ctenv" / "config.toml"
+        if config_path.exists() and config_path.is_file():
+            logging.debug(f"Found project config: {config_path}")
+            return config_path
+        
+        parent = current.parent
+        if parent == current:  # Reached filesystem root
+            break
+        current = parent
+    
+    # Fall back to global config
+    global_config = Path.home() / ".ctenv" / "config.toml"
+    if global_config.exists() and global_config.is_file():
+        logging.debug(f"Found global config: {global_config}")
+        return global_config
+    
+    logging.debug("No config file found")
+    return None
+
+
+def load_config_file(config_path: Path) -> Dict[str, Any]:
+    """Load and parse TOML configuration file."""
+    try:
+        with open(config_path, "rb") as f:
+            config_data = tomllib.load(f)
+        logging.debug(f"Loaded config from {config_path}")
+        return config_data
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(f"Invalid TOML in {config_path}: {e}") from e
+    except (OSError, IOError) as e:
+        raise ValueError(f"Error reading {config_path}: {e}") from e
+
+
+def resolve_config_values(config_data: Dict[str, Any], context: Optional[str] = None) -> Dict[str, Any]:
+    """Resolve configuration values from defaults and context."""
+    # Start with defaults
+    resolved = config_data.get("defaults", {}).copy()
+    
+    # Apply context if specified
+    if context:
+        contexts = config_data.get("contexts", {})
+        if context not in contexts:
+            available = list(contexts.keys())
+            raise ValueError(f"Unknown context '{context}'. Available: {available}")
+        
+        context_config = contexts[context]
+        resolved.update(context_config)
+        logging.debug(f"Applied context '{context}' configuration")
+    
+    return resolved
 
 
 @dataclass
@@ -67,9 +129,26 @@ class Config:
     tty: bool = False
     
     @classmethod
-    def from_cli_options(cls, **cli_options) -> "Config":
-        """Create Config from CLI options with system defaults."""
+    def from_cli_options(cls, context: Optional[str] = None, config_file: Optional[str] = None, **cli_options) -> "Config":
+        """Create Config from CLI options, config files, and system defaults."""
         logging.debug("Creating Config from CLI options")
+        
+        # Load configuration file
+        config_data = {}
+        if config_file:
+            # Explicit config file specified
+            config_path = Path(config_file)
+            if not config_path.exists():
+                raise ValueError(f"Config file not found: {config_path}")
+            config_data = load_config_file(config_path)
+        else:
+            # Discover config file
+            discovered_config = find_config_file()
+            if discovered_config:
+                config_data = load_config_file(discovered_config)
+        
+        # Resolve config values with context
+        file_config = resolve_config_values(config_data, context) if config_data else {}
         
         # Get user info if not provided
         user_info = get_current_user_info()
@@ -80,9 +159,20 @@ class Config:
         logging.debug(f"Script directory: {script_dir}")
         
         # Get working directory
-        dir_param = cli_options.get("dir")
+        dir_param = cli_options.get("dir") or file_config.get("dir")
         working_dir = Path(dir_param) if dir_param else Path(os.getcwd())
         logging.debug(f"Working directory: {working_dir}")
+        
+        # Helper function to get value with precedence: CLI > config file > default
+        def get_config_value(key: str, cli_key: str = None, default=None):
+            cli_key = cli_key or key
+            cli_value = cli_options.get(cli_key)
+            if cli_value is not None:
+                return cli_value
+            file_value = file_config.get(key)
+            if file_value is not None:
+                return file_value
+            return default
         
         return cls(
             # User identity
@@ -96,17 +186,17 @@ class Config:
             script_dir=script_dir,
             working_dir=working_dir,
             
-            # Container settings
-            image=cli_options.get("image", "ubuntu:latest"),
-            command=cli_options.get("command", "bash"),
-            container_name=cli_options.get("container_name"),
+            # Container settings (CLI > config file > defaults)
+            image=get_config_value("image", default="ubuntu:latest"),
+            command=get_config_value("command", default="bash"),
+            container_name=get_config_value("container_name"),
             
-            # Options
-            env_vars=cli_options.get("env_vars", ()),
-            volumes=cli_options.get("volumes", ()),
-            sudo=cli_options.get("sudo", False),
-            network=cli_options.get("network"),
-            tty=cli_options.get("tty", False),
+            # Options (CLI > config file > defaults)
+            env_vars=tuple(get_config_value("env", "env_vars", [])),
+            volumes=tuple(get_config_value("volumes", default=[])),
+            sudo=get_config_value("sudo", default=False),
+            network=get_config_value("network"),
+            tty=cli_options.get("tty", False),  # TTY is determined at runtime, not from config
         )
     
     @property
@@ -385,12 +475,16 @@ def cli(ctx, verbose, quiet):
 
 
 @cli.command()
+@click.argument("context_or_command", nargs=-1, required=False)
 @click.option(
     "--image",
-    help="Container image to use (default: ubuntu:latest)",
-    default="ubuntu:latest",
+    help="Container image to use (default: ubuntu:latest)"
 )
 @click.option("--debug", is_flag=True, help="Show configuration details")
+@click.option(
+    "--config",
+    help="Path to configuration file"
+)
 @click.option(
     "--env",
     multiple=True,
@@ -414,34 +508,73 @@ def cli(ctx, verbose, quiet):
     "--dir",
     help="Directory to mount as workdir (default: current directory)"
 )
-@click.argument("command", nargs=-1, required=False)
 @click.pass_context
-def run(ctx, image, command, debug, env, volume, sudo, network, dir):
+def run(ctx, context_or_command, image, debug, config, env, volume, sudo, network, dir):
     """Run command in container
 
     Examples:
-        ctenv run                          # Interactive bash
-        ctenv run -- ls -la                # Run specific command
-        ctenv run --image alpine -- whoami # Use custom image
+        ctenv run                          # Interactive bash with defaults
+        ctenv run dev                      # Use 'dev' context
+        ctenv run test -- npm test         # Use 'test' context, run npm test
+        ctenv run -- ls -la               # Use defaults, run ls -la
+        ctenv run --image alpine -- whoami # Override image, run whoami
     """
     verbose = ctx.obj.get('verbose', False)
     quiet = ctx.obj.get('quiet', False)
+    
+    # Parse context and command from arguments
+    context = None
+    command = None
+    
+    if context_or_command:
+        # Check if first argument looks like a context name vs a command
+        first_arg = context_or_command[0]
+        
+        # Context names should be alphanumeric with hyphens/underscores
+        if first_arg.replace('-', '').replace('_', '').isalnum() and not first_arg.startswith('-'):
+            # Try to load config to see if this context exists
+            try:
+                discovered_config = find_config_file()
+                if discovered_config:
+                    config_data = load_config_file(discovered_config)
+                    contexts = config_data.get("contexts", {})
+                    if first_arg in contexts:
+                        context = first_arg
+                        command = context_or_command[1:] if len(context_or_command) > 1 else None
+                    else:
+                        # Not a valid context, treat all as command
+                        command = context_or_command
+                else:
+                    # No config file, treat all as command
+                    command = context_or_command
+            except Exception:
+                # Error loading config, treat all as command
+                command = context_or_command
+        else:
+            # Doesn't look like a context name, treat all as command
+            command = context_or_command
     
     if not command:
         # Default to interactive bash
         command = ("bash",)
 
-    # Create config from CLI options
-    config = Config.from_cli_options(
-        image=image,
-        command=" ".join(command),
-        dir=dir,
-        env_vars=env,
-        volumes=volume,
-        sudo=sudo,
-        network=network,
-        tty=sys.stdin.isatty(),
-    )
+    # Create config from CLI options and discovered configuration
+    try:
+        config = Config.from_cli_options(
+            context=context,
+            config_file=config,
+            image=image,
+            command=" ".join(command),
+            dir=dir,
+            env_vars=env,
+            volumes=volume,
+            sudo=sudo,
+            network=network,
+            tty=sys.stdin.isatty(),
+        )
+    except ValueError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        sys.exit(1)
     
     if verbose:
         logging.debug(f"Configuration:")
@@ -492,6 +625,117 @@ def run(ctx, image, command, debug, env, volume, sudo, network, dir):
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.group()
+def config():
+    """Configuration management commands"""
+    pass
+
+
+@config.command()
+@click.argument("context", required=False)
+@click.option("--config", help="Path to configuration file")
+def show(context, config):
+    """Show configuration or context details"""
+    try:
+        # Load config file
+        if config:
+            config_path = Path(config)
+            if not config_path.exists():
+                click.echo(f"Config file not found: {config_path}", err=True)
+                sys.exit(1)
+            config_data = load_config_file(config_path)
+        else:
+            discovered_config = find_config_file()
+            if not discovered_config:
+                click.echo("No configuration file found", err=True)
+                sys.exit(1)
+            config_data = load_config_file(discovered_config)
+            click.echo(f"Using config: {discovered_config}", err=True)
+        
+        if context:
+            # Show specific context
+            contexts = config_data.get("contexts", {})
+            if context not in contexts:
+                available = list(contexts.keys())
+                click.echo(f"Context '{context}' not found. Available: {available}", err=True)
+                sys.exit(1)
+            
+            click.echo(f"Context '{context}':")
+            resolved = resolve_config_values(config_data, context)
+            for key, value in resolved.items():
+                click.echo(f"  {key}: {value}")
+        else:
+            # Show all configuration
+            click.echo("Configuration:")
+            if "defaults" in config_data:
+                click.echo("\nDefaults:")
+                for key, value in config_data["defaults"].items():
+                    click.echo(f"  {key}: {value}")
+            
+            contexts = config_data.get("contexts", {})
+            if contexts:
+                click.echo("\nContexts:")
+                for ctx_name in contexts.keys():
+                    click.echo(f"  {ctx_name}")
+    
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@config.command()
+@click.option("--config", help="Path to configuration file")
+def path(config):
+    """Show path to configuration file being used"""
+    if config:
+        config_path = Path(config)
+        if config_path.exists():
+            click.echo(str(config_path.resolve()))
+        else:
+            click.echo(f"Config file not found: {config_path}", err=True)
+            sys.exit(1)
+    else:
+        discovered_config = find_config_file()
+        if discovered_config:
+            click.echo(str(discovered_config))
+        else:
+            click.echo("No configuration file found", err=True)
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--config", help="Path to configuration file")
+def contexts(config):
+    """List available contexts"""
+    try:
+        # Load config file
+        if config:
+            config_path = Path(config)
+            if not config_path.exists():
+                click.echo(f"Config file not found: {config_path}", err=True)
+                sys.exit(1)
+            config_data = load_config_file(config_path)
+        else:
+            discovered_config = find_config_file()
+            if not discovered_config:
+                click.echo("No configuration file found", err=True)
+                sys.exit(1)
+            config_data = load_config_file(discovered_config)
+        
+        contexts_dict = config_data.get("contexts", {})
+        if not contexts_dict:
+            click.echo("No contexts defined")
+            return
+        
+        click.echo("Available contexts:")
+        for ctx_name in contexts_dict.keys():
+            click.echo(f"  {ctx_name}")
+    
+    except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 

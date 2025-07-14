@@ -9,7 +9,7 @@ readme = "README.md"
 authors = [{name = "Oskar Skoog", email = "oskar@osd.se"}]
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 classifiers = []
 dependencies = [
     "click",
@@ -32,6 +32,9 @@ test = [
     "pytest-cov",
     "ruff",
 ]
+
+[tool.setuptools]
+py-modules = ["ctenv"]
 
 [tool.setuptools.dynamic]
 version = {attr = "ctenv.__version__"}
