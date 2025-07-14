@@ -52,10 +52,15 @@ class TestRunCommandParsing:
         assert call_kwargs['command'] == 'bash'
         assert call_kwargs['context'] == 'dev'
 
-    @patch('ctenv.load_merged_config')
-    def test_run_with_invalid_context(self, mock_load_config):
+    @patch('ctenv.ConfigFile.load')
+    def test_run_with_invalid_context(self, mock_config_file_load):
         """Test: ctenv run invalid (should fail)."""
-        mock_load_config.return_value = {'contexts': {'dev': {'image': 'ubuntu'}}}
+        from ctenv import ConfigFile
+        mock_config_file = ConfigFile(
+            contexts={'dev': {'image': 'ubuntu'}},
+            source_files=[]
+        )
+        mock_config_file_load.return_value = mock_config_file
         
         result = self.runner.invoke(cli, ['run', 'invalid'])
         
@@ -113,10 +118,15 @@ class TestRunCommandParsing:
         assert call_kwargs['command'] == 'echo test'
         assert call_kwargs['context'] == 'dev'
 
-    @patch('ctenv.load_merged_config')
-    def test_run_no_config_file_with_context(self, mock_load_config):
+    @patch('ctenv.ConfigFile.load')
+    def test_run_no_config_file_with_context(self, mock_config_file_load):
         """Test: ctenv run dev (only default context available - should fail)."""
-        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
+        from ctenv import ConfigFile
+        mock_config_file = ConfigFile(
+            contexts={'default': {'image': 'ubuntu:latest'}},
+            source_files=[]
+        )
+        mock_config_file_load.return_value = mock_config_file
         
         result = self.runner.invoke(cli, ['run', 'dev'])
         
@@ -224,10 +234,10 @@ class TestRunCommandEdgeCases:
         assert result.exit_code == 1
         assert "Context 'sh' not found" in result.output
 
-    @patch('ctenv.load_merged_config')
-    def test_load_config_error(self, mock_load_config):
+    @patch('ctenv.ConfigFile.load')
+    def test_load_config_error(self, mock_config_file_load):
         """Test handling of configuration loading errors."""
-        mock_load_config.side_effect = Exception("Config error")
+        mock_config_file_load.side_effect = Exception("Config error")
         
         result = self.runner.invoke(cli, ['run', 'dev'])
         
