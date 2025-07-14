@@ -3,6 +3,7 @@ import tempfile
 import os
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 
 @pytest.fixture(scope="session")
@@ -34,10 +35,22 @@ def temp_workspace():
         original_cwd = os.getcwd()
         os.chdir(tmpdir)
 
-        # Create a fake gosu binary for testing
-        gosu_path = Path(tmpdir) / "gosu"
-        gosu_path.write_text('#!/bin/sh\nexec "$@"')
+        # Create a fake gosu binary for testing in .ctenv directory
+        ctenv_dir = Path(tmpdir) / ".ctenv"
+        ctenv_dir.mkdir(exist_ok=True)
+        gosu_path = ctenv_dir / "gosu"
+        gosu_path.write_text('#!/bin/sh\n# Fake gosu that drops the first argument (username) and runs the rest\nshift\nexec "$@"')
         gosu_path.chmod(0o755)
+
+        # Create a simple config file for integration tests
+        config_file = ctenv_dir / "config.toml"
+        config_content = '''[defaults]
+image = "ubuntu:latest"
+
+[contexts]
+test = { image = "ubuntu:latest" }
+'''
+        config_file.write_text(config_content)
 
         yield tmpdir
         os.chdir(original_cwd)
@@ -59,6 +72,15 @@ def mock_config():
         "USER_HOME": "/home/testuser",
         "COMMAND": "bash",
     }
+
+
+@pytest.fixture(autouse=True)
+def mock_gosu_discovery():
+    """Mock gosu discovery for tests that don't need actual gosu."""
+    with patch("ctenv.find_gosu_binary") as mock_find:
+        # Return a fake gosu path for tests
+        mock_find.return_value = Path("/test/gosu")
+        yield mock_find
 
 
 def pytest_configure(config):

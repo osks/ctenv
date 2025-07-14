@@ -22,7 +22,8 @@ def test_docker_command_examples():
         script_dir=Path("/test"),
         working_dir=Path("/workspace"),
         image="ubuntu:latest",
-        command="bash"
+        command="bash",
+        gosu_path_override="/test/gosu"
     )
     
     args, script_path = ContainerRunner.build_run_args(config)
@@ -66,7 +67,8 @@ def test_docker_command_scenarios():
         group_id=1001,
         user_home="/home/developer",
         script_dir=Path("/usr/local/bin"),
-        working_dir=Path("/workspace")
+        working_dir=Path("/workspace"),
+        gosu_path_override="/usr/local/bin/gosu"
     )
     
     scenarios = [
@@ -282,7 +284,8 @@ def test_docker_command_construction(mock_run):
         working_dir=Path("/test"),
         image="ubuntu:latest",
         command="echo hello",
-        container_name="test-container"
+        container_name="test-container",
+        gosu_path_override="/test/gosu"
     )
 
     # Test argument building
