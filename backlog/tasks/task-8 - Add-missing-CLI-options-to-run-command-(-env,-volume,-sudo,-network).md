@@ -1,9 +1,10 @@
 ---
 id: task-8
 title: 'Add missing CLI options to run command (--env, --volume, --sudo, --network)'
-status: todo
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-14'
 labels: []
 dependencies: []
 priority: high
