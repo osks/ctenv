@@ -36,11 +36,39 @@ ctenv run --image ubuntu:latest -- whoami
 
 # Run with Alpine Linux
 ctenv run --image alpine:latest -- sh
+
+# Enable verbose output for debugging
+ctenv --verbose run -- echo "Hello"
+
+# Suppress non-essential output
+ctenv --quiet run -- make build
+
+# Use ctenv with commands that produce output (stdout stays clean)
+ctenv run -- cat myfile.txt > output.txt  # Only file content goes to stdout
+ctenv run -- ls -la | grep ".txt"          # Only ls output goes to stdout
 ```
+
+### CLI Options
+
+**Global options:**
+- `--verbose`, `-v`: Enable verbose debug output with timestamps
+- `--quiet`, `-q`: Suppress non-essential output
+- `--version`: Show version information
+- `--help`: Show help message
+
+**Run command options:**
+- `--image`: Container image to use (default: ubuntu:latest)
+- `--env`: Set environment variable (NAME=VALUE) or pass from host (NAME)
+- `--volume`: Mount additional volume (HOST:CONTAINER format)
+- `--sudo`: Add user to sudoers with NOPASSWD inside container
+- `--network`: Enable container networking (default: disabled for security)
+- `--dir`: Directory to mount as workdir (default: current directory)
+- `--debug`: Show configuration details without running container
 
 For help, run:
 ```bash
 ctenv --help
+ctenv run --help
 ```
 
 ## Development

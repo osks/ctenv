@@ -1,9 +1,10 @@
 ---
 id: task-14
 title: Add verbose/debug output throughout all commands
-status: todo
+status: Done
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-14'
 labels: []
 dependencies: []
 priority: medium
