@@ -6,7 +6,7 @@ import pytest
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv import cli, Config, build_entrypoint_script
+from ctenv import cli, ContainerConfig, build_entrypoint_script
 
 
 @pytest.mark.unit
@@ -21,7 +21,7 @@ def test_version():
 def test_config_user_detection():
     """Test that Config correctly detects user information."""
     # Use explicit image to avoid config file interference
-    config = Config.from_cli_options(image="ubuntu:latest")
+    config = ContainerConfig.from_cli_options(image="ubuntu:latest")
 
     assert config.user_name == os.getenv("USER")
     assert config.user_id == os.getuid()
@@ -34,7 +34,7 @@ def test_config_user_detection():
 def test_config_with_mock_user():
     """Test Config with custom values."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        config = Config(
+        config = ContainerConfig(
             user_name="testuser",
             user_id=1000,
             group_name="testgroup",
@@ -54,9 +54,9 @@ def test_config_with_mock_user():
 @pytest.mark.unit
 def test_container_name_generation():
     """Test consistent container name generation."""
-    config1 = Config.from_cli_options(dir="/path/to/project")
-    config2 = Config.from_cli_options(dir="/path/to/project")
-    config3 = Config.from_cli_options(dir="/different/path")
+    config1 = ContainerConfig.from_cli_options(dir="/path/to/project")
+    config2 = ContainerConfig.from_cli_options(dir="/path/to/project")
+    config3 = ContainerConfig.from_cli_options(dir="/different/path")
 
     name1 = config1.get_container_name()
     name2 = config2.get_container_name()
@@ -70,7 +70,7 @@ def test_container_name_generation():
 @pytest.mark.unit
 def test_entrypoint_script_generation():
     """Test bash entrypoint script generation."""
-    config = Config(
+    config = ContainerConfig(
         user_name="testuser",
         user_id=1000,
         group_name="testgroup",
@@ -79,7 +79,7 @@ def test_entrypoint_script_generation():
         script_dir=Path("/test"),
         working_dir=Path("/test"),
         gosu_path=Path("/test/gosu"),
-        command="bash"
+        command="bash",
     )
 
     script = build_entrypoint_script(config)
@@ -94,11 +94,11 @@ def test_entrypoint_script_generation():
 @pytest.mark.unit
 def test_entrypoint_script_examples():
     """Show example entrypoint scripts for documentation."""
-    
+
     scenarios = [
         {
             "name": "Basic user setup",
-            "config": Config(
+            "config": ContainerConfig(
                 user_name="developer",
                 user_id=1001,
                 group_name="staff",
@@ -107,12 +107,12 @@ def test_entrypoint_script_examples():
                 script_dir=Path("/test"),
                 working_dir=Path("/test"),
                 gosu_path=Path("/test/gosu"),
-                command="bash"
-            )
+                command="bash",
+            ),
         },
         {
             "name": "Custom command execution",
-            "config": Config(
+            "config": ContainerConfig(
                 user_name="runner",
                 user_id=1000,
                 group_name="runners",
@@ -121,29 +121,31 @@ def test_entrypoint_script_examples():
                 script_dir=Path("/test"),
                 working_dir=Path("/test"),
                 gosu_path=Path("/test/gosu"),
-                command="python3 main.py --verbose"
-            )
-        }
+                command="python3 main.py --verbose",
+            ),
+        },
     ]
-    
-    print(f"\n{'='*50}")
+
+    print(f"\n{'=' * 50}")
     print("Entrypoint Script Examples")
-    print(f"{'='*50}")
-    
+    print(f"{'=' * 50}")
+
     for scenario in scenarios:
         script = build_entrypoint_script(scenario["config"])
-        
+
         print(f"\n{scenario['name']}:")
-        print(f"  User: {scenario['config'].user_name} (UID: {scenario['config'].user_id})")
+        print(
+            f"  User: {scenario['config'].user_name} (UID: {scenario['config'].user_id})"
+        )
         print(f"  Command: {scenario['config'].command}")
         print("  Script:")
-        
+
         # Indent each line for better formatting
-        for line in script.split('\n'):
+        for line in script.split("\n"):
             if line.strip():  # Skip empty lines
                 print(f"    {line}")
-    
-    print(f"\n{'='*50}")
+
+    print(f"\n{'=' * 50}")
 
 
 @pytest.mark.unit
@@ -173,12 +175,12 @@ def test_run_command_debug_mode():
 def test_verbose_mode():
     """Test verbose logging output."""
     runner = CliRunner(mix_stderr=False)
-    
+
     # Test that verbose flag is accepted and doesn't break anything
     result = runner.invoke(cli, ["--verbose", "--version"])
     assert result.exit_code == 0
     assert "0.1" in result.output
-    
+
     # Test verbose with run --debug
     result = runner.invoke(cli, ["--verbose", "run", "--debug"])
     assert result.exit_code == 0
@@ -192,7 +194,7 @@ def test_quiet_mode():
     """Test quiet mode suppresses output."""
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--quiet", "run", "--debug"])
-    
+
     assert result.exit_code == 0
     # In quiet mode with debug, we should only see the debug output, not [ctenv] run
     assert "[ctenv] run" not in result.stderr
@@ -203,26 +205,26 @@ def test_quiet_mode():
 def test_stdout_stderr_separation():
     """Test that ctenv output goes to stderr, leaving stdout clean."""
     runner = CliRunner(mix_stderr=False)
-    
+
     # Test with debug mode
     result = runner.invoke(cli, ["run", "--debug"])
     assert result.exit_code == 0
-    
+
     # stdout should be empty (no ctenv output)
     assert result.output == ""
-    
+
     # stderr should contain all ctenv output
     assert "[ctenv] run" in result.stderr
     assert "Configuration:" in result.stderr
     assert "Docker command:" in result.stderr
-    
+
     # Test with quiet mode too
     result = runner.invoke(cli, ["--quiet", "run", "--debug"])
     assert result.exit_code == 0
-    
+
     # stdout should still be empty
     assert result.output == ""
-    
+
     # stderr should contain debug output but not [ctenv] run
     assert "[ctenv] run" not in result.stderr
     assert "Configuration:" in result.stderr

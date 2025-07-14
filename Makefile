@@ -31,6 +31,11 @@ lint: dev
 	@echo "Checking code style..."
 	@uv run ruff check ctenv.py tests/
 
+.PHONY: lint-fix
+lint-fix: dev
+	@echo "Fixing code style..."
+	@uv run ruff check --fix ctenv.py tests/
+
 .PHONY: format
 format: dev
 	@echo "Formatting code..."
