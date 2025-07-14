@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.9"
+# requires-python = ">=3.11"
 # dependencies = ["click"]
 # ///
 
@@ -211,59 +211,37 @@ class Config:
         # Replace / with - to make valid container name  
         dir_id = str(self.working_dir).replace("/", "-")
         return f"ctenv-{dir_id}"
-    
-    def to_dict(self) -> dict:
-        """Convert to dict for compatibility with existing functions."""
-        return {
-            "USER_NAME": self.user_name,
-            "USER_ID": self.user_id,
-            "GROUP_NAME": self.group_name,
-            "GROUP_ID": self.group_id,
-            "USER_HOME": self.user_home,
-            "DIR": str(self.working_dir),
-            "DIR_MOUNT": self.dir_mount,
-            "GOSU": str(self.gosu_path),
-            "GOSU_MOUNT": self.gosu_mount,
-            "IMAGE": self.image,
-            "COMMAND": self.command,
-            "NAME": self.get_container_name(),
-            "ENV_VARS": self.env_vars,
-            "VOLUMES": self.volumes,
-            "SUDO": self.sudo,
-            "NETWORK": self.network,
-            "TTY": self.tty,
-        }
 
 
-def build_entrypoint_script(config: dict) -> str:
+def build_entrypoint_script(config: Config) -> str:
     """Generate bash script for container entrypoint."""
     script = f"""#!/bin/bash
 set -e
 
 # Create group if needed
-if getent group {config["GROUP_ID"]} >/dev/null 2>&1; then
-    GROUP_NAME=$(getent group {config["GROUP_ID"]} | cut -d: -f1)
+if getent group {config.group_id} >/dev/null 2>&1; then
+    GROUP_NAME=$(getent group {config.group_id} | cut -d: -f1)
 else
-    groupadd -g {config["GROUP_ID"]} {config["GROUP_NAME"]}
-    GROUP_NAME={config["GROUP_NAME"]}
+    groupadd -g {config.group_id} {config.group_name}
+    GROUP_NAME={config.group_name}
 fi
 
 # Create user if needed
-if ! getent passwd {config["USER_NAME"]} >/dev/null 2>&1; then
-    useradd --no-create-home --home-dir {config["USER_HOME"]} \\
-        --shell /bin/bash -u {config["USER_ID"]} -g {config["GROUP_ID"]} \\
-        -o -c "" {config["USER_NAME"]}
+if ! getent passwd {config.user_name} >/dev/null 2>&1; then
+    useradd --no-create-home --home-dir {config.user_home} \\
+        --shell /bin/bash -u {config.user_id} -g {config.group_id} \\
+        -o -c "" {config.user_name}
 fi
 
 # Setup home directory
-export HOME={config["USER_HOME"]}
+export HOME={config.user_home}
 if [ ! -d "$HOME" ]; then
     mkdir -p "$HOME"
-    chown {config["USER_ID"]}:{config["GROUP_ID"]} "$HOME"
+    chown {config.user_id}:{config.group_id} "$HOME"
 fi
 
 # Set ownership of home directory (non-recursive)
-chown {config["USER_NAME"]} "$HOME"
+chown {config.user_name} "$HOME"
 
 # Setup sudo if requested
 {f'''
@@ -277,14 +255,14 @@ elif command -v apk >/dev/null 2>&1; then
 fi
 
 # Add user to sudoers
-echo "{config["USER_NAME"]} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-''' if config.get("SUDO") else "# Sudo not requested"}
+echo "{config.user_name} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+''' if config.sudo else "# Sudo not requested"}
 
 # Set environment
 export PS1="[ctenv] $ "
 
 # Execute command as user
-exec {config["GOSU_MOUNT"]} {config["USER_NAME"]} {config["COMMAND"]}
+exec {config.gosu_mount} {config.user_name} {config.command}
 """
     return script
 
@@ -309,7 +287,7 @@ class ContainerRunner:
         ]
 
         # Generate and write entrypoint script to temporary file
-        entrypoint_script = build_entrypoint_script(config.to_dict())
+        entrypoint_script = build_entrypoint_script(config)
         script_fd, script_path = tempfile.mkstemp(suffix='.sh', text=True)
         logging.debug(f"Created temporary entrypoint script: {script_path}")
         try:

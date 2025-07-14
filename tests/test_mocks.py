@@ -225,26 +225,29 @@ def test_new_cli_options():
 @pytest.mark.unit
 def test_sudo_entrypoint_script():
     """Test entrypoint script generation with sudo support."""
-    config_with_sudo = {
-        "USER_NAME": "testuser",
-        "USER_ID": 1000,
-        "GROUP_NAME": "testgroup",
-        "GROUP_ID": 1000,
-        "USER_HOME": "/home/testuser",
-        "GOSU_MOUNT": "/gosu",
-        "COMMAND": "bash",
-        "SUDO": True
-    }
+    config_with_sudo = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/test"),
+        command="bash",
+        sudo=True
+    )
     
-    config_without_sudo = {
-        "USER_NAME": "testuser",
-        "USER_ID": 1000,
-        "GROUP_NAME": "testgroup",
-        "GROUP_ID": 1000,
-        "USER_HOME": "/home/testuser",
-        "GOSU_MOUNT": "/gosu",
-        "COMMAND": "bash"
-    }
+    config_without_sudo = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/test"),
+        command="bash",
+        sudo=False
+    )
     
     script_with_sudo = build_entrypoint_script(config_with_sudo)
     script_without_sudo = build_entrypoint_script(config_without_sudo)

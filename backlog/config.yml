@@ -1,6 +1,6 @@
 project_name: "ctenv"
 default_status: "To Do"
-statuses: ["To Do", "In Progress", "Done", "On Hold", "Won't Do", "Future"]
+statuses: ["To Do", "In Progress", "Done", "Won't Do", "Future"]
 labels: []
 milestones: []
 date_format: yyyy-mm-dd

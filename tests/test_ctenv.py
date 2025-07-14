@@ -69,15 +69,16 @@ def test_container_name_generation():
 @pytest.mark.unit
 def test_entrypoint_script_generation():
     """Test bash entrypoint script generation."""
-    config = {
-        "USER_NAME": "testuser",
-        "USER_ID": 1000,
-        "GROUP_NAME": "testgroup",
-        "GROUP_ID": 1000,
-        "USER_HOME": "/home/testuser",
-        "GOSU_MOUNT": "/gosu",
-        "COMMAND": "bash",
-    }
+    config = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/test"),
+        command="bash"
+    )
 
     script = build_entrypoint_script(config)
 
@@ -95,27 +96,29 @@ def test_entrypoint_script_examples():
     scenarios = [
         {
             "name": "Basic user setup",
-            "config": {
-                "USER_NAME": "developer",
-                "USER_ID": 1001,
-                "GROUP_NAME": "staff", 
-                "GROUP_ID": 20,
-                "USER_HOME": "/home/developer",
-                "GOSU_MOUNT": "/gosu",
-                "COMMAND": "bash",
-            }
+            "config": Config(
+                user_name="developer",
+                user_id=1001,
+                group_name="staff",
+                group_id=20,
+                user_home="/home/developer",
+                script_dir=Path("/test"),
+                working_dir=Path("/test"),
+                command="bash"
+            )
         },
         {
             "name": "Custom command execution",
-            "config": {
-                "USER_NAME": "runner",
-                "USER_ID": 1000,
-                "GROUP_NAME": "runners",
-                "GROUP_ID": 1000, 
-                "USER_HOME": "/home/runner",
-                "GOSU_MOUNT": "/gosu",
-                "COMMAND": "python3 main.py --verbose",
-            }
+            "config": Config(
+                user_name="runner",
+                user_id=1000,
+                group_name="runners",
+                group_id=1000,
+                user_home="/home/runner",
+                script_dir=Path("/test"),
+                working_dir=Path("/test"),
+                command="python3 main.py --verbose"
+            )
         }
     ]
     
@@ -127,8 +130,8 @@ def test_entrypoint_script_examples():
         script = build_entrypoint_script(scenario["config"])
         
         print(f"\n{scenario['name']}:")
-        print(f"  User: {scenario['config']['USER_NAME']} (UID: {scenario['config']['USER_ID']})")
-        print(f"  Command: {scenario['config']['COMMAND']}")
+        print(f"  User: {scenario['config'].user_name} (UID: {scenario['config'].user_id})")
+        print(f"  Command: {scenario['config'].command}")
         print("  Script:")
         
         # Indent each line for better formatting
