@@ -20,43 +20,45 @@ def test_version():
 @pytest.mark.unit
 def test_config_user_detection():
     """Test that Config correctly detects user information."""
-    config = Config()
+    config = Config.from_cli_options()
 
     assert config.user_name == os.getenv("USER")
     assert config.user_id == os.getuid()
     assert config.group_id == os.getgid()
-    assert "IMAGE" in config.defaults
-    assert config.defaults["DIR_MOUNT"] == "/repo"
+    assert config.image == "ubuntu:latest"
+    assert config.dir_mount == "/repo"
 
 
 @pytest.mark.unit
 def test_config_with_mock_user():
-    """Test Config with injected user info."""
-    mock_user = {
-        "user_name": "testuser",
-        "user_id": 1000,
-        "group_name": "testgroup",
-        "group_id": 1000,
-        "user_home": "/home/testuser",
-    }
-
+    """Test Config with custom values."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        config = Config(user_info=mock_user, script_dir=Path(tmpdir))
+        config = Config(
+            user_name="testuser",
+            user_id=1000,
+            group_name="testgroup",
+            group_id=1000,
+            user_home="/home/testuser",
+            script_dir=Path(tmpdir),
+            working_dir=Path(tmpdir),
+        )
 
         assert config.user_name == "testuser"
         assert config.user_id == 1000
-        assert config.defaults["USER_NAME"] == "testuser"
-        assert config.defaults["DIR"] == tmpdir
+        assert config.script_dir == Path(tmpdir)
+        assert config.working_dir == Path(tmpdir)
 
 
 @pytest.mark.unit
 def test_container_name_generation():
     """Test consistent container name generation."""
-    config = Config()
+    config1 = Config.from_cli_options(dir="/path/to/project")
+    config2 = Config.from_cli_options(dir="/path/to/project")
+    config3 = Config.from_cli_options(dir="/different/path")
 
-    name1 = config.get_container_name("/path/to/project")
-    name2 = config.get_container_name("/path/to/project")
-    name3 = config.get_container_name("/different/path")
+    name1 = config1.get_container_name()
+    name2 = config2.get_container_name()
+    name3 = config3.get_container_name()
 
     assert name1 == name2  # Consistent naming
     assert name1 != name3  # Different paths produce different names

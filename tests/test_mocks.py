@@ -4,68 +4,54 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv import ContainerRunner, Config
+from ctenv import ContainerRunner, Config, build_entrypoint_script
 
 
 @pytest.mark.unit  
 def test_docker_command_examples():
     """Test and display actual Docker commands that would be generated."""
+    import os
     
     # Create config with test data
-    mock_user_info = {
-        "user_name": "testuser",
-        "user_id": 1000,
-        "group_name": "testgroup", 
-        "group_id": 1000,
-        "user_home": "/home/testuser"
-    }
-    config = Config(user_info=mock_user_info, script_dir=Path("/test"))
-    runner = ContainerRunner(config)
+    config = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/workspace"),
+        image="ubuntu:latest",
+        command="bash"
+    )
     
-    # Test scenario 1: Basic bash command
-    test_config = {
-        "IMAGE": "ubuntu:latest",
-        "COMMAND": "bash",
-        "NAME": "test-container",
-        "DIR": "/workspace",
-        "DIR_MOUNT": "/repo",
-        "GOSU": "/test/gosu",
-        "GOSU_MOUNT": "/gosu",
-        "USER_NAME": "testuser",
-        "USER_ID": 1000,
-        "GROUP_NAME": "testgroup",
-        "GROUP_ID": 1000,
-        "USER_HOME": "/home/testuser"
-    }
+    args, script_path = ContainerRunner.build_run_args(config)
     
-    args = runner.build_run_args(test_config)
-    
-    # Clean up the script path before asserting
-    script_path = test_config.get('_SCRIPT_PATH')
-    if script_path:
+    try:
+        # Verify command structure
+        assert args[0] == "docker"
+        assert "run" in args
+        assert "--rm" in args
+        assert "--init" in args
+        assert "--platform=linux/amd64" in args
+        assert f"--name={config.get_container_name()}" in args
+        assert "--volume=/workspace:/repo:z,rw" in args
+        assert "--volume=/test/gosu:/gosu:z,ro" in args
+        assert "--workdir=/repo" in args
+        assert "--entrypoint" in args
+        assert "/entrypoint.sh" in args
+        assert "ubuntu:latest" in args
+        
+        # Print the command for documentation purposes
+        print("\nExample Docker command for 'bash':")
+        print(f"  {' '.join(args[:args.index('ubuntu:latest')+1])}")
+        
+    finally:
+        # Clean up the script path
         try:
-            import os
             os.unlink(script_path)
         except OSError:
             pass
-    
-    # Verify command structure
-    assert args[0] == "docker"
-    assert "run" in args
-    assert "--rm" in args
-    assert "--init" in args
-    assert "--platform=linux/amd64" in args
-    assert "--name=test-container" in args
-    assert "--volume=/workspace:/repo:z,rw" in args
-    assert "--volume=/test/gosu:/gosu:z,ro" in args
-    assert "--workdir=/repo" in args
-    assert "--entrypoint" in args
-    assert "/entrypoint.sh" in args
-    assert "ubuntu:latest" in args
-    
-    # Print the command for documentation purposes
-    print("\nExample Docker command for 'bash':")
-    print(f"  {' '.join(args[:args.index('ubuntu:latest')+1])}")
 
 
 @pytest.mark.unit
@@ -73,15 +59,15 @@ def test_docker_command_scenarios():
     """Show Docker commands for different common scenarios."""
     import os
     
-    mock_user_info = {
-        "user_name": "developer",
-        "user_id": 1001,
-        "group_name": "developers",
-        "group_id": 1001,
-        "user_home": "/home/developer"
-    }
-    config = Config(user_info=mock_user_info, script_dir=Path("/usr/local/bin"))
-    runner = ContainerRunner(config)
+    base_config = Config(
+        user_name="developer",
+        user_id=1001,
+        group_name="developers",
+        group_id=1001,
+        user_home="/home/developer",
+        script_dir=Path("/usr/local/bin"),
+        working_dir=Path("/workspace")
+    )
     
     scenarios = [
         {
@@ -130,7 +116,19 @@ def test_docker_command_scenarios():
         }
         
         try:
-            args = runner.build_run_args(full_config)
+            # Create a Config object for this scenario
+            scenario_config = Config(
+                user_name="developer",
+                user_id=1001,
+                group_name="developers",
+                group_id=1001,
+                user_home="/home/developer",
+                script_dir=Path("/usr/local/bin"),
+                working_dir=Path(full_config["DIR"]),
+                image=full_config["IMAGE"],
+                command=full_config["COMMAND"]
+            )
+            args, script_path = ContainerRunner.build_run_args(scenario_config)
             
             # Format command nicely
             print(f"\n{scenario['name']}:")
@@ -158,8 +156,7 @@ def test_docker_command_scenarios():
             
         finally:
             # Cleanup temp script file
-            script_path = full_config.get('_SCRIPT_PATH')
-            if script_path:
+            if 'script_path' in locals():
                 try:
                     os.unlink(script_path)
                 except OSError:
@@ -169,47 +166,139 @@ def test_docker_command_scenarios():
 
 
 @pytest.mark.unit
-@patch("subprocess.run")
-def test_docker_command_construction(mock_run):
-    """Test that Docker commands are constructed correctly."""
-    mock_run.return_value.returncode = 0
+def test_new_cli_options():
+    """Test Docker commands generated with new CLI options."""
+    import os
+    
+    # Create config with new CLI options
+    config = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/workspace"),
+        image="ubuntu:latest",
+        command="bash",
+        container_name="test-container",
+        env_vars=("TEST_VAR=hello", "USER"),
+        volumes=("/host/data:/container/data",),
+        sudo=True,
+        network="bridge"
+    )
+    
+    try:
+        args, script_path = ContainerRunner.build_run_args(config)
+        
+        # Test environment variables
+        assert "--env=TEST_VAR=hello" in args
+        assert "--env=USER" in args
+        
+        # Test additional volumes
+        assert "--volume=/host/data:/container/data:z" in args
+        
+        # Test networking
+        assert "--network=bridge" in args
+        
+        # Test basic structure is still there
+        assert "docker" == args[0]
+        assert "run" in args
+        assert "--rm" in args
+        assert "ubuntu:latest" in args
+        
+        print("\nExample with new CLI options:")
+        print(f"  Environment: {config.env_vars}")
+        print(f"  Volumes: {config.volumes}")
+        print(f"  Sudo: {config.sudo}")
+        print(f"  Network: {config.network}")
+        
+    finally:
+        # Cleanup temp script file
+        if 'script_path' in locals():
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
 
-    # Create config with test data
-    mock_user_info = {
-        "user_name": "testuser",
-        "user_id": 1000,
-        "group_name": "testgroup",
-        "group_id": 1000,
-        "user_home": "/home/testuser",
-    }
-    config = Config(user_info=mock_user_info, script_dir=Path("/test"))
-    runner = ContainerRunner(config)
 
-    test_config = {
-        "IMAGE": "ubuntu:latest",
-        "COMMAND": "echo hello",
-        "NAME": "test-container",
-        "DIR": "/test",
-        "DIR_MOUNT": "/repo",
-        "GOSU": "/test/gosu",
-        "GOSU_MOUNT": "/gosu",
+@pytest.mark.unit
+def test_sudo_entrypoint_script():
+    """Test entrypoint script generation with sudo support."""
+    config_with_sudo = {
         "USER_NAME": "testuser",
         "USER_ID": 1000,
         "GROUP_NAME": "testgroup",
         "GROUP_ID": 1000,
         "USER_HOME": "/home/testuser",
+        "GOSU_MOUNT": "/gosu",
+        "COMMAND": "bash",
+        "SUDO": True
     }
+    
+    config_without_sudo = {
+        "USER_NAME": "testuser",
+        "USER_ID": 1000,
+        "GROUP_NAME": "testgroup",
+        "GROUP_ID": 1000,
+        "USER_HOME": "/home/testuser",
+        "GOSU_MOUNT": "/gosu",
+        "COMMAND": "bash"
+    }
+    
+    script_with_sudo = build_entrypoint_script(config_with_sudo)
+    script_without_sudo = build_entrypoint_script(config_without_sudo)
+    
+    # Test sudo installation is included when requested
+    assert "apt-get install" in script_with_sudo
+    assert "NOPASSWD:ALL" in script_with_sudo
+    
+    # Test sudo installation is not included when not requested
+    assert "apt-get install" not in script_without_sudo
+    assert "Sudo not requested" in script_without_sudo
+    
+    print("\nSudo script includes package installation and sudoers configuration")
+    print("Non-sudo script excludes sudo setup")
+
+
+@pytest.mark.unit
+@patch("subprocess.run")
+def test_docker_command_construction(mock_run):
+    """Test that Docker commands are constructed correctly."""
+    import os
+    mock_run.return_value.returncode = 0
+
+    # Create config with test data
+    config = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/test"),
+        image="ubuntu:latest",
+        command="echo hello",
+        container_name="test-container"
+    )
 
     # Test argument building
-    args = runner.build_run_args(test_config)
-
-    # Check command structure
-    assert args[0] == "docker"
-    assert "run" in args
-    assert "--rm" in args
-    assert "--init" in args
-    assert "ubuntu:latest" in args
-    assert f"--name={test_config['NAME']}" in args
+    args, script_path = ContainerRunner.build_run_args(config)
+    
+    try:
+        # Check command structure
+        assert args[0] == "docker"
+        assert "run" in args
+        assert "--rm" in args
+        assert "--init" in args
+        assert "ubuntu:latest" in args
+        assert f"--name={config.container_name}" in args
+    finally:
+        # Cleanup temp script file
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
 
 
 @pytest.mark.unit
@@ -219,11 +308,18 @@ def test_docker_not_available(mock_run, mock_which):
     """Test behavior when Docker is not available."""
     mock_which.return_value = None  # Docker not found in PATH
 
-    config = Config()
-    runner = ContainerRunner(config)
+    config = Config(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000,
+        user_home="/home/testuser",
+        script_dir=Path("/test"),
+        working_dir=Path("/test")
+    )
 
     with pytest.raises(FileNotFoundError, match="Docker not found"):
-        runner.run_container({"GOSU": "/test/gosu", "DIR": "/test"})
+        ContainerRunner.run_container(config)
 
 
 @pytest.mark.unit
@@ -240,56 +336,70 @@ def test_container_failure_handling(mock_run):
         patch("pathlib.Path.is_dir", return_value=True),
         patch("shutil.which", return_value="/usr/bin/docker"),
     ):
-        config = Config()
-        runner = ContainerRunner(config)
-
-        result = runner.run_container(
-            {
-                "GOSU": "/test/gosu",
-                "DIR": "/test",
-                "DIR_MOUNT": "/repo",
-                "GOSU_MOUNT": "/gosu",
-                "IMAGE": "invalid:image",
-                "COMMAND": "echo test",
-                "NAME": "test-container",
-                "USER_NAME": "testuser",
-                "USER_ID": 1000,
-                "GROUP_NAME": "testgroup",
-                "GROUP_ID": 1000,
-                "USER_HOME": "/home/testuser",
-            }
+        config = Config(
+            user_name="testuser",
+            user_id=1000,
+            group_name="testgroup",
+            group_id=1000,
+            user_home="/home/testuser",
+            script_dir=Path("/test"),
+            working_dir=Path("/test"),
+            image="invalid:image",
+            command="echo test",
+            container_name="test-container"
         )
+
+        result = ContainerRunner.run_container(config)
         assert result.returncode == 1
 
 
 @pytest.mark.unit
-@patch("sys.stdin.isatty")
-def test_tty_detection(mock_isatty):
+def test_tty_detection():
     """Test TTY flag handling."""
-    mock_isatty.return_value = True
+    import os
+    
+    # Test with TTY enabled
+    config_with_tty = Config(
+        user_name="test",
+        user_id=1000,
+        group_name="test",
+        group_id=1000,
+        user_home="/home/test",
+        script_dir=Path("/test"),
+        working_dir=Path("/test"),
+        image="ubuntu",
+        command="bash",
+        tty=True,
+    )
 
-    config = Config()
-    runner = ContainerRunner(config)
-
-    test_config = {
-        "IMAGE": "ubuntu",
-        "COMMAND": "bash",
-        "NAME": "test",
-        "DIR": "/test",
-        "DIR_MOUNT": "/repo",
-        "GOSU": "/gosu",
-        "GOSU_MOUNT": "/gosu",
-        "USER_NAME": "test",
-        "USER_ID": 1000,
-        "GROUP_NAME": "test",
-        "GROUP_ID": 1000,
-        "USER_HOME": "/home/test",
-    }
-
-    args = runner.build_run_args(test_config)
+    args, script_path = ContainerRunner.build_run_args(config_with_tty)
     assert "-t" in args and "-i" in args
+    
+    # Cleanup
+    try:
+        os.unlink(script_path)
+    except OSError:
+        pass
 
-    # Test when not a TTY
-    mock_isatty.return_value = False
-    args = runner.build_run_args(test_config)
+    # Test without TTY
+    config_without_tty = Config(
+        user_name="test",
+        user_id=1000,
+        group_name="test",
+        group_id=1000,
+        user_home="/home/test",
+        script_dir=Path("/test"),
+        working_dir=Path("/test"),
+        image="ubuntu",
+        command="bash",
+        tty=False,
+    )
+
+    args, script_path = ContainerRunner.build_run_args(config_without_tty)
     assert "-t" not in args and "-i" not in args
+    
+    # Cleanup
+    try:
+        os.unlink(script_path)
+    except OSError:
+        pass
