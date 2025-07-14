@@ -46,6 +46,10 @@ ctenv --quiet run -- make build
 # Use ctenv with commands that produce output (stdout stays clean)
 ctenv run -- cat myfile.txt > output.txt  # Only file content goes to stdout
 ctenv run -- ls -la | grep ".txt"          # Only ls output goes to stdout
+
+# Use configuration contexts
+ctenv run dev                    # Use 'dev' context from config
+ctenv run test -- npm test       # Use 'test' context, run npm test
 ```
 
 ### CLI Options
@@ -57,6 +61,8 @@ ctenv run -- ls -la | grep ".txt"          # Only ls output goes to stdout
 - `--help`: Show help message
 
 **Run command options:**
+- `ctenv run [CONTEXT]`: Use named configuration context
+- `--config`: Path to configuration file
 - `--image`: Container image to use (default: ubuntu:latest)
 - `--env`: Set environment variable (NAME=VALUE) or pass from host (NAME)
 - `--volume`: Mount additional volume (HOST:CONTAINER format)
@@ -65,10 +71,106 @@ ctenv run -- ls -la | grep ".txt"          # Only ls output goes to stdout
 - `--dir`: Directory to mount as workdir (default: current directory)
 - `--debug`: Show configuration details without running container
 
+**Configuration commands:**
+- `ctenv config show [CONTEXT]`: Show configuration or specific context
+- `ctenv config path`: Show path to configuration file being used
+- `ctenv contexts`: List available contexts
+
 For help, run:
 ```bash
 ctenv --help
 ctenv run --help
+ctenv config --help
+```
+
+## Configuration
+
+### Configuration Files
+
+ctenv supports TOML configuration files for project-specific and global settings. Configuration files are discovered using git-style directory traversal:
+
+1. Project config: `.ctenv/config.toml` (searched upward from current directory)
+2. Global config: `~/.ctenv/config.toml`
+
+### Configuration Format
+
+#### Project Configuration (`.ctenv/config.toml`)
+```toml
+# Default settings for this project
+[defaults]
+image = "node:18"
+network = "bridge"
+sudo = true
+env = ["NODE_ENV=development"]
+
+# Project-specific contexts
+[contexts.dev]
+image = "node:18"
+network = "bridge"
+sudo = true
+env = ["NODE_ENV=development", "DEBUG=*"]
+volumes = ["./node_modules:/app/node_modules"]
+
+[contexts.test]
+image = "node:18-alpine"
+network = "none"
+sudo = false
+env = ["NODE_ENV=test", "CI=true"]
+command = "npm test"
+
+[contexts.prod]
+image = "node:18-alpine"
+network = "none"
+sudo = false
+env = ["NODE_ENV=production"]
+```
+
+#### Global Configuration (`~/.ctenv/config.toml`)
+```toml
+# Global defaults across all projects
+[defaults]
+image = "ubuntu:latest"
+network = "none"
+sudo = false
+
+# Global contexts available everywhere
+[contexts.debug]
+network = "bridge"
+sudo = true
+env = ["DEBUG=1"]
+```
+
+### Configuration Precedence
+
+Configuration values are resolved in this order (highest to lowest priority):
+1. Command-line arguments
+2. Selected context from project config
+3. `[defaults]` section from project config
+4. Selected context from global config
+5. `[defaults]` section from global config
+6. Built-in defaults
+
+### Examples
+
+```bash
+# Use project defaults
+ctenv run
+
+# Use 'dev' context
+ctenv run dev
+
+# Use 'test' context with command
+ctenv run test -- npm test
+
+# Override context settings
+ctenv run dev --image alpine:latest
+
+# Show configuration
+ctenv config show
+ctenv config show dev
+
+# List available contexts
+ctenv contexts
 ```
 
 ## Development
@@ -106,6 +208,7 @@ uv run pytest tests/ -v
 
 ## Requirements
 
+- **Python 3.11+**: Required for built-in TOML support
 - **uv**: Modern Python package manager (recommended)
 - **Docker or Podman**: Container runtime
 - **gosu**: Binary for privilege dropping
