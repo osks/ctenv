@@ -23,7 +23,6 @@ Key features:
   - --network=custom-network-name (custom network)
 - Automatic network creation for custom networks if they don't exist
 - --publish/-p flag for port mapping (HOST:CONTAINER format)
-- --hostname flag to set container hostname
 - Network-related validation and error handling
 
 These options provide more control over container networking and naming, enabling advanced use cases while maintaining the simple defaults.

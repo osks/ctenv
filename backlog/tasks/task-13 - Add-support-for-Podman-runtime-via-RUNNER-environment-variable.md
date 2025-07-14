@@ -1,9 +1,10 @@
 ---
 id: task-13
 title: Add support for Podman runtime via RUNNER environment variable
-status: todo
+status: future
 assignee: []
 created_date: '2025-07-13'
+updated_date: '2025-07-14'
 labels: []
 dependencies: []
 priority: medium

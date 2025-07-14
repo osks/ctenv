@@ -13,6 +13,7 @@ import grp
 import subprocess
 import sys
 import shutil
+import logging
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
@@ -68,15 +69,20 @@ class Config:
     @classmethod
     def from_cli_options(cls, **cli_options) -> "Config":
         """Create Config from CLI options with system defaults."""
+        logging.debug("Creating Config from CLI options")
+        
         # Get user info if not provided
         user_info = get_current_user_info()
+        logging.debug(f"User info: {user_info['user_name']} (UID: {user_info['user_id']})")
         
         # Get script directory
         script_dir = Path(__file__).parent.resolve()
+        logging.debug(f"Script directory: {script_dir}")
         
         # Get working directory
         dir_param = cli_options.get("dir")
         working_dir = Path(dir_param) if dir_param else Path(os.getcwd())
+        logging.debug(f"Working directory: {working_dir}")
         
         return cls(
             # User identity
@@ -201,6 +207,8 @@ class ContainerRunner:
         """Build Docker run arguments. Returns (args, script_path) for cleanup."""
         import tempfile
         
+        logging.debug("Building Docker run arguments")
+        
         args = [
             "docker",
             "run",
@@ -213,38 +221,49 @@ class ContainerRunner:
         # Generate and write entrypoint script to temporary file
         entrypoint_script = build_entrypoint_script(config.to_dict())
         script_fd, script_path = tempfile.mkstemp(suffix='.sh', text=True)
+        logging.debug(f"Created temporary entrypoint script: {script_path}")
         try:
             with os.fdopen(script_fd, 'w') as f:
                 f.write(entrypoint_script)
             os.chmod(script_path, 0o755)
             
             # Volume mounts
-            args.extend(
-                [
-                    f"--volume={config.working_dir}:{config.dir_mount}:z,rw",
-                    f"--volume={config.gosu_path}:{config.gosu_mount}:z,ro",
-                    f"--volume={script_path}:/entrypoint.sh:z,ro",
-                    f"--workdir={config.dir_mount}",
-                ]
-            )
+            volume_args = [
+                f"--volume={config.working_dir}:{config.dir_mount}:z,rw",
+                f"--volume={config.gosu_path}:{config.gosu_mount}:z,ro",
+                f"--volume={script_path}:/entrypoint.sh:z,ro",
+                f"--workdir={config.dir_mount}",
+            ]
+            args.extend(volume_args)
+            
+            logging.debug("Volume mounts:")
+            logging.debug(f"  Working dir: {config.working_dir} -> {config.dir_mount}")
+            logging.debug(f"  Gosu binary: {config.gosu_path} -> {config.gosu_mount}")
+            logging.debug(f"  Entrypoint script: {script_path} -> /entrypoint.sh")
 
             # Additional volume mounts
             if config.volumes:
+                logging.debug("Additional volume mounts:")
                 for volume in config.volumes:
                     if ':' in volume:
                         args.extend([f"--volume={volume}:z"])
+                        logging.debug(f"  {volume}")
                     else:
                         raise ValueError(f"Invalid volume format: {volume}. Use HOST:CONTAINER format.")
 
             # Environment variables
             if config.env_vars:
+                logging.debug("Environment variables:")
                 for env_var in config.env_vars:
                     if '=' in env_var:
                         # Set specific value: NAME=VALUE
                         args.extend([f"--env={env_var}"])
+                        logging.debug(f"  Setting: {env_var}")
                     else:
                         # Pass from host: NAME
                         args.extend([f"--env={env_var}"])
+                        value = os.environ.get(env_var, '<not set>')
+                        logging.debug(f"  Passing: {env_var}={value}")
 
             # Network configuration
             if config.network:
@@ -257,19 +276,25 @@ class ContainerRunner:
                 else:
                     # Custom network name
                     args.extend([f"--network={config.network}"])
+                logging.debug(f"Network mode: {config.network}")
             else:
                 # Default: no networking for security
                 args.extend(["--network=none"])
+                logging.debug("Network mode: none (default)")
 
             # TTY flags if running interactively
             if config.tty:
                 args.extend(["-t", "-i"])
+                logging.debug("TTY mode: enabled")
+            else:
+                logging.debug("TTY mode: disabled")
 
             # Set entrypoint to our script
             args.extend(["--entrypoint", "/entrypoint.sh"])
 
             # Container image
             args.append(config.image)
+            logging.debug(f"Container image: {config.image}")
 
             return args, script_path
         except Exception:
@@ -283,11 +308,16 @@ class ContainerRunner:
     @staticmethod
     def run_container(config: Config) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
+        logging.debug("Starting container execution")
+        
         # Check if Docker is available
-        if not shutil.which("docker"):
+        docker_path = shutil.which("docker")
+        if not docker_path:
             raise FileNotFoundError("Docker not found in PATH. Please install Docker.")
+        logging.debug(f"Found Docker at: {docker_path}")
 
         # Verify gosu binary exists
+        logging.debug(f"Checking for gosu binary at: {config.gosu_path}")
         if not config.gosu_path.exists():
             raise FileNotFoundError(
                 f"gosu binary not found at {config.gosu_path}. Please ensure gosu is available."
@@ -297,6 +327,7 @@ class ContainerRunner:
             raise FileNotFoundError(f"gosu path {config.gosu_path} is not a file.")
 
         # Verify current directory exists
+        logging.debug(f"Verifying working directory: {config.working_dir}")
         if not config.working_dir.exists():
             raise FileNotFoundError(f"Directory {config.working_dir} does not exist.")
 
@@ -305,26 +336,52 @@ class ContainerRunner:
 
         # Build Docker arguments
         docker_args, script_path = ContainerRunner.build_run_args(config)
+        
+        logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
         # Execute Docker command
         try:
             result = subprocess.run(docker_args, check=False)
+            if result.returncode != 0:
+                logging.debug(f"Container exited with code: {result.returncode}")
             return result
         except subprocess.CalledProcessError as e:
+            logging.error(f"Container execution failed: {e}")
             raise RuntimeError(f"Container execution failed: {e}")
         finally:
             # Clean up temporary script file
             if script_path:
                 try:
                     os.unlink(script_path)
+                    logging.debug(f"Cleaned up temporary script: {script_path}")
                 except OSError:
                     pass
 
 
 @click.group()
 @click.version_option(version=__version__)
-def cli():
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress non-essential output")
+@click.pass_context
+def cli(ctx, verbose, quiet):
     """ctenv is a tool for running a program in a container as current user"""
+    # Store verbosity in context for subcommands to access
+    ctx.ensure_object(dict)
+    ctx.obj['verbose'] = verbose
+    ctx.obj['quiet'] = quiet
+    
+    # Configure logging to stderr to keep stdout clean for command output
+    if verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='[%(asctime)s] %(levelname)s: %(message)s',
+            datefmt='%H:%M:%S',
+            stream=sys.stderr
+        )
+    elif quiet:
+        logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
+    else:
+        logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
 
 @cli.command()
@@ -358,7 +415,8 @@ def cli():
     help="Directory to mount as workdir (default: current directory)"
 )
 @click.argument("command", nargs=-1, required=False)
-def run(image, command, debug, env, volume, sudo, network, dir):
+@click.pass_context
+def run(ctx, image, command, debug, env, volume, sudo, network, dir):
     """Run command in container
 
     Examples:
@@ -366,6 +424,9 @@ def run(image, command, debug, env, volume, sudo, network, dir):
         ctenv run -- ls -la                # Run specific command
         ctenv run --image alpine -- whoami # Use custom image
     """
+    verbose = ctx.obj.get('verbose', False)
+    quiet = ctx.obj.get('quiet', False)
+    
     if not command:
         # Default to interactive bash
         command = ("bash",)
@@ -381,24 +442,41 @@ def run(image, command, debug, env, volume, sudo, network, dir):
         network=network,
         tty=sys.stdin.isatty(),
     )
+    
+    if verbose:
+        logging.debug(f"Configuration:")
+        logging.debug(f"  Image: {config.image}")
+        logging.debug(f"  Command: {config.command}")
+        logging.debug(f"  User: {config.user_name} (UID: {config.user_id})")
+        logging.debug(f"  Group: {config.group_name} (GID: {config.group_id})")
+        logging.debug(f"  Working directory: {config.working_dir}")
+        logging.debug(f"  Container name: {config.get_container_name()}")
+        if config.env_vars:
+            logging.debug(f"  Environment variables: {config.env_vars}")
+        if config.volumes:
+            logging.debug(f"  Additional volumes: {config.volumes}")
+        logging.debug(f"  Network: {config.network or 'none'}")
+        logging.debug(f"  Sudo: {config.sudo}")
+        logging.debug(f"  TTY: {config.tty}")
 
-    click.echo("[ctenv] run")
+    if not quiet:
+        click.echo("[ctenv] run", err=True)
 
     if debug:
-        click.echo(f"Image: {config.image}")
-        click.echo(f"Command: {config.command}")
-        click.echo("\nConfiguration:")
-        click.echo(f"  User: {config.user_name} (UID: {config.user_id})")
-        click.echo(f"  Group: {config.group_name} (GID: {config.group_id})")
-        click.echo(f"  Home: {config.user_home}")
-        click.echo(f"  Script dir: {config.script_dir}")
-        click.echo(f"  Working dir: {config.working_dir}")
-        click.echo(f"  Container name: {config.get_container_name()}")
+        click.echo(f"Image: {config.image}", err=True)
+        click.echo(f"Command: {config.command}", err=True)
+        click.echo("\nConfiguration:", err=True)
+        click.echo(f"  User: {config.user_name} (UID: {config.user_id})", err=True)
+        click.echo(f"  Group: {config.group_name} (GID: {config.group_id})", err=True)
+        click.echo(f"  Home: {config.user_home}", err=True)
+        click.echo(f"  Script dir: {config.script_dir}", err=True)
+        click.echo(f"  Working dir: {config.working_dir}", err=True)
+        click.echo(f"  Container name: {config.get_container_name()}", err=True)
 
         # Show what Docker command would be executed
         docker_args, script_path = ContainerRunner.build_run_args(config)
-        click.echo("\nDocker command:")
-        click.echo(f"  {' '.join(docker_args)}")
+        click.echo("\nDocker command:", err=True)
+        click.echo(f"  {' '.join(docker_args)}", err=True)
         # Clean up temp script file from debug mode
         try:
             os.unlink(script_path)

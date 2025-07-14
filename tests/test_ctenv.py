@@ -152,9 +152,69 @@ def test_run_command_help():
 @pytest.mark.unit
 def test_run_command_debug_mode():
     """Test run command debug output."""
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["run", "--debug"])
 
     assert result.exit_code == 0
-    assert "Configuration:" in result.output
-    assert "Docker command:" in result.output
+    # Debug output should go to stderr
+    assert "Configuration:" in result.stderr
+    assert "Docker command:" in result.stderr
+
+
+@pytest.mark.unit
+def test_verbose_mode():
+    """Test verbose logging output."""
+    runner = CliRunner(mix_stderr=False)
+    
+    # Test that verbose flag is accepted and doesn't break anything
+    result = runner.invoke(cli, ["--verbose", "--version"])
+    assert result.exit_code == 0
+    assert "0.1" in result.output
+    
+    # Test verbose with run --debug
+    result = runner.invoke(cli, ["--verbose", "run", "--debug"])
+    assert result.exit_code == 0
+    assert "Configuration:" in result.stderr  # Debug output goes to stderr
+    # Note: verbose DEBUG logging may not show up in CliRunner tests
+    # The main thing is that verbose mode doesn't break anything
+
+
+@pytest.mark.unit
+def test_quiet_mode():
+    """Test quiet mode suppresses output."""
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(cli, ["--quiet", "run", "--debug"])
+    
+    assert result.exit_code == 0
+    # In quiet mode with debug, we should only see the debug output, not [ctenv] run
+    assert "[ctenv] run" not in result.stderr
+    assert "Configuration:" in result.stderr  # Debug output still shows
+
+
+@pytest.mark.unit
+def test_stdout_stderr_separation():
+    """Test that ctenv output goes to stderr, leaving stdout clean."""
+    runner = CliRunner(mix_stderr=False)
+    
+    # Test with debug mode
+    result = runner.invoke(cli, ["run", "--debug"])
+    assert result.exit_code == 0
+    
+    # stdout should be empty (no ctenv output)
+    assert result.output == ""
+    
+    # stderr should contain all ctenv output
+    assert "[ctenv] run" in result.stderr
+    assert "Configuration:" in result.stderr
+    assert "Docker command:" in result.stderr
+    
+    # Test with quiet mode too
+    result = runner.invoke(cli, ["--quiet", "run", "--debug"])
+    assert result.exit_code == 0
+    
+    # stdout should still be empty
+    assert result.output == ""
+    
+    # stderr should contain debug output but not [ctenv] run
+    assert "[ctenv] run" not in result.stderr
+    assert "Configuration:" in result.stderr
