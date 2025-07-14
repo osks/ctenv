@@ -118,16 +118,21 @@ def test_load_config_file_invalid_toml():
 
 @pytest.mark.unit
 def test_resolve_config_values_defaults():
-    """Test resolving config values from defaults."""
+    """Test resolving config values from defaults with default context."""
     config_data = {
         "defaults": {
             "image": "ubuntu:latest",
             "network": "bridge",
             "sudo": True
+        },
+        "contexts": {
+            "default": {
+                "image": "ubuntu:latest"
+            }
         }
     }
     
-    resolved = resolve_config_values(config_data)
+    resolved = resolve_config_values(config_data, "default")
     
     assert resolved["image"] == "ubuntu:latest"
     assert resolved["network"] == "bridge"
@@ -240,6 +245,60 @@ env = ["CI=true"]
         assert config.image == "alpine:latest"
         assert config.network == "bridge"
         assert config.env_vars == ("CI=true",)
+
+
+@pytest.mark.unit
+def test_builtin_default_context():
+    """Test that builtin default context is always available."""
+    from ctenv import get_builtin_default_context, load_merged_config
+    
+    # Test builtin default context content
+    builtin = get_builtin_default_context()
+    assert "contexts" in builtin
+    assert "default" in builtin["contexts"]
+    assert builtin["contexts"]["default"]["image"] == "ubuntu:latest"
+    
+    # Test that load_merged_config always includes default context
+    merged = load_merged_config()
+    assert "contexts" in merged
+    assert "default" in merged["contexts"]
+
+
+@pytest.mark.unit
+def test_default_context_merging():
+    """Test that user-defined default context merges with builtin."""
+    import tempfile
+    from ctenv import Config
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        
+        # Create config file with custom default context
+        config_file = tmpdir / "config.toml"
+        config_content = """
+[defaults]
+sudo = false
+
+[contexts.default]
+sudo = true
+network = "bridge"
+"""
+        config_file.write_text(config_content)
+        
+        # Create fake gosu
+        gosu_path = tmpdir / "gosu"
+        gosu_path.write_text("#!/bin/sh\nexec \"$@\"")
+        gosu_path.chmod(0o755)
+        
+        config = Config.from_cli_options(
+            config_file=str(config_file),
+            context="default"
+        )
+        
+        # Should merge builtin default with user default
+        assert config.image == "ubuntu:latest"  # From builtin default
+        assert config.sudo is True  # From user default context (overrides defaults)
+        assert config.network == "bridge"  # From user default context
 
 
 @pytest.mark.unit

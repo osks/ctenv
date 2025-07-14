@@ -19,8 +19,8 @@ class TestRunCommandParsing:
     @patch('ctenv.Config.from_cli_options')
     @patch('ctenv.ContainerRunner.run_container')
     def test_run_no_arguments(self, mock_run_container, mock_config_from_cli, mock_load_config):
-        """Test: ctenv run (should use default bash command)."""
-        mock_load_config.return_value = {}
+        """Test: ctenv run (should use default bash command with default context)."""
+        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
         mock_run_container.return_value = MagicMock(returncode=0)
@@ -28,11 +28,11 @@ class TestRunCommandParsing:
         result = self.runner.invoke(cli, ['run'])
         
         assert result.exit_code == 0
-        # Should call config with bash as default command
+        # Should call config with bash as default command and default context
         mock_config_from_cli.assert_called_once()
         call_kwargs = mock_config_from_cli.call_args[1]
         assert call_kwargs['command'] == 'bash'
-        assert call_kwargs['context'] is None
+        assert call_kwargs['context'] == 'default'
 
     @patch('ctenv.load_merged_config')
     @patch('ctenv.Config.from_cli_options')
@@ -68,13 +68,13 @@ class TestRunCommandParsing:
     @patch('ctenv.ContainerRunner.run_container')
     def test_run_with_command_only(self, mock_run_container, mock_config_from_cli, mock_load_config):
         """Test: ctenv run -- echo test (edge case: treats echo as context, fails as expected)."""
-        mock_load_config.return_value = {}
+        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
         
         result = self.runner.invoke(cli, ['run', '--', 'echo', 'test'])
         
         # This is an edge case with simplified Click parsing - echo is treated as context
         assert result.exit_code == 1
-        assert "No configuration file found. Context 'echo' is not available." in result.output
+        assert "Context 'echo' not found" in result.output
 
     @patch('ctenv.load_merged_config')
     @patch('ctenv.Config.from_cli_options')
@@ -115,27 +115,26 @@ class TestRunCommandParsing:
 
     @patch('ctenv.load_merged_config')
     def test_run_no_config_file_with_context(self, mock_load_config):
-        """Test: ctenv run dev (no config file - should fail)."""
-        mock_load_config.return_value = {}
+        """Test: ctenv run dev (only default context available - should fail)."""
+        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
         
         result = self.runner.invoke(cli, ['run', 'dev'])
         
         assert result.exit_code == 1
-        assert "No configuration file found" in result.output
-        assert "Context 'dev' is not available" in result.output
+        assert "Context 'dev' not found" in result.output
 
     @patch('ctenv.load_merged_config')
     @patch('ctenv.Config.from_cli_options')
     @patch('ctenv.ContainerRunner.run_container')
     def test_run_with_options(self, mock_run_container, mock_config_from_cli, mock_load_config):
         """Test: ctenv run --image alpine -- whoami (edge case: treats whoami as context, fails)."""
-        mock_load_config.return_value = {}
+        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
         
         result = self.runner.invoke(cli, ['run', '--image', 'alpine:latest', '--', 'whoami'])
         
         # This is an edge case with simplified Click parsing - whoami is treated as context
         assert result.exit_code == 1
-        assert "No configuration file found. Context 'whoami' is not available." in result.output
+        assert "Context 'whoami' not found" in result.output
 
     @patch('ctenv.load_merged_config')
     @patch('ctenv.Config.from_cli_options')
@@ -160,8 +159,8 @@ class TestRunCommandParsing:
     @patch('ctenv.Config.from_cli_options')
     @patch('ctenv.ContainerRunner.run_container')
     def test_run_working_command_no_args(self, mock_run_container, mock_config_from_cli, mock_load_config):
-        """Test: ctenv run (no args, default bash)."""
-        mock_load_config.return_value = {}
+        """Test: ctenv run (no args, default bash with default context)."""
+        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
         mock_run_container.return_value = MagicMock(returncode=0)
@@ -172,7 +171,7 @@ class TestRunCommandParsing:
         mock_config_from_cli.assert_called()
         call_kwargs = mock_config_from_cli.call_args[1]
         assert call_kwargs['command'] == 'bash'
-        assert call_kwargs['context'] is None
+        assert call_kwargs['context'] == 'default'
 
     @patch('ctenv.load_merged_config')
     @patch('ctenv.Config.from_cli_options')
@@ -217,13 +216,13 @@ class TestRunCommandEdgeCases:
     @patch('ctenv.ContainerRunner.run_container')
     def test_run_multiple_commands(self, mock_run_container, mock_config_from_cli, mock_load_config):
         """Test: ctenv run -- sh -c 'echo hello && echo world' (edge case: treats sh as context)."""
-        mock_load_config.return_value = {}
+        mock_load_config.return_value = {'contexts': {'default': {'image': 'ubuntu:latest'}}}
         
         result = self.runner.invoke(cli, ['run', '--', 'sh', '-c', 'echo hello && echo world'])
         
         # This is an edge case with simplified Click parsing - sh is treated as context
         assert result.exit_code == 1
-        assert "No configuration file found. Context 'sh' is not available." in result.output
+        assert "Context 'sh' not found" in result.output
 
     @patch('ctenv.load_merged_config')
     def test_load_config_error(self, mock_load_config):

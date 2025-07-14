@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env -S uv run -q --script
 #
 # /// script
 # requires-python = ">=3.11"
@@ -193,46 +193,54 @@ def merge_config_data(global_config: Dict[str, Any], project_config: Dict[str, A
     return merged
 
 
+def get_builtin_default_context() -> Dict[str, Any]:
+    """Get the builtin 'default' context definition."""
+    return {
+        "contexts": {
+            "default": {
+                "image": "ubuntu:latest"
+            }
+        }
+    }
+
+
 def load_merged_config(start_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Load and merge global and project config files."""
+    """Load and merge global and project config files with builtin default context."""
     global_config_path, project_config_path = find_all_config_files(start_dir)
     
-    merged_config = {}
+    # Start with builtin default context
+    merged_config = get_builtin_default_context()
+    logging.debug("Loaded builtin 'default' context")
     
-    # Load global config first
+    # Load global config
     if global_config_path:
         global_config = load_config_file(global_config_path)
-        merged_config = global_config
-        logging.debug(f"Loaded global config from {global_config_path}")
+        merged_config = merge_config_data(merged_config, global_config)
+        logging.debug(f"Merged global config from {global_config_path}")
     
     # Overlay project config
     if project_config_path:
         project_config = load_config_file(project_config_path)
-        if merged_config:
-            merged_config = merge_config_data(merged_config, project_config)
-            logging.debug(f"Merged project config from {project_config_path}")
-        else:
-            merged_config = project_config
-            logging.debug(f"Loaded project config from {project_config_path}")
+        merged_config = merge_config_data(merged_config, project_config)
+        logging.debug(f"Merged project config from {project_config_path}")
     
     return merged_config
 
 
-def resolve_config_values(config_data: Dict[str, Any], context: Optional[str] = None) -> Dict[str, Any]:
+def resolve_config_values(config_data: Dict[str, Any], context: str) -> Dict[str, Any]:
     """Resolve configuration values from defaults and context."""
     # Start with defaults
     resolved = config_data.get("defaults", {}).copy()
     
-    # Apply context if specified
-    if context:
-        contexts = config_data.get("contexts", {})
-        if context not in contexts:
-            available = list(contexts.keys())
-            raise ValueError(f"Unknown context '{context}'. Available: {available}")
-        
-        context_config = contexts[context]
-        resolved.update(context_config)
-        logging.debug(f"Applied context '{context}' configuration")
+    # Apply context (context is always provided now)
+    contexts = config_data.get("contexts", {})
+    if context not in contexts:
+        available = list(contexts.keys())
+        raise ValueError(f"Unknown context '{context}'. Available: {available}")
+    
+    context_config = contexts[context]
+    resolved.update(context_config)
+    logging.debug(f"Applied context '{context}' configuration")
     
     return resolved
 
@@ -277,16 +285,20 @@ class Config:
         # Load configuration file(s)
         config_data = {}
         if config_file:
-            # Explicit config file specified
+            # Explicit config file specified - merge with builtin default
             config_path = Path(config_file)
             if not config_path.exists():
                 raise ValueError(f"Config file not found: {config_path}")
-            config_data = load_config_file(config_path)
+            user_config = load_config_file(config_path)
+            builtin_config = get_builtin_default_context()
+            config_data = merge_config_data(builtin_config, user_config)
         else:
             # Discover and merge config files (global + project)
             config_data = load_merged_config()
         
-        # Resolve config values with context
+        # Resolve config values with context (context is never None now)
+        if not context:
+            context = "default"
         file_config = resolve_config_values(config_data, context) if config_data else {}
         
         # Get user info if not provided
@@ -669,22 +681,21 @@ def run(ctx, context, command_args, image, debug, config, env, volume, sudo, net
         # No command, default to bash
         command = ("bash",)
     
-    # Validate context if provided
-    if context:
-        try:
-            config_data = load_merged_config()
-            if config_data:
-                contexts = config_data.get("contexts", {})
-                if context not in contexts:
-                    available = list(contexts.keys())
-                    click.echo(f"Error: Context '{context}' not found. Available: {available}", err=True)
-                    sys.exit(1)
-            else:
-                click.echo(f"Error: No configuration file found. Context '{context}' is not available.", err=True)
-                sys.exit(1)
-        except Exception as e:
-            click.echo(f"Error loading configuration: {e}", err=True)
+    # Use "default" context if none specified
+    if not context:
+        context = "default"
+    
+    # Validate context (including "default" which should always be available)
+    try:
+        config_data = load_merged_config()
+        contexts = config_data.get("contexts", {})
+        if context not in contexts:
+            available = list(contexts.keys())
+            click.echo(f"Error: Context '{context}' not found. Available: {available}", err=True)
             sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error loading configuration: {e}", err=True)
+        sys.exit(1)
     
     # Context validation was already done during parsing above
 
@@ -891,56 +902,32 @@ def path(config):
 def contexts(config):
     """List available contexts"""
     try:
-        config_files_to_check = []
-        
         if config:
-            # Explicit config file specified
+            # Explicit config file specified - load just that file
             config_path = Path(config)
             if not config_path.exists():
                 click.echo(f"Config file not found: {config_path}", err=True)
                 sys.exit(1)
-            config_files_to_check.append(config_path.resolve())
+            config_data = load_config_file(config_path)
+            contexts_dict = config_data.get("contexts", {})
+            
+            if contexts_dict:
+                click.echo(f"\nContexts from {config_path}:")
+                for ctx_name in sorted(contexts_dict.keys()):
+                    click.echo(f"  {ctx_name}")
+            else:
+                click.echo("No contexts defined in configuration file")
         else:
-            # Discover all config files (project + global)
-            current = Path.cwd().resolve()
+            # Use merged config (includes builtin default)
+            merged_config = load_merged_config()
+            contexts_dict = merged_config.get("contexts", {})
             
-            # Search upward for project config
-            while True:
-                project_config = current / ".ctenv" / "config.toml"
-                if project_config.exists() and project_config.is_file():
-                    config_files_to_check.append(project_config)
-                    break
-                
-                parent = current.parent
-                if parent == current:  # Reached filesystem root
-                    break
-                current = parent
-            
-            # Check global config
-            global_config = Path.home() / ".ctenv" / "config.toml"
-            if global_config.exists() and global_config.is_file():
-                config_files_to_check.append(global_config)
-        
-        if not config_files_to_check:
-            click.echo("No configuration files found", err=True)
-            sys.exit(1)
-        
-        total_contexts = 0
-        for config_path in config_files_to_check:
-            try:
-                config_data = load_config_file(config_path)
-                contexts_dict = config_data.get("contexts", {})
-                
-                if contexts_dict:
-                    click.echo(f"\nContexts from {config_path}:")
-                    for ctx_name in sorted(contexts_dict.keys()):
-                        click.echo(f"  {ctx_name}")
-                    total_contexts += len(contexts_dict)
-            except Exception as e:
-                click.echo(f"Error reading {config_path}: {e}", err=True)
-        
-        if total_contexts == 0:
-            click.echo("No contexts defined in any configuration file")
+            if contexts_dict:
+                click.echo("Available contexts:")
+                for ctx_name in sorted(contexts_dict.keys()):
+                    click.echo(f"  {ctx_name}")
+            else:
+                click.echo("No contexts available")
     
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
