@@ -164,7 +164,7 @@ def get_builtin_defaults() -> Dict[str, Any]:
         "volumes": [],
         "sudo": False,
         "network": None,  # None means --network=none for security
-        "gosu_path": None,  # None means auto-discovery
+        "gosu_path": None,  # None means auto-discovery (resolved during Config creation)
     }
 
 
@@ -251,6 +251,7 @@ class Config:
     # Paths (required)
     script_dir: Path
     working_dir: Path
+    gosu_path: Path
     
     # Container settings with defaults
     image: str = "ubuntu:latest"
@@ -267,7 +268,6 @@ class Config:
     sudo: bool = False
     network: Optional[str] = None
     tty: bool = False
-    gosu_path_override: Optional[str] = None
     
     @classmethod
     def from_cli_options(cls, context: Optional[str] = None, config_file: Optional[str] = None, **cli_options) -> "Config":
@@ -313,6 +313,19 @@ class Config:
                 return file_value
             return default
         
+        # Discover gosu binary path
+        gosu_path_override = get_config_value("gosu_path")
+        gosu_binary = find_gosu_binary(
+            start_dir=working_dir,
+            explicit_path=gosu_path_override
+        )
+        if gosu_binary is None:
+            raise FileNotFoundError(
+                "gosu binary not found. Please install gosu in your PATH, "
+                "place it in .ctenv/gosu, or specify path with --gosu-path option."
+            )
+        logging.debug(f"Found gosu binary: {gosu_binary}")
+        
         return cls(
             # User identity
             user_name=user_info["user_name"],
@@ -324,6 +337,7 @@ class Config:
             # Paths
             script_dir=script_dir,
             working_dir=working_dir,
+            gosu_path=gosu_binary,
             
             # Container settings (CLI > config file > defaults)
             image=get_config_value("image", default="ubuntu:latest"),
@@ -336,23 +350,8 @@ class Config:
             sudo=get_config_value("sudo", default=False),
             network=get_config_value("network"),
             tty=cli_options.get("tty", False),  # TTY is determined at runtime, not from config
-            gosu_path_override=get_config_value("gosu_path")
         )
     
-    @property
-    def gosu_path(self) -> Path:
-        """Path to gosu binary on host."""
-        gosu_binary = find_gosu_binary(
-            start_dir=self.working_dir,
-            explicit_path=self.gosu_path_override
-        )
-        if gosu_binary is None:
-            # If no gosu found, raise helpful error
-            raise FileNotFoundError(
-                "gosu binary not found. Please install gosu in your PATH, "
-                "place it in .ctenv/gosu, or specify path with --gosu-path option."
-            )
-        return gosu_binary
     
     def get_container_name(self) -> str:
         """Generate container name based on working directory."""

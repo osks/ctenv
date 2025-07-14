@@ -23,7 +23,7 @@ def test_docker_command_examples():
         working_dir=Path("/workspace"),
         image="ubuntu:latest",
         command="bash",
-        gosu_path_override="/test/gosu"
+        gosu_path=Path("/test/gosu")
     )
     
     args, script_path = ContainerRunner.build_run_args(config)
@@ -68,7 +68,7 @@ def test_docker_command_scenarios():
         user_home="/home/developer",
         script_dir=Path("/usr/local/bin"),
         working_dir=Path("/workspace"),
-        gosu_path_override="/usr/local/bin/gosu"
+        gosu_path=Path("/usr/local/bin/gosu")
     )
     
     scenarios = [
@@ -127,6 +127,7 @@ def test_docker_command_scenarios():
                 user_home="/home/developer",
                 script_dir=Path("/usr/local/bin"),
                 working_dir=Path(full_config["DIR"]),
+                gosu_path=Path("/usr/local/bin/gosu"),
                 image=full_config["IMAGE"],
                 command=full_config["COMMAND"]
             )
@@ -181,6 +182,7 @@ def test_new_cli_options():
         user_home="/home/testuser",
         script_dir=Path("/test"),
         working_dir=Path("/workspace"),
+        gosu_path=Path("/test/gosu"),
         image="ubuntu:latest",
         command="bash",
         container_name="test-container",
@@ -235,6 +237,7 @@ def test_sudo_entrypoint_script():
         user_home="/home/testuser",
         script_dir=Path("/test"),
         working_dir=Path("/test"),
+        gosu_path=Path("/test/gosu"),
         command="bash",
         sudo=True
     )
@@ -247,6 +250,7 @@ def test_sudo_entrypoint_script():
         user_home="/home/testuser",
         script_dir=Path("/test"),
         working_dir=Path("/test"),
+        gosu_path=Path("/test/gosu"),
         command="bash",
         sudo=False
     )
@@ -282,10 +286,10 @@ def test_docker_command_construction(mock_run):
         user_home="/home/testuser",
         script_dir=Path("/test"),
         working_dir=Path("/test"),
+        gosu_path=Path("/test/gosu"),
         image="ubuntu:latest",
         command="echo hello",
-        container_name="test-container",
-        gosu_path_override="/test/gosu"
+        container_name="test-container"
     )
 
     # Test argument building
@@ -321,7 +325,8 @@ def test_docker_not_available(mock_run, mock_which):
         group_id=1000,
         user_home="/home/testuser",
         script_dir=Path("/test"),
-        working_dir=Path("/test")
+        working_dir=Path("/test"),
+        gosu_path=Path("/test/gosu")
     )
 
     with pytest.raises(FileNotFoundError, match="Docker not found"):
@@ -350,6 +355,7 @@ def test_container_failure_handling(mock_run):
             user_home="/home/testuser",
             script_dir=Path("/test"),
             working_dir=Path("/test"),
+            gosu_path=Path("/test/gosu"),
             image="invalid:image",
             command="echo test",
             container_name="test-container"
@@ -373,6 +379,7 @@ def test_tty_detection():
         user_home="/home/test",
         script_dir=Path("/test"),
         working_dir=Path("/test"),
+        gosu_path=Path("/test/gosu"),
         image="ubuntu",
         command="bash",
         tty=True,
@@ -396,6 +403,7 @@ def test_tty_detection():
         user_home="/home/test",
         script_dir=Path("/test"),
         working_dir=Path("/test"),
+        gosu_path=Path("/test/gosu"),
         image="ubuntu",
         command="bash",
         tty=False,
