@@ -645,11 +645,18 @@ def run(ctx, context, command_args, image, debug, config, env, volume, sudo, net
     """Run command in container
 
     Examples:
+
         ctenv run                          # Interactive bash with defaults
+
         ctenv run dev                      # Use 'dev' context with default command
+
         ctenv run dev -- npm test         # Use 'dev' context, run npm test
+
         ctenv run -- ls -la               # Use defaults, run ls -la
-        ctenv run --image alpine -- whoami # Override image, run whoami
+
+        ctenv run --image alpine dev      # Override image, use dev context
+
+    Note: Use '--' to separate commands from context/options.
     """
     verbose = ctx.obj.get('verbose', False)
     quiet = ctx.obj.get('quiet', False)
