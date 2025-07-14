@@ -36,15 +36,17 @@ def get_current_user_info():
     }
 
 
-def find_gosu_binary(start_dir: Optional[Path] = None, explicit_path: Optional[str] = None) -> Optional[Path]:
+def find_gosu_binary(
+    start_dir: Optional[Path] = None, explicit_path: Optional[str] = None
+) -> Optional[Path]:
     """Find gosu binary using fallback strategy.
-    
+
     Search order:
     1. explicit_path if provided
     2. .ctenv directory (project-local, searched upward)
     3. Global .ctenv directory
     4. System PATH (shutil.which)
-    
+
     Returns:
         Path to gosu binary if found, None otherwise
     """
@@ -56,87 +58,91 @@ def find_gosu_binary(start_dir: Optional[Path] = None, explicit_path: Optional[s
         else:
             logging.warning(f"Explicit gosu path not found: {explicit_gosu}")
             return None
-    
+
     # Search for .ctenv/gosu using same discovery as config files
     if start_dir is None:
         start_dir = Path.cwd()
-    
+
     current = start_dir.resolve()
-    
+
     # Search upward for .ctenv/gosu (project-local takes precedence)
     while True:
         ctenv_gosu = current / ".ctenv" / "gosu"
         if ctenv_gosu.exists() and ctenv_gosu.is_file():
             logging.debug(f"Found gosu in project .ctenv: {ctenv_gosu}")
             return ctenv_gosu
-        
+
         parent = current.parent
         if parent == current:  # Reached filesystem root
             break
         current = parent
-    
+
     # Check global .ctenv/gosu
     global_gosu = Path.home() / ".ctenv" / "gosu"
     if global_gosu.exists() and global_gosu.is_file():
         logging.debug(f"Found gosu in global .ctenv: {global_gosu}")
         return global_gosu
-    
+
     # Fall back to system PATH
     system_gosu = shutil.which("gosu")
     if system_gosu:
         gosu_path = Path(system_gosu)
         logging.debug(f"Found gosu in system PATH: {gosu_path}")
         return gosu_path
-    
+
     logging.debug("No gosu binary found in .ctenv directories or PATH")
     return None
 
 
-def find_all_config_files(start_dir: Optional[Path] = None) -> tuple[Optional[Path], Optional[Path]]:
+def find_all_config_files(
+    start_dir: Optional[Path] = None,
+) -> tuple[Optional[Path], Optional[Path]]:
     """Find all ctenv config files (global, project).
-    
+
     Returns:
         tuple of (global_config_path, project_config_path)
         Either can be None if not found.
     """
     if start_dir is None:
         start_dir = Path.cwd()
-    
+
     # Find global config
     global_config = Path.home() / ".ctenv" / "config.toml"
-    global_config_path = global_config if (global_config.exists() and global_config.is_file()) else None
+    global_config_path = (
+        global_config if (global_config.exists() and global_config.is_file()) else None
+    )
     if global_config_path:
         logging.debug(f"Found global config: {global_config_path}")
-    
+
     # Find project config (search upward)
     current = start_dir.resolve()
     project_config_path = None
-    
+
     while True:
         config_path = current / ".ctenv" / "config.toml"
         if config_path.exists() and config_path.is_file():
             project_config_path = config_path
             logging.debug(f"Found project config: {project_config_path}")
             break
-        
+
         parent = current.parent
         if parent == current:  # Reached filesystem root
             break
         current = parent
-    
+
     if not global_config_path and not project_config_path:
         logging.debug("No config files found")
-    
+
     return global_config_path, project_config_path
 
 
 def find_config_file(start_dir: Optional[Path] = None) -> Optional[Path]:
     """Find ctenv config file using git-style upward traversal.
-    
+
     Kept for backward compatibility. Returns the primary config file to use.
     """
     global_config, project_config = find_all_config_files(start_dir)
-    
+
     # Return project config if available, otherwise global
     return project_config or global_config
 
@@ -154,89 +160,29 @@ def load_config_file(config_path: Path) -> Dict[str, Any]:
         raise ValueError(f"Error reading {config_path}: {e}") from e
 
 
-def get_builtin_defaults() -> Dict[str, Any]:
-    """Get the built-in default values used by ctenv."""
-    return {
-        "image": "ubuntu:latest",
-        "command": "bash",
-        "container_name": None,
-        "env": [],
-        "volumes": [],
-        "sudo": False,
-        "network": None,  # None means --network=none for security
-        "gosu_path": None,  # None means auto-discovery (resolved during Config creation)
-    }
-
-
-def merge_config_data(global_config: Dict[str, Any], project_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge global and project config data.
-    
-    Project config takes precedence over global config.
-    Contexts are merged (project contexts can override global contexts with same name).
-    """
-    merged = global_config.copy()
-    
-    # Merge defaults
-    if "defaults" in project_config:
-        if "defaults" not in merged:
-            merged["defaults"] = {}
-        merged["defaults"].update(project_config["defaults"])
-        logging.debug("Merged project defaults over global defaults")
-    
-    # Merge contexts
-    if "contexts" in project_config:
-        if "contexts" not in merged:
-            merged["contexts"] = {}
-        merged["contexts"].update(project_config["contexts"])
-        logging.debug("Merged project contexts over global contexts")
-    
-    return merged
-
-
 def get_builtin_default_context() -> Dict[str, Any]:
     """Get the builtin 'default' context definition."""
-    return {
-        "image": "ubuntu:latest"
-    }
+    return {"image": "ubuntu:latest"}
 
 
-# Legacy functions - kept for backwards compatibility, but prefer ConfigFile class
-def load_merged_config(start_dir: Optional[Path] = None, explicit_config_file: Optional[Path] = None) -> Dict[str, Any]:
-    """Load and merge config files with builtin default context."""
-    config_file = ConfigFile.load(explicit_config_file=explicit_config_file, start_dir=start_dir)
-    return {"defaults": {}, "contexts": config_file.contexts}  # Empty defaults for backwards compatibility
-
-
-def get_config_sources_info(explicit_config_file: Optional[Path] = None, start_dir: Optional[Path] = None) -> tuple[Dict[str, Any], list[Path]]:
-    """Get merged config and list of source files used."""
-    config_file = ConfigFile.load(explicit_config_file=explicit_config_file, start_dir=start_dir)
-    config_data = {"defaults": {}, "contexts": config_file.contexts}  # Empty defaults for backwards compatibility
-    return config_data, config_file.source_files
-
-
-def resolve_config_values(config_data: Dict[str, Any], context: str) -> Dict[str, Any]:
-    """Resolve configuration values from defaults and context."""
-    config_file = ConfigFile(
-        contexts=config_data.get("contexts", {}),
-        source_files=[]
-    )
-    return config_file.resolve_context(context)
-
-
-@dataclass 
+@dataclass
 class ConfigFile:
     """Represents file-based configuration with contexts."""
-    
+
     contexts: Dict[str, Dict[str, Any]]
     source_files: list[Path]
-    
+
     @classmethod
-    def load(cls, explicit_config_file: Optional[Path] = None, start_dir: Optional[Path] = None) -> "ConfigFile":
+    def load(
+        cls,
+        explicit_config_file: Optional[Path] = None,
+        start_dir: Optional[Path] = None,
+    ) -> "ConfigFile":
         """Load configuration from files with builtin default context."""
         # Start with empty contexts
         merged_contexts = {}
         source_files = []
-        
+
         if explicit_config_file:
             # Use only the explicit config file
             if not explicit_config_file.exists():
@@ -249,46 +195,41 @@ class ConfigFile:
         else:
             # Auto-discover and merge global and project config files
             global_config_path, project_config_path = find_all_config_files(start_dir)
-            
+
             # Load global config
             if global_config_path:
                 global_config = load_config_file(global_config_path)
                 merged_contexts.update(global_config.get("contexts", {}))
                 source_files.append(global_config_path)
                 logging.debug(f"Merged global config from {global_config_path}")
-            
+
             # Overlay project config (contexts with same name override)
             if project_config_path:
                 project_config = load_config_file(project_config_path)
                 merged_contexts.update(project_config.get("contexts", {}))
                 source_files.append(project_config_path)
                 logging.debug(f"Merged project config from {project_config_path}")
-        
-        # Always add builtin default context (can be overridden by user configs)
-        if "default" not in merged_contexts:
-            merged_contexts["default"] = get_builtin_default_context()
-            logging.debug("Added builtin 'default' context")
-        else:
-            # Merge builtin default with user-defined default context
-            builtin_default = get_builtin_default_context()
-            user_default = merged_contexts["default"]
-            # User default overrides builtin default at option level
-            merged_default = builtin_default.copy()
-            merged_default.update(user_default)
-            merged_contexts["default"] = merged_default
+
+        # Ensure builtin default context is available (user can override)
+        builtin_default = get_builtin_default_context()
+        if "default" in merged_contexts:
+            # Merge user default with builtin (user takes precedence)
+            final_default = builtin_default.copy()
+            final_default.update(merged_contexts["default"])
+            merged_contexts["default"] = final_default
             logging.debug("Merged user 'default' context with builtin default")
-        
-        return cls(
-            contexts=merged_contexts,
-            source_files=source_files
-        )
-    
+        else:
+            merged_contexts["default"] = builtin_default
+            logging.debug("Added builtin 'default' context")
+
+        return cls(contexts=merged_contexts, source_files=source_files)
+
     def resolve_context(self, context: str) -> Dict[str, Any]:
         """Resolve configuration values for a specific context."""
         if context not in self.contexts:
             available = list(self.contexts.keys())
             raise ValueError(f"Unknown context '{context}'. Available: {available}")
-        
+
         # Return context as-is (built-in defaults are handled in ContainerConfig.from_cli_options)
         resolved = self.contexts[context].copy()
         logging.debug(f"Resolved context '{context}' configuration")
@@ -298,70 +239,77 @@ class ConfigFile:
 @dataclass
 class ContainerConfig:
     """Resolved configuration for ctenv container operations."""
-    
+
     # User identity (required)
     user_name: str
     user_id: int
     group_name: str
     group_id: int
     user_home: str
-    
+
     # Paths (required)
     script_dir: Path
     working_dir: Path
     gosu_path: Path
-    
+
     # Container settings with defaults
     image: str = "ubuntu:latest"
     command: str = "bash"
     container_name: Optional[str] = None
-    
+
     # Mount points
     dir_mount: str = "/repo"
     gosu_mount: str = "/gosu"
-    
+
     # Options
     env_vars: tuple[str, ...] = ()
     volumes: tuple[str, ...] = ()
     sudo: bool = False
     network: Optional[str] = None
     tty: bool = False
-    
+
     def get_container_name(self) -> str:
         """Generate container name based on working directory."""
         if self.container_name:
             return self.container_name
-        # Replace / with - to make valid container name  
+        # Replace / with - to make valid container name
         dir_id = str(self.working_dir).replace("/", "-")
         return f"ctenv-{dir_id}"
-    
+
     @classmethod
-    def from_cli_options(cls, context: Optional[str] = None, config_file: Optional[str] = None, **cli_options) -> "ContainerConfig":
+    def from_cli_options(
+        cls,
+        context: Optional[str] = None,
+        config_file: Optional[str] = None,
+        **cli_options,
+    ) -> "ContainerConfig":
         """Create ContainerConfig from CLI options, config files, and system defaults."""
         logging.debug("Creating ContainerConfig from CLI options")
-        
+
         # Load file-based configuration
         explicit_config = Path(config_file) if config_file else None
         config_file_obj = ConfigFile.load(explicit_config_file=explicit_config)
-        
+
         # Resolve config values with context (context is never None now)
         if not context:
             context = "default"
         file_config = config_file_obj.resolve_context(context)
-        
+
         # Get user info if not provided
         user_info = get_current_user_info()
-        logging.debug(f"User info: {user_info['user_name']} (UID: {user_info['user_id']})")
-        
+        logging.debug(
+            f"User info: {user_info['user_name']} (UID: {user_info['user_id']})"
+        )
+
         # Get script directory
         script_dir = Path(__file__).parent.resolve()
         logging.debug(f"Script directory: {script_dir}")
-        
+
         # Get working directory
         dir_param = cli_options.get("dir") or file_config.get("dir")
         working_dir = Path(dir_param) if dir_param else Path(os.getcwd())
         logging.debug(f"Working directory: {working_dir}")
-        
+
         # Helper function to get value with precedence: CLI > config file > default
         def get_config_value(key: str, cli_key: str = None, default=None):
             cli_key = cli_key or key
@@ -372,12 +320,11 @@ class ContainerConfig:
             if file_value is not None:
                 return file_value
             return default
-        
+
         # Discover gosu binary path
         gosu_path_override = get_config_value("gosu_path")
         gosu_binary = find_gosu_binary(
-            start_dir=working_dir,
-            explicit_path=gosu_path_override
+            start_dir=working_dir, explicit_path=gosu_path_override
         )
         if gosu_binary is None:
             raise FileNotFoundError(
@@ -385,7 +332,7 @@ class ContainerConfig:
                 "place it in .ctenv/gosu, or specify path with --gosu-path option."
             )
         logging.debug(f"Found gosu binary: {gosu_binary}")
-        
+
         return cls(
             # User identity
             user_name=user_info["user_name"],
@@ -393,31 +340,26 @@ class ContainerConfig:
             group_name=user_info["group_name"],
             group_id=user_info["group_id"],
             user_home=user_info["user_home"],
-            
             # Paths
             script_dir=script_dir,
             working_dir=working_dir,
             gosu_path=gosu_binary,
-            
             # Container settings (CLI > config file > defaults)
             image=get_config_value("image", default="ubuntu:latest"),
             command=get_config_value("command", default="bash"),
             container_name=get_config_value("container_name"),
-            
             # Options (CLI > config file > defaults)
             env_vars=tuple(get_config_value("env", "env_vars", [])),
             volumes=tuple(get_config_value("volumes", default=[])),
             sudo=get_config_value("sudo", default=False),
             network=get_config_value("network"),
-            tty=cli_options.get("tty", False),  # TTY is determined at runtime, not from config
+            tty=cli_options.get(
+                "tty", False
+            ),  # TTY is determined at runtime, not from config
         )
 
 
-# Backwards compatibility alias
-Config = ContainerConfig
-
-
-def build_entrypoint_script(config: Config) -> str:
+def build_entrypoint_script(config: ContainerConfig) -> str:
     """Generate bash script for container entrypoint."""
     script = f"""#!/bin/bash
 set -e
@@ -448,7 +390,8 @@ fi
 chown {config.user_name} "$HOME"
 
 # Setup sudo if requested
-{f'''
+{
+        f'''
 # Install sudo and configure passwordless access
 if command -v apt-get >/dev/null 2>&1; then
     apt-get update -qq && apt-get install -y -qq sudo
@@ -460,7 +403,10 @@ fi
 
 # Add user to sudoers
 echo "{config.user_name} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-''' if config.sudo else "# Sudo not requested"}
+'''
+        if config.sudo
+        else "# Sudo not requested"
+    }
 
 # Set environment
 export PS1="[ctenv] $ "
@@ -475,12 +421,12 @@ class ContainerRunner:
     """Manages Docker container operations."""
 
     @staticmethod
-    def build_run_args(config: Config) -> tuple[list, str]:
+    def build_run_args(config: ContainerConfig) -> tuple[list, str]:
         """Build Docker run arguments. Returns (args, script_path) for cleanup."""
         import tempfile
-        
+
         logging.debug("Building Docker run arguments")
-        
+
         args = [
             "docker",
             "run",
@@ -492,13 +438,13 @@ class ContainerRunner:
 
         # Generate and write entrypoint script to temporary file
         entrypoint_script = build_entrypoint_script(config)
-        script_fd, script_path = tempfile.mkstemp(suffix='.sh', text=True)
+        script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
         logging.debug(f"Created temporary entrypoint script: {script_path}")
         try:
-            with os.fdopen(script_fd, 'w') as f:
+            with os.fdopen(script_fd, "w") as f:
                 f.write(entrypoint_script)
             os.chmod(script_path, 0o755)
-            
+
             # Volume mounts
             volume_args = [
                 f"--volume={config.working_dir}:{config.dir_mount}:z,rw",
@@ -507,7 +453,7 @@ class ContainerRunner:
                 f"--workdir={config.dir_mount}",
             ]
             args.extend(volume_args)
-            
+
             logging.debug("Volume mounts:")
             logging.debug(f"  Working dir: {config.working_dir} -> {config.dir_mount}")
             logging.debug(f"  Gosu binary: {config.gosu_path} -> {config.gosu_mount}")
@@ -517,33 +463,35 @@ class ContainerRunner:
             if config.volumes:
                 logging.debug("Additional volume mounts:")
                 for volume in config.volumes:
-                    if ':' in volume:
+                    if ":" in volume:
                         args.extend([f"--volume={volume}:z"])
                         logging.debug(f"  {volume}")
                     else:
-                        raise ValueError(f"Invalid volume format: {volume}. Use HOST:CONTAINER format.")
+                        raise ValueError(
+                            f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
+                        )
 
             # Environment variables
             if config.env_vars:
                 logging.debug("Environment variables:")
                 for env_var in config.env_vars:
-                    if '=' in env_var:
+                    if "=" in env_var:
                         # Set specific value: NAME=VALUE
                         args.extend([f"--env={env_var}"])
                         logging.debug(f"  Setting: {env_var}")
                     else:
                         # Pass from host: NAME
                         args.extend([f"--env={env_var}"])
-                        value = os.environ.get(env_var, '<not set>')
+                        value = os.environ.get(env_var, "<not set>")
                         logging.debug(f"  Passing: {env_var}={value}")
 
             # Network configuration
             if config.network:
-                if config.network == 'none':
+                if config.network == "none":
                     args.extend(["--network=none"])
-                elif config.network == 'host':
+                elif config.network == "host":
                     args.extend(["--network=host"])
-                elif config.network == 'bridge':
+                elif config.network == "bridge":
                     args.extend(["--network=bridge"])
                 else:
                     # Custom network name
@@ -578,10 +526,10 @@ class ContainerRunner:
             raise
 
     @staticmethod
-    def run_container(config: Config) -> subprocess.CompletedProcess:
+    def run_container(config: ContainerConfig) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
         logging.debug("Starting container execution")
-        
+
         # Check if Docker is available
         docker_path = shutil.which("docker")
         if not docker_path:
@@ -608,7 +556,7 @@ class ContainerRunner:
 
         # Build Docker arguments
         docker_args, script_path = ContainerRunner.build_run_args(config)
-        
+
         logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
         # Execute Docker command
@@ -639,64 +587,65 @@ def cli(ctx, verbose, quiet):
     """ctenv is a tool for running a program in a container as current user"""
     # Store verbosity in context for subcommands to access
     ctx.ensure_object(dict)
-    ctx.obj['verbose'] = verbose
-    ctx.obj['quiet'] = quiet
-    
+    ctx.obj["verbose"] = verbose
+    ctx.obj["quiet"] = quiet
+
     # Configure logging to stderr to keep stdout clean for command output
     if verbose:
         logging.basicConfig(
             level=logging.DEBUG,
-            format='[%(asctime)s] %(levelname)s: %(message)s',
-            datefmt='%H:%M:%S',
-            stream=sys.stderr
+            format="[%(asctime)s] %(levelname)s: %(message)s",
+            datefmt="%H:%M:%S",
+            stream=sys.stderr,
         )
     elif quiet:
         logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
     else:
-        logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+        logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 
 
 @cli.command()
 @click.argument("context", required=False)
 @click.argument("command_args", nargs=-1)
-@click.option(
-    "--image",
-    help="Container image to use (default: ubuntu:latest)"
-)
+@click.option("--image", help="Container image to use (default: ubuntu:latest)")
 @click.option("--debug", is_flag=True, help="Show configuration details")
-@click.option(
-    "--config",
-    help="Path to configuration file"
-)
+@click.option("--config", help="Path to configuration file")
 @click.option(
     "--env",
     multiple=True,
-    help="Set environment variable (NAME=VALUE) or pass from host (NAME)"
+    help="Set environment variable (NAME=VALUE) or pass from host (NAME)",
 )
 @click.option(
-    "--volume",
-    multiple=True,
-    help="Mount additional volume (HOST:CONTAINER format)"
+    "--volume", multiple=True, help="Mount additional volume (HOST:CONTAINER format)"
 )
 @click.option(
-    "--sudo",
-    is_flag=True,
-    help="Add user to sudoers with NOPASSWD inside container"
+    "--sudo", is_flag=True, help="Add user to sudoers with NOPASSWD inside container"
 )
 @click.option(
-    "--network",
-    help="Enable container networking (default: disabled for security)"
+    "--network", help="Enable container networking (default: disabled for security)"
 )
 @click.option(
-    "--dir",
-    help="Directory to mount as workdir (default: current directory)"
+    "--dir", help="Directory to mount as workdir (default: current directory)"
 )
 @click.option(
     "--gosu-path",
-    help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)"
+    help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
 )
-@click.pass_context  
-def run(ctx, context, command_args, image, debug, config, env, volume, sudo, network, dir, gosu_path):
+@click.pass_context
+def run(
+    ctx,
+    context,
+    command_args,
+    image,
+    debug,
+    config,
+    env,
+    volume,
+    sudo,
+    network,
+    dir,
+    gosu_path,
+):
     """Run command in container
 
     Examples:
@@ -713,9 +662,9 @@ def run(ctx, context, command_args, image, debug, config, env, volume, sudo, net
 
     Note: Use '--' to separate commands from context/options.
     """
-    verbose = ctx.obj.get('verbose', False)
-    quiet = ctx.obj.get('quiet', False)
-    
+    verbose = ctx.obj.get("verbose", False)
+    quiet = ctx.obj.get("quiet", False)
+
     # Simple Click-style parsing - this allows some ambiguous cases but is standard
     if command_args:
         # Command specified
@@ -723,27 +672,30 @@ def run(ctx, context, command_args, image, debug, config, env, volume, sudo, net
     else:
         # No command, default to bash
         command = ("bash",)
-    
+
     # Use "default" context if none specified
     if not context:
         context = "default"
-    
+
     # Validate context (including "default" which should always be available)
     try:
         config_file = ConfigFile.load()
         if context not in config_file.contexts:
             available = list(config_file.contexts.keys())
-            click.echo(f"Error: Context '{context}' not found. Available: {available}", err=True)
+            click.echo(
+                f"Error: Context '{context}' not found. Available: {available}",
+                err=True,
+            )
             sys.exit(1)
     except Exception as e:
         click.echo(f"Error loading configuration: {e}", err=True)
         sys.exit(1)
-    
+
     # Context validation was already done during parsing above
 
     # Create config from CLI options and discovered configuration
     try:
-        config = Config.from_cli_options(
+        config = ContainerConfig.from_cli_options(
             context=context,
             config_file=config,
             image=image,
@@ -759,9 +711,9 @@ def run(ctx, context, command_args, image, debug, config, env, volume, sudo, net
     except ValueError as e:
         click.echo(f"Configuration error: {e}", err=True)
         sys.exit(1)
-    
+
     if verbose:
-        logging.debug(f"Configuration:")
+        logging.debug("Configuration:")
         logging.debug(f"  Image: {config.image}")
         logging.debug(f"  Command: {config.command}")
         logging.debug(f"  User: {config.user_name} (UID: {config.user_id})")
@@ -829,17 +781,16 @@ def show(context, config):
         # Load file-based configuration
         explicit_config = Path(config) if config else None
         config_file = ConfigFile.load(explicit_config_file=explicit_config)
-        
-        # Get built-in defaults
-        builtin_defaults = get_builtin_defaults()
-        
+
         if context:
             # Show specific context
             if context not in config_file.contexts:
                 available = list(config_file.contexts.keys())
-                click.echo(f"Context '{context}' not found. Available: {available}", err=True)
+                click.echo(
+                    f"Context '{context}' not found. Available: {available}", err=True
+                )
                 sys.exit(1)
-            
+
             # Show which config files are being used
             if len(config_file.source_files) == 0:
                 click.echo(f"Context '{context}' (builtin default only):")
@@ -849,38 +800,30 @@ def show(context, config):
                 click.echo(f"Context '{context}' from merged configs:")
                 for source_file in config_file.source_files:
                     click.echo(f"  {source_file}")
-            
-            # Show effective configuration for this context (built-in defaults + context)
-            effective_config = builtin_defaults.copy()
-            effective_config.update(config_file.contexts[context])
-            
-            for key, value in effective_config.items():
+
+            # Show context configuration
+            for key, value in config_file.contexts[context].items():
                 click.echo(f"  {key}: {value}")
         else:
             # Show all configuration
             click.echo("Configuration:")
-            
+
             # Show which config files are being used
             if len(config_file.source_files) == 0:
-                click.echo("\nUsing builtin defaults only")
+                click.echo("\nUsing builtin contexts only")
             elif len(config_file.source_files) == 1:
                 click.echo(f"\nUsing config file: {config_file.source_files[0]}")
             else:
-                click.echo(f"\nUsing merged config files:")
+                click.echo("\nUsing merged config files:")
                 for source_file in config_file.source_files:
                     click.echo(f"  {source_file}")
-            
-            # Show built-in defaults (no config file defaults anymore)
-            click.echo("\nBuilt-in defaults:")
-            for key, value in builtin_defaults.items():
-                click.echo(f"  {key}: {value}")
-            
+
             # Show contexts (there's always at least the default context)
             if config_file.contexts:
                 click.echo("\nContexts:")
                 for ctx_name in sorted(config_file.contexts.keys()):
                     click.echo(f"  {ctx_name}")
-    
+
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -914,7 +857,7 @@ def contexts(config):
         # Load file-based configuration
         explicit_config = Path(config) if config else None
         config_file = ConfigFile.load(explicit_config_file=explicit_config)
-        
+
         if config_file.contexts:
             if config:
                 click.echo(f"Contexts from {config}:")
@@ -925,7 +868,7 @@ def contexts(config):
         else:
             # This should never happen since we always have at least builtin default
             click.echo("No contexts available")
-    
+
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

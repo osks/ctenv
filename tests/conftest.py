@@ -39,17 +39,19 @@ def temp_workspace():
         ctenv_dir = Path(tmpdir) / ".ctenv"
         ctenv_dir.mkdir(exist_ok=True)
         gosu_path = ctenv_dir / "gosu"
-        gosu_path.write_text('#!/bin/sh\n# Fake gosu that drops the first argument (username) and runs the rest\nshift\nexec "$@"')
+        gosu_path.write_text(
+            '#!/bin/sh\n# Fake gosu that drops the first argument (username) and runs the rest\nshift\nexec "$@"'
+        )
         gosu_path.chmod(0o755)
 
         # Create a simple config file for integration tests
         config_file = ctenv_dir / "config.toml"
-        config_content = '''[defaults]
+        config_content = """[defaults]
 image = "ubuntu:latest"
 
 [contexts]
 test = { image = "ubuntu:latest" }
-'''
+"""
         config_file.write_text(config_content)
 
         yield tmpdir
