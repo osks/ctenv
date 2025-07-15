@@ -1,7 +1,7 @@
 ---
 id: task-19
 title: Improve gosu binary discovery with PATH fallback
-status: todo
+status: Done
 assignee: []
 created_date: '2025-07-14'
 updated_date: '2025-07-14'

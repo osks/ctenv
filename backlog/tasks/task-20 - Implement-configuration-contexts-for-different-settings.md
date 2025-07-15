@@ -1,7 +1,7 @@
 ---
 id: task-20
 title: Implement configuration contexts for different settings
-status: todo
+status: Done
 assignee: []
 created_date: '2025-07-14'
 updated_date: '2025-07-14'
