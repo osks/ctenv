@@ -81,10 +81,13 @@ def get_current_user_info():
 
 
 def get_platform_specific_gosu_name() -> str:
-    """Get platform-specific gosu binary name."""
+    """Get platform-specific gosu binary name.
+    
+    Note: gosu only provides Linux binaries since containers run Linux
+    regardless of the host OS.
+    """
     import platform
 
-    system = platform.system().lower()
     machine = platform.machine().lower()
 
     # Map machine types to standard names
@@ -95,11 +98,8 @@ def get_platform_specific_gosu_name() -> str:
     else:
         arch = "amd64"  # Default fallback
 
-    if system == "darwin":
-        return f"gosu-darwin-{arch}"
-    else:
-        # Linux containers regardless of host OS
-        return f"gosu-{arch}"
+    # Always use Linux binaries since containers run Linux
+    return f"gosu-{arch}"
 
 
 def find_gosu_binary(
@@ -1072,11 +1072,10 @@ def setup(force):
     ctenv_dir.mkdir(exist_ok=True)
 
     # Platform binaries to download
+    # Note: Only Linux binaries are available since containers run Linux
     binaries = [
         ("gosu-amd64", "linux/amd64"),
         ("gosu-arm64", "linux/arm64"),
-        ("gosu-darwin-amd64", "macOS/amd64"),
-        ("gosu-darwin-arm64", "macOS/arm64"),
     ]
 
     click.echo("Downloading gosu binaries for all platforms...")

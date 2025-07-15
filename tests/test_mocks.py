@@ -626,11 +626,10 @@ def test_platform_specific_gosu_discovery():
     assert platform_name.startswith("gosu-")
 
     # Should be one of the expected platform names
+    # Note: gosu only provides Linux binaries since containers run Linux
     expected_names = [
         "gosu-amd64",
         "gosu-arm64",
-        "gosu-darwin-amd64",
-        "gosu-darwin-arm64",
     ]
     assert platform_name in expected_names
 
