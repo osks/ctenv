@@ -1,7 +1,7 @@
 ---
 id: task-23
 title: Add variable templating support for contexts
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-15'
 updated_date: '2025-07-15'

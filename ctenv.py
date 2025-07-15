@@ -15,11 +15,53 @@ import sys
 import shutil
 import logging
 import tomllib
+import re
+import getpass
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 import click
+
+
+def substitute_template_variables(text: str, variables: dict[str, str]) -> str:
+    """Substitute ${var} and ${var|filter} patterns in text."""
+    pattern = r'\$\{([^}|]+)(?:\|([^}]+))?\}'
+    
+    def replace_match(match):
+        var_name, filter_name = match.groups()
+        
+        # Get value
+        if var_name.startswith("env:"):
+            value = os.environ.get(var_name[4:], "")
+        else:
+            value = variables.get(var_name, "")
+        
+        # Apply filter
+        if filter_name == "slug":
+            value = value.replace(":", "-").replace("/", "-")
+        elif filter_name is not None:
+            raise ValueError(f"Unknown filter: {filter_name}")
+        
+        return value
+    
+    return re.sub(pattern, replace_match, text)
+
+
+def substitute_in_context(context_data: dict, variables: dict[str, str]) -> dict:
+    """Apply variable substitution to all string values in context."""
+    result = {}
+    for key, value in context_data.items():
+        if isinstance(value, str):
+            result[key] = substitute_template_variables(value, variables)
+        elif isinstance(value, list):
+            result[key] = [
+                substitute_template_variables(item, variables) if isinstance(item, str) else item
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
 
 
 def get_current_user_info():
@@ -230,9 +272,17 @@ class ConfigFile:
             available = list(self.contexts.keys())
             raise ValueError(f"Unknown context '{context}'. Available: {available}")
 
-        # Return context as-is (built-in defaults are handled in ContainerConfig.from_cli_options)
-        resolved = self.contexts[context].copy()
-        logging.debug(f"Resolved context '{context}' configuration")
+        context_data = self.contexts[context].copy()
+        
+        # Prepare template variables
+        variables = {
+            "USER": getpass.getuser(),
+            "image": context_data.get("image", ""),
+        }
+        
+        # Apply templating
+        resolved = substitute_in_context(context_data, variables)
+        logging.debug(f"Resolved context '{context}' configuration with templating")
         return resolved
 
 
@@ -801,8 +851,9 @@ def show(context, config):
                 for source_file in config_file.source_files:
                     click.echo(f"  {source_file}")
 
-            # Show context configuration
-            for key, value in config_file.contexts[context].items():
+            # Show context configuration with templating applied
+            resolved_context = config_file.resolve_context(context)
+            for key, value in resolved_context.items():
                 click.echo(f"  {key}: {value}")
         else:
             # Show all configuration
