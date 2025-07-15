@@ -77,12 +77,16 @@ def mock_config():
 
 
 @pytest.fixture(autouse=True)
-def mock_gosu_discovery():
+def mock_gosu_discovery(request):
     """Mock gosu discovery for tests that don't need actual gosu."""
-    with patch("ctenv.find_gosu_binary") as mock_find:
-        # Return a fake gosu path for tests
-        mock_find.return_value = Path("/test/gosu")
-        yield mock_find
+    # Skip mocking for integration tests which need real gosu path resolution
+    if "integration" in request.keywords:
+        yield None
+    else:
+        with patch("ctenv.find_gosu_binary") as mock_find:
+            # Return a fake gosu path for tests
+            mock_find.return_value = Path("/test/gosu")
+            yield mock_find
 
 
 def pytest_configure(config):
