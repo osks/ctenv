@@ -1,11 +1,12 @@
 ---
 id: task-25
 title: Add entrypoint commands support
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-15'
 updated_date: '2025-07-15'
-labels: [enhancement]
+labels:
+  - enhancement
 dependencies: []
 ---
 

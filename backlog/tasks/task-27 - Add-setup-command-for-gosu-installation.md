@@ -1,11 +1,13 @@
 ---
 id: task-27
 title: Add setup command for gosu installation
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-15'
 updated_date: '2025-07-15'
-labels: [enhancement, user-experience]
+labels:
+  - enhancement
+  - user-experience
 dependencies: []
 ---
 
