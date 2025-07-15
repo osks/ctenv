@@ -78,6 +78,28 @@ def get_current_user_info():
     }
 
 
+def get_platform_specific_gosu_name() -> str:
+    """Get platform-specific gosu binary name."""
+    import platform
+    
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    
+    # Map machine types to standard names
+    if machine in ('x86_64', 'amd64'):
+        arch = 'amd64'
+    elif machine in ('aarch64', 'arm64'):
+        arch = 'arm64'
+    else:
+        arch = 'amd64'  # Default fallback
+    
+    if system == 'darwin':
+        return f"gosu-darwin-{arch}"
+    else:
+        # Linux containers regardless of host OS
+        return f"gosu-{arch}"
+
+
 def find_gosu_binary(
     start_dir: Optional[Path] = None, explicit_path: Optional[str] = None
 ) -> Optional[Path]:
@@ -85,8 +107,8 @@ def find_gosu_binary(
 
     Search order:
     1. explicit_path if provided
-    2. .ctenv directory (project-local, searched upward)
-    3. Global .ctenv directory
+    2. Platform-specific binary in .ctenv directories
+    3. Generic gosu in .ctenv directories
     4. System PATH (shutil.which)
 
     Returns:
@@ -101,14 +123,24 @@ def find_gosu_binary(
             logging.warning(f"Explicit gosu path not found: {explicit_gosu}")
             return None
 
+    # Get platform-specific binary name
+    platform_gosu = get_platform_specific_gosu_name()
+    
     # Search for .ctenv/gosu using same discovery as config files
     if start_dir is None:
         start_dir = Path.cwd()
 
     current = start_dir.resolve()
 
-    # Search upward for .ctenv/gosu (project-local takes precedence)
+    # Search upward for platform-specific gosu first, then generic
     while True:
+        # Try platform-specific first
+        ctenv_platform_gosu = current / ".ctenv" / platform_gosu
+        if ctenv_platform_gosu.exists() and ctenv_platform_gosu.is_file():
+            logging.debug(f"Found platform-specific gosu: {ctenv_platform_gosu}")
+            return ctenv_platform_gosu
+            
+        # Fall back to generic gosu
         ctenv_gosu = current / ".ctenv" / "gosu"
         if ctenv_gosu.exists() and ctenv_gosu.is_file():
             logging.debug(f"Found gosu in project .ctenv: {ctenv_gosu}")
@@ -119,7 +151,12 @@ def find_gosu_binary(
             break
         current = parent
 
-    # Check global .ctenv/gosu
+    # Check global .ctenv/gosu (platform-specific first)
+    global_platform_gosu = Path.home() / ".ctenv" / platform_gosu
+    if global_platform_gosu.exists() and global_platform_gosu.is_file():
+        logging.debug(f"Found platform-specific gosu in global .ctenv: {global_platform_gosu}")
+        return global_platform_gosu
+        
     global_gosu = Path.home() / ".ctenv" / "gosu"
     if global_gosu.exists() and global_gosu.is_file():
         logging.debug(f"Found gosu in global .ctenv: {global_gosu}")
@@ -314,6 +351,8 @@ class ContainerConfig:
     # Options
     env_vars: tuple[str, ...] = ()
     volumes: tuple[str, ...] = ()
+    entrypoint_commands: tuple[str, ...] = ()
+    ulimits: Dict[str, Any] = None
     sudo: bool = False
     network: Optional[str] = None
     tty: bool = False
@@ -377,9 +416,19 @@ class ContainerConfig:
             start_dir=working_dir, explicit_path=gosu_path_override
         )
         if gosu_binary is None:
+            platform_name = get_platform_specific_gosu_name()
             raise FileNotFoundError(
-                "gosu binary not found. Please install gosu in your PATH, "
-                "place it in .ctenv/gosu, or specify path with --gosu-path option."
+                f"gosu binary not found.\n\n"
+                f"To fix this, either:\n\n"
+                f"1. Run setup (recommended):\n"
+                f"   ctenv setup\n\n"
+                f"2. Download manually:\n"
+                f"   mkdir -p ~/.ctenv\n"
+                f"   wget -O ~/.ctenv/{platform_name} https://github.com/tianon/gosu/releases/latest/download/{platform_name}\n"
+                f"   chmod +x ~/.ctenv/{platform_name}\n\n"
+                f"3. Install from package manager:\n"
+                f"   Ubuntu/Debian:  sudo apt install gosu\n"
+                f"   macOS:          brew install gosu"
             )
         logging.debug(f"Found gosu binary: {gosu_binary}")
 
@@ -401,6 +450,8 @@ class ContainerConfig:
             # Options (CLI > config file > defaults)
             env_vars=tuple(get_config_value("env", "env_vars", [])),
             volumes=tuple(get_config_value("volumes", default=[])),
+            entrypoint_commands=tuple(get_config_value("entrypoint_commands", default=[])),
+            ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo", default=False),
             network=get_config_value("network"),
             tty=cli_options.get(
@@ -409,8 +460,29 @@ class ContainerConfig:
         )
 
 
-def build_entrypoint_script(config: ContainerConfig) -> str:
+def build_entrypoint_script(config: ContainerConfig, chown_paths: list[str] = None) -> str:
     """Generate bash script for container entrypoint."""
+    chown_paths = chown_paths or []
+    
+    # Build chown commands for volumes marked with :chown
+    chown_commands = ""
+    if chown_paths:
+        chown_commands = "\n# Fix ownership of chown-enabled volumes\n"
+        for path in chown_paths:
+            chown_commands += f"if [ -d \"{path}\" ]; then\n"
+            chown_commands += f"    chown -R {config.user_id}:{config.group_id} \"{path}\"\n"
+            chown_commands += f"fi\n"
+    
+    # Build entrypoint commands section
+    entrypoint_commands = ""
+    if config.entrypoint_commands:
+        entrypoint_commands = "\n# Execute entrypoint commands\n"
+        for cmd in config.entrypoint_commands:
+            # Escape quotes in the command
+            escaped_cmd = cmd.replace('"', '\\"')
+            entrypoint_commands += f"echo 'Executing: {escaped_cmd}'\n"
+            entrypoint_commands += f"{cmd}\n"
+    
     script = f"""#!/bin/bash
 set -e
 
@@ -437,7 +509,7 @@ if [ ! -d "$HOME" ]; then
 fi
 
 # Set ownership of home directory (non-recursive)
-chown {config.user_name} "$HOME"
+chown {config.user_name} "$HOME"{chown_commands}{entrypoint_commands}
 
 # Setup sudo if requested
 {
@@ -486,8 +558,51 @@ class ContainerRunner:
             f"--name={config.get_container_name()}",
         ]
 
+        # Parse volume options and track chown paths
+        chown_paths = []
+        processed_volumes = []
+        
+        for volume in config.volumes:
+            if ":" not in volume:
+                raise ValueError(
+                    f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
+                )
+            
+            # Parse volume string: HOST:CONTAINER[:options]
+            parts = volume.split(":")
+            if len(parts) < 2:
+                raise ValueError(
+                    f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
+                )
+            
+            host_path = parts[0]
+            container_path = parts[1]
+            
+            # Parse options (everything after second colon)
+            options = []
+            needs_chown = False
+            
+            if len(parts) > 2:
+                # Split comma-separated options
+                option_parts = parts[2].split(",")
+                for opt in option_parts:
+                    opt = opt.strip()
+                    if opt == "chown":
+                        needs_chown = True
+                        chown_paths.append(container_path)
+                    else:
+                        options.append(opt)
+            
+            # Rebuild volume string without chown option
+            if options:
+                volume_arg = f"{host_path}:{container_path}:{','.join(options)}"
+            else:
+                volume_arg = f"{host_path}:{container_path}"
+            
+            processed_volumes.append(volume_arg)
+        
         # Generate and write entrypoint script to temporary file
-        entrypoint_script = build_entrypoint_script(config)
+        entrypoint_script = build_entrypoint_script(config, chown_paths)
         script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
         logging.debug(f"Created temporary entrypoint script: {script_path}")
         try:
@@ -510,16 +625,16 @@ class ContainerRunner:
             logging.debug(f"  Entrypoint script: {script_path} -> /entrypoint.sh")
 
             # Additional volume mounts
-            if config.volumes:
+            if processed_volumes:
                 logging.debug("Additional volume mounts:")
-                for volume in config.volumes:
-                    if ":" in volume:
-                        args.extend([f"--volume={volume}:z"])
-                        logging.debug(f"  {volume}")
-                    else:
-                        raise ValueError(
-                            f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
-                        )
+                for volume in processed_volumes:
+                    args.extend([f"--volume={volume}:z"])
+                    logging.debug(f"  {volume}")
+                
+                if chown_paths:
+                    logging.debug("Volumes with chown enabled:")
+                    for path in chown_paths:
+                        logging.debug(f"  {path}")
 
             # Environment variables
             if config.env_vars:
@@ -534,6 +649,13 @@ class ContainerRunner:
                         args.extend([f"--env={env_var}"])
                         value = os.environ.get(env_var, "<not set>")
                         logging.debug(f"  Passing: {env_var}={value}")
+
+            # Resource limits (ulimits)
+            if config.ulimits:
+                logging.debug("Resource limits (ulimits):")
+                for limit_name, limit_value in config.ulimits.items():
+                    args.extend([f"--ulimit={limit_name}={limit_value}"])
+                    logging.debug(f"  {limit_name}={limit_value}")
 
             # Network configuration
             if config.network:
@@ -922,6 +1044,67 @@ def contexts(config):
 
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--force", is_flag=True, help="Re-download gosu binaries even if they exist")
+def setup(force):
+    """Download gosu binaries for all platforms"""
+    import urllib.request
+    import urllib.error
+    
+    click.echo("🔧 Setting up ctenv...")
+    click.echo()
+    
+    # Ensure .ctenv directory exists
+    ctenv_dir = Path.home() / ".ctenv"
+    ctenv_dir.mkdir(exist_ok=True)
+    
+    # Platform binaries to download
+    binaries = [
+        ("gosu-amd64", "linux/amd64"),
+        ("gosu-arm64", "linux/arm64"),
+        ("gosu-darwin-amd64", "macOS/amd64"),
+        ("gosu-darwin-arm64", "macOS/arm64"),
+    ]
+    
+    click.echo("Downloading gosu binaries for all platforms...")
+    
+    success_count = 0
+    
+    for binary_name, platform_desc in binaries:
+        binary_path = ctenv_dir / binary_name
+        
+        # Skip if already exists and not forcing
+        if binary_path.exists() and not force:
+            click.echo(f"✓ {binary_name} already exists ({platform_desc})")
+            success_count += 1
+            continue
+        
+        # Download the binary
+        url = f"https://github.com/tianon/gosu/releases/latest/download/{binary_name}"
+        
+        try:
+            click.echo(f"  Downloading {binary_name}...", nl=False)
+            urllib.request.urlretrieve(url, binary_path)
+            binary_path.chmod(0o755)
+            click.echo(f" ✓ Downloaded {binary_name} ({platform_desc})")
+            success_count += 1
+        except urllib.error.URLError as e:
+            click.echo(f" ✗ Failed to download {binary_name}: {e}")
+        except Exception as e:
+            click.echo(f" ✗ Error downloading {binary_name}: {e}")
+    
+    click.echo()
+    
+    if success_count == len(binaries):
+        click.echo("ctenv is ready to use! Try: ctenv run -- echo hello")
+    elif success_count > 0:
+        click.echo(f"Setup partially complete ({success_count}/{len(binaries)} binaries available)")
+        click.echo("ctenv should work for most use cases.")
+    else:
+        click.echo("Setup failed. Please check your internet connection and try again.")
         sys.exit(1)
 
 

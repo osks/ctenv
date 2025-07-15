@@ -1,11 +1,12 @@
 ---
 id: task-26
 title: Add ulimit configuration support
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-15'
 updated_date: '2025-07-15'
-labels: [enhancement]
+labels:
+  - enhancement
 dependencies: []
 ---
 

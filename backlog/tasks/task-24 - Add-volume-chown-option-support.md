@@ -1,11 +1,12 @@
 ---
 id: task-24
 title: Add volume chown option support
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-15'
 updated_date: '2025-07-15'
-labels: [enhancement]
+labels:
+  - enhancement
 dependencies: []
 ---
 
