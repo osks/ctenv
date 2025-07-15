@@ -163,7 +163,7 @@ ctenv run dev
 ctenv run test -- npm test
 
 # Override context settings
-ctenv run dev --image alpine:latest
+ctenv run --image alpine:latest dev
 
 # Show configuration
 ctenv config show
