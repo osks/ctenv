@@ -429,17 +429,17 @@ def test_volume_chown_option():
     """Test volume chown option parsing and entrypoint generation."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Test volume with chown option
         config = ContainerConfig(
             user_name="testuser",
             user_id=1000,
-            group_name="testgroup", 
+            group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
             script_dir=tmpdir,
@@ -447,16 +447,20 @@ def test_volume_chown_option():
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
-            volumes=("cache-vol:/var/cache:rw,chown", "data-vol:/data:chown", "logs:/logs:ro")
+            volumes=(
+                "cache-vol:/var/cache:rw,chown",
+                "data-vol:/data:chown",
+                "logs:/logs:ro",
+            ),
         )
-        
+
         # Test that build_run_args processes chown correctly
         docker_args, script_path = ContainerRunner.build_run_args(config)
-        
+
         try:
             # Check that chown was removed from volume args
             volume_args = [arg for arg in docker_args if arg.startswith("--volume=")]
-            
+
             # Find the processed volumes
             cache_volume = None
             data_volume = None
@@ -468,21 +472,24 @@ def test_volume_chown_option():
                     data_volume = arg
                 elif "logs:/logs" in arg:
                     logs_volume = arg
-            
+
             # Chown should be removed but other options preserved
             assert cache_volume == "--volume=cache-vol:/var/cache:rw:z"
-            assert data_volume == "--volume=data-vol:/data:z" 
+            assert data_volume == "--volume=data-vol:/data:z"
             assert logs_volume == "--volume=logs:/logs:ro:z"
-            
+
             # Read the generated entrypoint script and check for chown commands
-            with open(script_path, 'r') as f:
+            with open(script_path, "r") as f:
                 script_content = f.read()
-            
+
             # Should contain chown commands for cache and data, but not logs
             assert 'chown -R 1000:1000 "/var/cache"' in script_content
             assert 'chown -R 1000:1000 "/data"' in script_content
-            assert 'chown -R' in script_content and '/logs' not in script_content.split('chown -R')[1]
-            
+            assert (
+                "chown -R" in script_content
+                and "/logs" not in script_content.split("chown -R")[1]
+            )
+
         finally:
             # Clean up
             try:
@@ -496,12 +503,12 @@ def test_entrypoint_commands():
     """Test entrypoint commands execution in container script."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Test config with entrypoint commands
         config = ContainerConfig(
             user_name="testuser",
@@ -517,41 +524,41 @@ def test_entrypoint_commands():
             entrypoint_commands=(
                 "source /bitbake-venv/bin/activate",
                 "mkdir -p /var/cache/custom",
-                "echo 'Setup complete'"
-            )
+                "echo 'Setup complete'",
+            ),
         )
-        
+
         # Generate entrypoint script
         docker_args, script_path = ContainerRunner.build_run_args(config)
-        
+
         try:
             # Read the generated entrypoint script
-            with open(script_path, 'r') as f:
+            with open(script_path, "r") as f:
                 script_content = f.read()
-            
+
             # Should contain entrypoint commands section
             assert "# Execute entrypoint commands" in script_content
             assert "source /bitbake-venv/bin/activate" in script_content
             assert "mkdir -p /var/cache/custom" in script_content
             assert "echo 'Setup complete'" in script_content
-            
+
             # Commands should be executed before the gosu command
-            lines = script_content.split('\n')
+            lines = script_content.split("\n")
             entrypoint_start = None
             gosu_line = None
-            
+
             for i, line in enumerate(lines):
                 if "# Execute entrypoint commands" in line:
                     entrypoint_start = i
                 elif "exec /gosu" in line:
                     gosu_line = i
                     break
-            
+
             # Entrypoint commands should come before gosu
             assert entrypoint_start is not None
             assert gosu_line is not None
             assert entrypoint_start < gosu_line
-            
+
         finally:
             # Clean up
             try:
@@ -565,12 +572,12 @@ def test_ulimits_configuration():
     """Test ulimits configuration and Docker flag generation."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Test config with ulimits
         config = ContainerConfig(
             user_name="testuser",
@@ -583,22 +590,22 @@ def test_ulimits_configuration():
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
-            ulimits={"nofile": 1024, "nproc": 2048, "core": "0"}
+            ulimits={"nofile": 1024, "nproc": 2048, "core": "0"},
         )
-        
+
         # Test that build_run_args generates ulimit flags
         docker_args, script_path = ContainerRunner.build_run_args(config)
-        
+
         try:
             # Check that ulimit flags are present
             ulimit_args = [arg for arg in docker_args if arg.startswith("--ulimit=")]
-            
+
             # Should have 3 ulimit flags
             assert len(ulimit_args) == 3
             assert "--ulimit=nofile=1024" in ulimit_args
             assert "--ulimit=nproc=2048" in ulimit_args
             assert "--ulimit=core=0" in ulimit_args
-            
+
         finally:
             # Clean up
             try:
@@ -613,36 +620,41 @@ def test_platform_specific_gosu_discovery():
     """Test that platform-specific gosu binaries are found correctly."""
     from ctenv import get_platform_specific_gosu_name, find_gosu_binary
     from unittest.mock import patch
-    import platform
-    
+
     # Test platform name generation
     platform_name = get_platform_specific_gosu_name()
     assert platform_name.startswith("gosu-")
-    
+
     # Should be one of the expected platform names
-    expected_names = ["gosu-amd64", "gosu-arm64", "gosu-darwin-amd64", "gosu-darwin-arm64"]
+    expected_names = [
+        "gosu-amd64",
+        "gosu-arm64",
+        "gosu-darwin-amd64",
+        "gosu-darwin-arm64",
+    ]
     assert platform_name in expected_names
-    
+
     # Test that find_gosu_binary prefers platform-specific binaries
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         ctenv_dir = tmpdir / ".ctenv"
         ctenv_dir.mkdir()
-        
+
         # Create both generic and platform-specific gosu
         generic_gosu = ctenv_dir / "gosu"
         platform_gosu = ctenv_dir / platform_name
-        
+
         generic_gosu.write_text('#!/bin/sh\necho "generic"')
         generic_gosu.chmod(0o755)
-        
+
         platform_gosu.write_text('#!/bin/sh\necho "platform-specific"')
         platform_gosu.chmod(0o755)
-        
+
         # Mock home directory to point to our test dir and disable system PATH
-        with patch('pathlib.Path.home', return_value=tmpdir), \
-             patch('shutil.which', return_value=None):
-            
+        with (
+            patch("pathlib.Path.home", return_value=tmpdir),
+            patch("shutil.which", return_value=None),
+        ):
             # Should prefer platform-specific
             found_gosu = find_gosu_binary(start_dir=tmpdir)
             assert found_gosu.resolve() == platform_gosu.resolve()
