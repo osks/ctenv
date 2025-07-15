@@ -4,7 +4,7 @@ import pytest
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv import find_config_file, load_config_file, ConfigFile, ContainerConfig
+from ctenv import find_config_file, load_config_file, ConfigFile, ContainerConfig, substitute_template_variables, substitute_in_context
 
 
 @pytest.mark.unit
@@ -325,3 +325,104 @@ network = "bridge"
         assert config.network == "bridge"
         # Defaults should be used when not overridden
         assert config.sudo is False
+
+
+@pytest.mark.unit
+def test_substitute_template_variables_basic():
+    """Test basic variable substitution."""
+    variables = {"USER": "alice", "image": "test:latest"}
+    
+    result = substitute_template_variables("Hello ${USER}", variables)
+    assert result == "Hello alice"
+    
+    result = substitute_template_variables("Image: ${image}", variables)
+    assert result == "Image: test:latest"
+
+
+@pytest.mark.unit
+def test_substitute_template_variables_env():
+    """Test environment variable substitution."""
+    import os
+    os.environ["TEST_VAR"] = "test_value"
+    
+    variables = {"USER": "alice"}
+    result = substitute_template_variables("Value: ${env:TEST_VAR}", variables)
+    assert result == "Value: test_value"
+    
+    # Test missing env var
+    result = substitute_template_variables("Missing: ${env:NONEXISTENT}", variables)
+    assert result == "Missing: "
+    
+    # Clean up
+    del os.environ["TEST_VAR"]
+
+
+@pytest.mark.unit
+def test_substitute_template_variables_slug_filter():
+    """Test slug filter for filesystem-safe strings."""
+    variables = {"image": "docker.example.com:5000/app:v1.0"}
+    
+    result = substitute_template_variables("Cache: ${image|slug}", variables)
+    assert result == "Cache: docker.example.com-5000-app-v1.0"
+
+
+@pytest.mark.unit
+def test_substitute_template_variables_unknown_filter():
+    """Test error handling for unknown filters."""
+    variables = {"image": "test:latest"}
+    
+    with pytest.raises(ValueError, match="Unknown filter: unknown"):
+        substitute_template_variables("Bad: ${image|unknown}", variables)
+
+
+@pytest.mark.unit
+def test_substitute_in_context():
+    """Test context-wide variable substitution."""
+    import os
+    os.environ["TEST_ENV"] = "test_value"
+    
+    variables = {"USER": "alice", "image": "docker.io/app:v1"}
+    context_data = {
+        "image": "docker.io/app:v1",
+        "volumes": ["cache-${USER}:/cache"],
+        "env": ["USER=${USER}", "CACHE=${image|slug}", "TEST=${env:TEST_ENV}"],
+        "sudo": True  # Non-string values should be preserved
+    }
+    
+    result = substitute_in_context(context_data, variables)
+    
+    assert result["image"] == "docker.io/app:v1"
+    assert result["volumes"] == ["cache-alice:/cache"]
+    assert result["env"] == ["USER=alice", "CACHE=docker.io-app-v1", "TEST=test_value"]
+    assert result["sudo"] is True
+    
+    # Clean up
+    del os.environ["TEST_ENV"]
+
+
+@pytest.mark.unit
+def test_config_file_resolve_context_with_templating():
+    """Test that ConfigFile.resolve_context applies templating."""
+    import tempfile
+    import getpass
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        
+        # Create config with templating
+        config_content = """
+[contexts.test]
+image = "example.com/app:v1"
+volumes = ["cache-${USER}:/cache"]
+env = ["CACHE_DIR=/cache/${image|slug}"]
+"""
+        config_file = tmpdir / "config.toml"
+        config_file.write_text(config_content)
+        
+        # Load and resolve
+        config_file_obj = ConfigFile.load(explicit_config_file=config_file)
+        resolved = config_file_obj.resolve_context("test")
+        
+        expected_user = getpass.getuser()
+        assert resolved["volumes"] == [f"cache-{expected_user}:/cache"]
+        assert resolved["env"] == ["CACHE_DIR=/cache/example.com-app-v1"]
