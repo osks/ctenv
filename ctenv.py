@@ -26,25 +26,25 @@ import click
 
 def substitute_template_variables(text: str, variables: dict[str, str]) -> str:
     """Substitute ${var} and ${var|filter} patterns in text."""
-    pattern = r'\$\{([^}|]+)(?:\|([^}]+))?\}'
-    
+    pattern = r"\$\{([^}|]+)(?:\|([^}]+))?\}"
+
     def replace_match(match):
         var_name, filter_name = match.groups()
-        
+
         # Get value
         if var_name.startswith("env:"):
             value = os.environ.get(var_name[4:], "")
         else:
             value = variables.get(var_name, "")
-        
+
         # Apply filter
         if filter_name == "slug":
             value = value.replace(":", "-").replace("/", "-")
         elif filter_name is not None:
             raise ValueError(f"Unknown filter: {filter_name}")
-        
+
         return value
-    
+
     return re.sub(pattern, replace_match, text)
 
 
@@ -56,7 +56,9 @@ def substitute_in_context(context_data: dict, variables: dict[str, str]) -> dict
             result[key] = substitute_template_variables(value, variables)
         elif isinstance(value, list):
             result[key] = [
-                substitute_template_variables(item, variables) if isinstance(item, str) else item
+                substitute_template_variables(item, variables)
+                if isinstance(item, str)
+                else item
                 for item in value
             ]
         else:
@@ -81,19 +83,19 @@ def get_current_user_info():
 def get_platform_specific_gosu_name() -> str:
     """Get platform-specific gosu binary name."""
     import platform
-    
+
     system = platform.system().lower()
     machine = platform.machine().lower()
-    
+
     # Map machine types to standard names
-    if machine in ('x86_64', 'amd64'):
-        arch = 'amd64'
-    elif machine in ('aarch64', 'arm64'):
-        arch = 'arm64'
+    if machine in ("x86_64", "amd64"):
+        arch = "amd64"
+    elif machine in ("aarch64", "arm64"):
+        arch = "arm64"
     else:
-        arch = 'amd64'  # Default fallback
-    
-    if system == 'darwin':
+        arch = "amd64"  # Default fallback
+
+    if system == "darwin":
         return f"gosu-darwin-{arch}"
     else:
         # Linux containers regardless of host OS
@@ -125,7 +127,7 @@ def find_gosu_binary(
 
     # Get platform-specific binary name
     platform_gosu = get_platform_specific_gosu_name()
-    
+
     # Search for .ctenv/gosu using same discovery as config files
     if start_dir is None:
         start_dir = Path.cwd()
@@ -139,7 +141,7 @@ def find_gosu_binary(
         if ctenv_platform_gosu.exists() and ctenv_platform_gosu.is_file():
             logging.debug(f"Found platform-specific gosu: {ctenv_platform_gosu}")
             return ctenv_platform_gosu
-            
+
         # Fall back to generic gosu
         ctenv_gosu = current / ".ctenv" / "gosu"
         if ctenv_gosu.exists() and ctenv_gosu.is_file():
@@ -154,9 +156,11 @@ def find_gosu_binary(
     # Check global .ctenv/gosu (platform-specific first)
     global_platform_gosu = Path.home() / ".ctenv" / platform_gosu
     if global_platform_gosu.exists() and global_platform_gosu.is_file():
-        logging.debug(f"Found platform-specific gosu in global .ctenv: {global_platform_gosu}")
+        logging.debug(
+            f"Found platform-specific gosu in global .ctenv: {global_platform_gosu}"
+        )
         return global_platform_gosu
-        
+
     global_gosu = Path.home() / ".ctenv" / "gosu"
     if global_gosu.exists() and global_gosu.is_file():
         logging.debug(f"Found gosu in global .ctenv: {global_gosu}")
@@ -310,13 +314,13 @@ class ConfigFile:
             raise ValueError(f"Unknown context '{context}'. Available: {available}")
 
         context_data = self.contexts[context].copy()
-        
+
         # Prepare template variables
         variables = {
             "USER": getpass.getuser(),
             "image": context_data.get("image", ""),
         }
-        
+
         # Apply templating
         resolved = substitute_in_context(context_data, variables)
         logging.debug(f"Resolved context '{context}' configuration with templating")
@@ -450,7 +454,9 @@ class ContainerConfig:
             # Options (CLI > config file > defaults)
             env_vars=tuple(get_config_value("env", "env_vars", [])),
             volumes=tuple(get_config_value("volumes", default=[])),
-            entrypoint_commands=tuple(get_config_value("entrypoint_commands", default=[])),
+            entrypoint_commands=tuple(
+                get_config_value("entrypoint_commands", default=[])
+            ),
             ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo", default=False),
             network=get_config_value("network"),
@@ -460,19 +466,23 @@ class ContainerConfig:
         )
 
 
-def build_entrypoint_script(config: ContainerConfig, chown_paths: list[str] = None) -> str:
+def build_entrypoint_script(
+    config: ContainerConfig, chown_paths: list[str] = None
+) -> str:
     """Generate bash script for container entrypoint."""
     chown_paths = chown_paths or []
-    
+
     # Build chown commands for volumes marked with :chown
     chown_commands = ""
     if chown_paths:
         chown_commands = "\n# Fix ownership of chown-enabled volumes\n"
         for path in chown_paths:
-            chown_commands += f"if [ -d \"{path}\" ]; then\n"
-            chown_commands += f"    chown -R {config.user_id}:{config.group_id} \"{path}\"\n"
-            chown_commands += f"fi\n"
-    
+            chown_commands += f'if [ -d "{path}" ]; then\n'
+            chown_commands += (
+                f'    chown -R {config.user_id}:{config.group_id} "{path}"\n'
+            )
+            chown_commands += "fi\n"
+
     # Build entrypoint commands section
     entrypoint_commands = ""
     if config.entrypoint_commands:
@@ -482,7 +492,7 @@ def build_entrypoint_script(config: ContainerConfig, chown_paths: list[str] = No
             escaped_cmd = cmd.replace('"', '\\"')
             entrypoint_commands += f"echo 'Executing: {escaped_cmd}'\n"
             entrypoint_commands += f"{cmd}\n"
-    
+
     script = f"""#!/bin/bash
 set -e
 
@@ -561,46 +571,44 @@ class ContainerRunner:
         # Parse volume options and track chown paths
         chown_paths = []
         processed_volumes = []
-        
+
         for volume in config.volumes:
             if ":" not in volume:
                 raise ValueError(
                     f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
                 )
-            
+
             # Parse volume string: HOST:CONTAINER[:options]
             parts = volume.split(":")
             if len(parts) < 2:
                 raise ValueError(
                     f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
                 )
-            
+
             host_path = parts[0]
             container_path = parts[1]
-            
+
             # Parse options (everything after second colon)
             options = []
-            needs_chown = False
-            
+
             if len(parts) > 2:
                 # Split comma-separated options
                 option_parts = parts[2].split(",")
                 for opt in option_parts:
                     opt = opt.strip()
                     if opt == "chown":
-                        needs_chown = True
                         chown_paths.append(container_path)
                     else:
                         options.append(opt)
-            
+
             # Rebuild volume string without chown option
             if options:
                 volume_arg = f"{host_path}:{container_path}:{','.join(options)}"
             else:
                 volume_arg = f"{host_path}:{container_path}"
-            
+
             processed_volumes.append(volume_arg)
-        
+
         # Generate and write entrypoint script to temporary file
         entrypoint_script = build_entrypoint_script(config, chown_paths)
         script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
@@ -630,7 +638,7 @@ class ContainerRunner:
                 for volume in processed_volumes:
                     args.extend([f"--volume={volume}:z"])
                     logging.debug(f"  {volume}")
-                
+
                 if chown_paths:
                     logging.debug("Volumes with chown enabled:")
                     for path in chown_paths:
@@ -1048,19 +1056,21 @@ def contexts(config):
 
 
 @cli.command()
-@click.option("--force", is_flag=True, help="Re-download gosu binaries even if they exist")
+@click.option(
+    "--force", is_flag=True, help="Re-download gosu binaries even if they exist"
+)
 def setup(force):
     """Download gosu binaries for all platforms"""
     import urllib.request
     import urllib.error
-    
+
     click.echo("🔧 Setting up ctenv...")
     click.echo()
-    
+
     # Ensure .ctenv directory exists
     ctenv_dir = Path.home() / ".ctenv"
     ctenv_dir.mkdir(exist_ok=True)
-    
+
     # Platform binaries to download
     binaries = [
         ("gosu-amd64", "linux/amd64"),
@@ -1068,23 +1078,23 @@ def setup(force):
         ("gosu-darwin-amd64", "macOS/amd64"),
         ("gosu-darwin-arm64", "macOS/arm64"),
     ]
-    
+
     click.echo("Downloading gosu binaries for all platforms...")
-    
+
     success_count = 0
-    
+
     for binary_name, platform_desc in binaries:
         binary_path = ctenv_dir / binary_name
-        
+
         # Skip if already exists and not forcing
         if binary_path.exists() and not force:
             click.echo(f"✓ {binary_name} already exists ({platform_desc})")
             success_count += 1
             continue
-        
+
         # Download the binary
         url = f"https://github.com/tianon/gosu/releases/latest/download/{binary_name}"
-        
+
         try:
             click.echo(f"  Downloading {binary_name}...", nl=False)
             urllib.request.urlretrieve(url, binary_path)
@@ -1095,13 +1105,15 @@ def setup(force):
             click.echo(f" ✗ Failed to download {binary_name}: {e}")
         except Exception as e:
             click.echo(f" ✗ Error downloading {binary_name}: {e}")
-    
+
     click.echo()
-    
+
     if success_count == len(binaries):
         click.echo("ctenv is ready to use! Try: ctenv run -- echo hello")
     elif success_count > 0:
-        click.echo(f"Setup partially complete ({success_count}/{len(binaries)} binaries available)")
+        click.echo(
+            f"Setup partially complete ({success_count}/{len(binaries)} binaries available)"
+        )
         click.echo("ctenv should work for most use cases.")
     else:
         click.echo("Setup failed. Please check your internet connection and try again.")
