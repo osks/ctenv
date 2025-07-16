@@ -455,7 +455,8 @@ class ContainerConfig:
             env_vars=tuple(get_config_value("env", "env_vars", [])),
             volumes=tuple(get_config_value("volumes", default=[])),
             entrypoint_commands=tuple(
-                get_config_value("entrypoint_commands", default=[])
+                list(get_config_value("entrypoint_commands", default=[])) + 
+                list(cli_options.get("entrypoint_extra", []))
             ),
             ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo", default=False),
@@ -467,7 +468,7 @@ class ContainerConfig:
 
 
 def build_entrypoint_script(
-    config: ContainerConfig, chown_paths: list[str] = None
+    config: ContainerConfig, chown_paths: list[str] = None, verbose: bool = False
 ) -> str:
     """Generate bash script for container entrypoint."""
     chown_paths = chown_paths or []
@@ -475,76 +476,135 @@ def build_entrypoint_script(
     # Build chown commands for volumes marked with :chown
     chown_commands = ""
     if chown_paths:
-        chown_commands = "\n# Fix ownership of chown-enabled volumes\n"
+        chown_commands = """
+# Fix ownership of chown-enabled volumes
+log "Checking volumes for ownership fixes"
+"""
         for path in chown_paths:
+            chown_commands += f'log "Checking chown volume: {path}"\n'
             chown_commands += f'if [ -d "{path}" ]; then\n'
-            chown_commands += (
-                f'    chown -R {config.user_id}:{config.group_id} "{path}"\n'
-            )
+            chown_commands += f'    log "Fixing ownership of volume: {path}"\n'
+            chown_commands += f'    chown -R "$USER_ID:$GROUP_ID" "{path}"\n'
+            chown_commands += "else\n"
+            chown_commands += f'    log "Chown volume does not exist: {path}"\n'
             chown_commands += "fi\n"
+    else:
+        chown_commands = """
+# No volumes require ownership fixes
+log "No chown-enabled volumes configured"
+"""
 
     # Build entrypoint commands section
     entrypoint_commands = ""
     if config.entrypoint_commands:
-        entrypoint_commands = "\n# Execute entrypoint commands\n"
+        entrypoint_commands = """
+# Execute entrypoint commands
+log "Executing entrypoint commands"
+"""
         for cmd in config.entrypoint_commands:
             # Escape quotes in the command
             escaped_cmd = cmd.replace('"', '\\"')
-            entrypoint_commands += f"echo 'Executing: {escaped_cmd}'\n"
+            entrypoint_commands += f'log "Executing entrypoint command: {escaped_cmd}"\n'
             entrypoint_commands += f"{cmd}\n"
+    else:
+        entrypoint_commands = """
+# No entrypoint commands configured
+log "No entrypoint commands to execute"
+"""
 
     script = f"""#!/bin/bash
 set -e
 
+# Verbose logging setup
+VERBOSE={1 if verbose else 0}
+
+log() {{
+    if [ "$VERBOSE" = "1" ]; then
+        echo "$*" >&2
+    fi
+}}
+
+# User and group configuration
+USER_NAME="{config.user_name}"
+USER_ID="{config.user_id}"
+GROUP_NAME="{config.group_name}"
+GROUP_ID="{config.group_id}"
+USER_HOME="{config.user_home}"
+ADD_SUDO={1 if config.sudo else 0}
+
+log "Starting ctenv container setup"
+log "User: $USER_NAME (UID: $USER_ID)"
+log "Group: $GROUP_NAME (GID: $GROUP_ID)"
+log "Home: $USER_HOME"
+
 # Create group if needed
-if getent group {config.group_id} >/dev/null 2>&1; then
-    GROUP_NAME=$(getent group {config.group_id} | cut -d: -f1)
+log "Checking if group $GROUP_ID exists"
+if getent group "$GROUP_ID" >/dev/null 2>&1; then
+    GROUP_NAME=$(getent group "$GROUP_ID" | cut -d: -f1)
+    log "Using existing group: $GROUP_NAME"
 else
-    groupadd -g {config.group_id} {config.group_name}
-    GROUP_NAME={config.group_name}
+    log "Creating group: $GROUP_NAME (GID: $GROUP_ID)"
+    groupadd -g "$GROUP_ID" "$GROUP_NAME"
 fi
 
 # Create user if needed
-if ! getent passwd {config.user_name} >/dev/null 2>&1; then
-    useradd --no-create-home --home-dir {config.user_home} \\
-        --shell /bin/bash -u {config.user_id} -g {config.group_id} \\
-        -o -c "" {config.user_name}
+log "Checking if user $USER_NAME exists"
+if ! getent passwd "$USER_NAME" >/dev/null 2>&1; then
+    log "Creating user: $USER_NAME (UID: $USER_ID)"
+    useradd --no-create-home --home-dir "$USER_HOME" \\
+        --shell /bin/bash -u "$USER_ID" -g "$GROUP_ID" \\
+        -o -c "" "$USER_NAME"
+else
+    log "User $USER_NAME already exists"
 fi
 
 # Setup home directory
-export HOME={config.user_home}
+export HOME="$USER_HOME"
+log "Setting up home directory: $HOME"
 if [ ! -d "$HOME" ]; then
+    log "Creating home directory: $HOME"
     mkdir -p "$HOME"
-    chown {config.user_id}:{config.group_id} "$HOME"
+    chown "$USER_ID:$GROUP_ID" "$HOME"
+else
+    log "Home directory already exists"
 fi
 
 # Set ownership of home directory (non-recursive)
-chown {config.user_name} "$HOME"{chown_commands}{entrypoint_commands}
+log "Setting ownership of home directory"
+chown "$USER_NAME" "$HOME"
+
+{chown_commands}
+{entrypoint_commands}
 
 # Setup sudo if requested
-{
-        f'''
-# Install sudo and configure passwordless access
-if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq && apt-get install -y -qq sudo
-elif command -v yum >/dev/null 2>&1; then
-    yum install -y -q sudo
-elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache sudo
+if [ "$ADD_SUDO" = "1" ]; then
+    log "Setting up sudo access for $USER_NAME"
+    # Install sudo and configure passwordless access
+    if command -v apt-get >/dev/null 2>&1; then
+        log "Installing sudo using apt-get"
+        apt-get update -qq && apt-get install -y -qq sudo
+    elif command -v yum >/dev/null 2>&1; then
+        log "Installing sudo using yum"
+        yum install -y -q sudo
+    elif command -v apk >/dev/null 2>&1; then
+        log "Installing sudo using apk"
+        apk add --no-cache sudo
+    fi
+
+    # Add user to sudoers
+    log "Adding $USER_NAME to sudoers"
+    echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+else
+    log "Sudo not requested"
 fi
 
-# Add user to sudoers
-echo "{config.user_name} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-'''
-        if config.sudo
-        else "# Sudo not requested"
-    }
-
 # Set environment
+log "Setting up shell environment"
 export PS1="[ctenv] $ "
 
 # Execute command as user
-exec {config.gosu_mount} {config.user_name} {config.command}
+log "Starting command as $USER_NAME: {config.command}"
+exec {config.gosu_mount} "$USER_NAME" {config.command}
 """
     return script
 
@@ -553,7 +613,7 @@ class ContainerRunner:
     """Manages Docker container operations."""
 
     @staticmethod
-    def build_run_args(config: ContainerConfig) -> tuple[list, str]:
+    def build_run_args(config: ContainerConfig, verbose: bool = False) -> tuple[list, str]:
         """Build Docker run arguments. Returns (args, script_path) for cleanup."""
         import tempfile
 
@@ -610,7 +670,7 @@ class ContainerRunner:
             processed_volumes.append(volume_arg)
 
         # Generate and write entrypoint script to temporary file
-        entrypoint_script = build_entrypoint_script(config, chown_paths)
+        entrypoint_script = build_entrypoint_script(config, chown_paths, verbose)
         script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
         logging.debug(f"Created temporary entrypoint script: {script_path}")
         try:
@@ -706,7 +766,7 @@ class ContainerRunner:
             raise
 
     @staticmethod
-    def run_container(config: ContainerConfig) -> subprocess.CompletedProcess:
+    def run_container(config: ContainerConfig, verbose: bool = False) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
         logging.debug("Starting container execution")
 
@@ -735,7 +795,7 @@ class ContainerRunner:
             raise FileNotFoundError(f"Path {config.working_dir} is not a directory.")
 
         # Build Docker arguments
-        docker_args, script_path = ContainerRunner.build_run_args(config)
+        docker_args, script_path = ContainerRunner.build_run_args(config, verbose)
 
         logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
@@ -806,6 +866,11 @@ def cli(ctx, verbose, quiet):
     "--gosu-path",
     help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
 )
+@click.option(
+    "--entrypoint-extra",
+    multiple=True,
+    help="Add extra command to run before main command (can be used multiple times)",
+)
 @click.pass_context
 def run(
     ctx,
@@ -820,6 +885,7 @@ def run(
     network,
     dir,
     gosu_path,
+    entrypoint_extra,
 ):
     """Run command in container
 
@@ -836,6 +902,8 @@ def run(
         ctenv run --image alpine dev      # Override image, use dev context
 
         ctenv run --dry-run dev           # Show Docker command without running
+
+        ctenv run --entrypoint-extra "npm install" --entrypoint-extra "npm run build" # Run extra commands before main command
 
     Note: Use '--' to separate commands from context/options.
     """
@@ -883,6 +951,7 @@ def run(
             sudo=sudo,
             network=network,
             gosu_path=gosu_path,
+            entrypoint_extra=entrypoint_extra,
             tty=sys.stdin.isatty(),
         )
     except ValueError as e:
@@ -911,7 +980,7 @@ def run(
 
     if dry_run:
         # Show what Docker command would be executed
-        docker_args, script_path = ContainerRunner.build_run_args(config)
+        docker_args, script_path = ContainerRunner.build_run_args(config, verbose)
         click.echo(' '.join(docker_args))
         # Clean up temp script file from dry-run mode
         try:
@@ -922,7 +991,7 @@ def run(
 
     # Execute container
     try:
-        result = ContainerRunner.run_container(config)
+        result = ContainerRunner.run_container(config, verbose)
         sys.exit(result.returncode)
     except FileNotFoundError as e:
         click.echo(f"Error: {e}", err=True)

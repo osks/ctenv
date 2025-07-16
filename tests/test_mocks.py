@@ -262,16 +262,20 @@ def test_sudo_entrypoint_script():
     script_with_sudo = build_entrypoint_script(config_with_sudo)
     script_without_sudo = build_entrypoint_script(config_without_sudo)
 
-    # Test sudo installation is included when requested
+    # Test sudo setup is properly configured with ADD_SUDO variable
+    assert "ADD_SUDO=1" in script_with_sudo
     assert "apt-get install" in script_with_sudo
     assert "NOPASSWD:ALL" in script_with_sudo
+    assert 'if [ "$ADD_SUDO" = "1" ]; then' in script_with_sudo
 
-    # Test sudo installation is not included when not requested
-    assert "apt-get install" not in script_without_sudo
+    # Test sudo is disabled but code is still present (guarded by ADD_SUDO=0)
+    assert "ADD_SUDO=0" in script_without_sudo
+    assert "apt-get install" in script_without_sudo  # Code is present but guarded
     assert "Sudo not requested" in script_without_sudo
+    assert 'if [ "$ADD_SUDO" = "1" ]; then' in script_without_sudo
 
-    print("\nSudo script includes package installation and sudoers configuration")
-    print("Non-sudo script excludes sudo setup")
+    print("\nSudo script sets ADD_SUDO=1 and includes conditional sudo setup")
+    print("Non-sudo script sets ADD_SUDO=0 with same conditional logic")
 
 
 @pytest.mark.unit
@@ -483,12 +487,9 @@ def test_volume_chown_option():
                 script_content = f.read()
 
             # Should contain chown commands for cache and data, but not logs
-            assert 'chown -R 1000:1000 "/var/cache"' in script_content
-            assert 'chown -R 1000:1000 "/data"' in script_content
-            assert (
-                "chown -R" in script_content
-                and "/logs" not in script_content.split("chown -R")[1]
-            )
+            assert 'chown -R "$USER_ID:$GROUP_ID" "/var/cache"' in script_content
+            assert 'chown -R "$USER_ID:$GROUP_ID" "/data"' in script_content
+            assert 'chown -R "$USER_ID:$GROUP_ID" "/logs"' not in script_content
 
         finally:
             # Clean up
