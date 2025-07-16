@@ -82,7 +82,7 @@ def get_current_user_info():
 
 def get_platform_specific_gosu_name() -> str:
     """Get platform-specific gosu binary name.
-    
+
     Note: gosu only provides Linux binaries since containers run Linux
     regardless of the host OS.
     """
@@ -455,8 +455,8 @@ class ContainerConfig:
             env_vars=tuple(get_config_value("env", "env_vars", [])),
             volumes=tuple(get_config_value("volumes", default=[])),
             entrypoint_commands=tuple(
-                list(get_config_value("entrypoint_commands", default=[])) + 
-                list(cli_options.get("entrypoint_extra", []))
+                list(get_config_value("entrypoint_commands", default=[]))
+                + list(cli_options.get("entrypoint_extra", []))
             ),
             ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo", default=False),
@@ -504,7 +504,9 @@ log "Executing entrypoint commands"
         for cmd in config.entrypoint_commands:
             # Escape quotes in the command
             escaped_cmd = cmd.replace('"', '\\"')
-            entrypoint_commands += f'log "Executing entrypoint command: {escaped_cmd}"\n'
+            entrypoint_commands += (
+                f'log "Executing entrypoint command: {escaped_cmd}"\n'
+            )
             entrypoint_commands += f"{cmd}\n"
     else:
         entrypoint_commands = """
@@ -613,7 +615,9 @@ class ContainerRunner:
     """Manages Docker container operations."""
 
     @staticmethod
-    def build_run_args(config: ContainerConfig, verbose: bool = False) -> tuple[list, str]:
+    def build_run_args(
+        config: ContainerConfig, verbose: bool = False
+    ) -> tuple[list, str]:
         """Build Docker run arguments. Returns (args, script_path) for cleanup."""
         import tempfile
 
@@ -766,7 +770,9 @@ class ContainerRunner:
             raise
 
     @staticmethod
-    def run_container(config: ContainerConfig, verbose: bool = False) -> subprocess.CompletedProcess:
+    def run_container(
+        config: ContainerConfig, verbose: bool = False
+    ) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
         logging.debug("Starting container execution")
 
@@ -832,7 +838,9 @@ def cli(ctx, verbose, quiet):
 
     # Configure logging to stderr to keep stdout clean for command output
     if verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(message)s", stream=sys.stderr)
+        logging.basicConfig(
+            level=logging.DEBUG, format="%(message)s", stream=sys.stderr
+        )
     elif quiet:
         logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
     else:
@@ -843,7 +851,9 @@ def cli(ctx, verbose, quiet):
 @click.argument("context", required=False)
 @click.argument("command_args", nargs=-1)
 @click.option("--image", help="Container image to use (default: ubuntu:latest)")
-@click.option("--dry-run", is_flag=True, help="Show Docker command without running container")
+@click.option(
+    "--dry-run", is_flag=True, help="Show Docker command without running container"
+)
 @click.option("--config", help="Path to configuration file")
 @click.option(
     "--env",
@@ -981,7 +991,7 @@ def run(
     if dry_run:
         # Show what Docker command would be executed
         docker_args, script_path = ContainerRunner.build_run_args(config, verbose)
-        click.echo(' '.join(docker_args))
+        click.echo(" ".join(docker_args))
         # Clean up temp script file from dry-run mode
         try:
             os.unlink(script_path)
