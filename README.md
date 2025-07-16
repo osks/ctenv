@@ -69,7 +69,7 @@ ctenv run test -- npm test       # Use 'test' context, run npm test
 - `--sudo`: Add user to sudoers with NOPASSWD inside container
 - `--network`: Enable container networking (default: disabled for security)
 - `--dir`: Directory to mount as workdir (default: current directory)
-- `--debug`: Show configuration details without running container
+- `--dry-run`: Show Docker command without running container
 
 **Configuration commands:**
 - `ctenv config show [CONTEXT]`: Show configuration or specific context
