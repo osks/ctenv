@@ -160,15 +160,15 @@ def test_run_command_help():
 
 
 @pytest.mark.unit
-def test_run_command_debug_mode():
-    """Test run command debug output."""
+def test_run_command_dry_run_mode():
+    """Test run command dry-run output."""
     runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, ["run", "--debug"])
+    result = runner.invoke(cli, ["run", "--dry-run"])
 
     assert result.exit_code == 0
-    # Debug output should go to stderr
-    assert "Configuration:" in result.stderr
-    assert "Docker command:" in result.stderr
+    # Dry-run should show Docker command on stdout
+    assert "docker run" in result.output
+    assert "--rm" in result.output
 
 
 @pytest.mark.unit
@@ -181,10 +181,10 @@ def test_verbose_mode():
     assert result.exit_code == 0
     assert "0.1" in result.output
 
-    # Test verbose with run --debug
-    result = runner.invoke(cli, ["--verbose", "run", "--debug"])
+    # Test verbose with run --dry-run
+    result = runner.invoke(cli, ["--verbose", "run", "--dry-run"])
     assert result.exit_code == 0
-    assert "Configuration:" in result.stderr  # Debug output goes to stderr
+    assert "docker run" in result.output  # Dry-run output goes to stdout
     # Note: verbose DEBUG logging may not show up in CliRunner tests
     # The main thing is that verbose mode doesn't break anything
 
@@ -193,12 +193,12 @@ def test_verbose_mode():
 def test_quiet_mode():
     """Test quiet mode suppresses output."""
     runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, ["--quiet", "run", "--debug"])
+    result = runner.invoke(cli, ["--quiet", "run", "--dry-run"])
 
     assert result.exit_code == 0
-    # In quiet mode with debug, we should only see the debug output, not [ctenv] run
+    # In quiet mode with dry-run, we should only see the dry-run output, not [ctenv] run
     assert "[ctenv] run" not in result.stderr
-    assert "Configuration:" in result.stderr  # Debug output still shows
+    assert "docker run" in result.output  # Dry-run output still shows
 
 
 @pytest.mark.unit
@@ -206,25 +206,22 @@ def test_stdout_stderr_separation():
     """Test that ctenv output goes to stderr, leaving stdout clean."""
     runner = CliRunner(mix_stderr=False)
 
-    # Test with debug mode
-    result = runner.invoke(cli, ["run", "--debug"])
+    # Test with dry-run mode
+    result = runner.invoke(cli, ["run", "--dry-run"])
     assert result.exit_code == 0
 
-    # stdout should be empty (no ctenv output)
-    assert result.output == ""
+    # stdout should contain Docker command
+    assert "docker run" in result.output
 
-    # stderr should contain all ctenv output
+    # stderr should contain ctenv status message
     assert "[ctenv] run" in result.stderr
-    assert "Configuration:" in result.stderr
-    assert "Docker command:" in result.stderr
 
     # Test with quiet mode too
-    result = runner.invoke(cli, ["--quiet", "run", "--debug"])
+    result = runner.invoke(cli, ["--quiet", "run", "--dry-run"])
     assert result.exit_code == 0
 
-    # stdout should still be empty
-    assert result.output == ""
+    # stdout should contain Docker command
+    assert "docker run" in result.output
 
-    # stderr should contain debug output but not [ctenv] run
+    # stderr should not contain [ctenv] run in quiet mode
     assert "[ctenv] run" not in result.stderr
-    assert "Configuration:" in result.stderr

@@ -772,12 +772,7 @@ def cli(ctx, verbose, quiet):
 
     # Configure logging to stderr to keep stdout clean for command output
     if verbose:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="[%(asctime)s] %(levelname)s: %(message)s",
-            datefmt="%H:%M:%S",
-            stream=sys.stderr,
-        )
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s", stream=sys.stderr)
     elif quiet:
         logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
     else:
@@ -788,7 +783,7 @@ def cli(ctx, verbose, quiet):
 @click.argument("context", required=False)
 @click.argument("command_args", nargs=-1)
 @click.option("--image", help="Container image to use (default: ubuntu:latest)")
-@click.option("--debug", is_flag=True, help="Show configuration details")
+@click.option("--dry-run", is_flag=True, help="Show Docker command without running container")
 @click.option("--config", help="Path to configuration file")
 @click.option(
     "--env",
@@ -817,7 +812,7 @@ def run(
     context,
     command_args,
     image,
-    debug,
+    dry_run,
     config,
     env,
     volume,
@@ -839,6 +834,8 @@ def run(
         ctenv run -- ls -la               # Use defaults, run ls -la
 
         ctenv run --image alpine dev      # Override image, use dev context
+
+        ctenv run --dry-run dev           # Show Docker command without running
 
     Note: Use '--' to separate commands from context/options.
     """
@@ -912,22 +909,11 @@ def run(
     if not quiet:
         click.echo("[ctenv] run", err=True)
 
-    if debug:
-        click.echo(f"Image: {config.image}", err=True)
-        click.echo(f"Command: {config.command}", err=True)
-        click.echo("\nConfiguration:", err=True)
-        click.echo(f"  User: {config.user_name} (UID: {config.user_id})", err=True)
-        click.echo(f"  Group: {config.group_name} (GID: {config.group_id})", err=True)
-        click.echo(f"  Home: {config.user_home}", err=True)
-        click.echo(f"  Script dir: {config.script_dir}", err=True)
-        click.echo(f"  Working dir: {config.working_dir}", err=True)
-        click.echo(f"  Container name: {config.get_container_name()}", err=True)
-
+    if dry_run:
         # Show what Docker command would be executed
         docker_args, script_path = ContainerRunner.build_run_args(config)
-        click.echo("\nDocker command:", err=True)
-        click.echo(f"  {' '.join(docker_args)}", err=True)
-        # Clean up temp script file from debug mode
+        click.echo(' '.join(docker_args))
+        # Clean up temp script file from dry-run mode
         try:
             os.unlink(script_path)
         except OSError:
