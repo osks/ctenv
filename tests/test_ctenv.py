@@ -85,9 +85,9 @@ def test_entrypoint_script_generation():
     script = build_entrypoint_script(config)
 
     assert "useradd" in script
-    assert "testuser" in script
-    assert "1000" in script
-    assert "exec /gosu testuser bash" in script
+    assert 'USER_NAME="testuser"' in script
+    assert 'USER_ID="1000"' in script
+    assert 'exec /gosu "$USER_NAME" bash' in script
     assert 'export PS1="[ctenv] $ "' in script
 
 
@@ -225,3 +225,72 @@ def test_stdout_stderr_separation():
 
     # stderr should not contain [ctenv] run in quiet mode
     assert "[ctenv] run" not in result.stderr
+
+
+@pytest.mark.unit
+def test_entrypoint_extra_cli_option():
+    """Test --entrypoint-extra CLI option."""
+    # Test that CLI entrypoint extra commands are included in the config
+    config = ContainerConfig.from_cli_options(
+        context="default",
+        entrypoint_extra=["npm install", "npm run build"]
+    )
+    
+    # Should contain the CLI entrypoint extra commands
+    assert "npm install" in config.entrypoint_commands
+    assert "npm run build" in config.entrypoint_commands
+
+
+@pytest.mark.unit 
+def test_entrypoint_extra_merging():
+    """Test that CLI entrypoint extra commands are merged with config file commands."""
+    import tempfile
+    import tomllib
+    
+    # Create a temporary config file with entrypoint commands
+    config_content = """
+[contexts.test]
+entrypoint_commands = ["echo config-cmd"]
+"""
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
+        f.write(config_content)
+        config_file = f.name
+    
+    try:
+        # Test that both config file and CLI commands are included
+        config = ContainerConfig.from_cli_options(
+            context="test",
+            config_file=config_file,
+            entrypoint_extra=["echo cli-cmd1", "echo cli-cmd2"]
+        )
+        
+        # Should contain both config file and CLI commands
+        assert "echo config-cmd" in config.entrypoint_commands
+        assert "echo cli-cmd1" in config.entrypoint_commands  
+        assert "echo cli-cmd2" in config.entrypoint_commands
+        
+        # Config file command should come first, then CLI commands
+        commands = list(config.entrypoint_commands)
+        assert commands.index("echo config-cmd") < commands.index("echo cli-cmd1")
+        
+    finally:
+        import os
+        os.unlink(config_file)
+
+
+@pytest.mark.unit
+def test_entrypoint_extra_in_generated_script():
+    """Test that entrypoint extra commands appear in generated script."""
+    config = ContainerConfig.from_cli_options(
+        context="default",
+        entrypoint_extra=["npm install", "npm run test"]
+    )
+    
+    script = build_entrypoint_script(config, verbose=True)
+    
+    # Should contain the entrypoint commands in the script
+    assert "npm install" in script
+    assert "npm run test" in script
+    assert "log \"Executing entrypoint command: npm install\"" in script
+    assert "log \"Executing entrypoint command: npm run test\"" in script

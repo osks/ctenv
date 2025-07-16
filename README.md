@@ -70,6 +70,7 @@ ctenv run test -- npm test       # Use 'test' context, run npm test
 - `--network`: Enable container networking (default: disabled for security)
 - `--dir`: Directory to mount as workdir (default: current directory)
 - `--dry-run`: Show Docker command without running container
+- `--entrypoint-extra`: Add extra command to run before main command (can be used multiple times)
 
 **Configuration commands:**
 - `ctenv config show [CONTEXT]`: Show configuration or specific context
