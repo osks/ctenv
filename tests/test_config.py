@@ -20,10 +20,10 @@ def test_find_config_file_project():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
-        # Create .ctenv/config.toml
+        # Create .ctenv/ctenv.toml
         config_dir = tmpdir / ".ctenv"
         config_dir.mkdir()
-        config_file = config_dir / "config.toml"
+        config_file = config_dir / "ctenv.toml"
         config_file.write_text('[defaults]\nimage = "test:latest"')
 
         # Test finding from project root
@@ -48,7 +48,7 @@ def test_find_config_file_global():
         home_dir.mkdir()
         config_dir = home_dir / ".ctenv"
         config_dir.mkdir()
-        config_file = config_dir / "config.toml"
+        config_file = config_dir / "ctenv.toml"
         config_file.write_text('[defaults]\nimage = "global:latest"')
 
         # Mock Path.home() to return our test directory
@@ -87,7 +87,7 @@ def test_load_config_file():
     """Test loading TOML config file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
 
         config_content = """
 [defaults]
@@ -115,7 +115,7 @@ def test_load_config_file_invalid_toml():
     """Test error handling for invalid TOML."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
         config_file.write_text("invalid toml [[[")
 
         with pytest.raises(ValueError, match="Invalid TOML"):
@@ -178,7 +178,7 @@ def test_config_from_cli_options_with_file():
         tmpdir = Path(tmpdir)
 
         # Create config file with context-specific settings
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
         config_content = """
 [contexts.default]
 image = "alpine:latest"
@@ -212,7 +212,7 @@ def test_config_from_cli_options_with_context():
         tmpdir = Path(tmpdir)
 
         # Create config file with context
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
         config_content = """
 [defaults]
 image = "ubuntu:latest"
@@ -268,7 +268,7 @@ def test_default_context_merging():
         tmpdir = Path(tmpdir)
 
         # Create config file with custom default context
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
         config_content = """
 [defaults]
 sudo = false
@@ -301,7 +301,7 @@ def test_config_precedence():
         tmpdir = Path(tmpdir)
 
         # Create config file
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
         config_content = """
 [defaults]
 image = "ubuntu:latest"
@@ -425,7 +425,7 @@ image = "example.com/app:v1"
 volumes = ["cache-${USER}:/cache"]
 env = ["CACHE_DIR=/cache/${image|slug}"]
 """
-        config_file = tmpdir / "config.toml"
+        config_file = tmpdir / "ctenv.toml"
         config_file.write_text(config_content)
 
         # Load and resolve

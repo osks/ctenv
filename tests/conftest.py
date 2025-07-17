@@ -45,7 +45,7 @@ def temp_workspace():
         gosu_path.chmod(0o755)
 
         # Create a simple config file for integration tests
-        config_file = ctenv_dir / "config.toml"
+        config_file = ctenv_dir / "ctenv.toml"
         config_content = """[defaults]
 image = "ubuntu:latest"
 

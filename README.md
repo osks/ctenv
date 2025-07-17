@@ -114,12 +114,12 @@ ctenv config --help
 
 ctenv supports TOML configuration files for project-specific and global settings. Configuration files are discovered using git-style directory traversal:
 
-1. Project config: `.ctenv/config.toml` (searched upward from current directory)
-2. Global config: `~/.ctenv/config.toml`
+1. Project config: `.ctenv/ctenv.toml` (searched upward from current directory)
+2. Global config: `~/.ctenv/ctenv.toml`
 
 ### Configuration Format
 
-#### Project Configuration (`.ctenv/config.toml`)
+#### Project Configuration (`.ctenv/ctenv.toml`)
 ```toml
 # Default settings for this project
 [defaults]
@@ -150,7 +150,7 @@ sudo = false
 env = ["NODE_ENV=production"]
 ```
 
-#### Global Configuration (`~/.ctenv/config.toml`)
+#### Global Configuration (`~/.ctenv/ctenv.toml`)
 ```toml
 # Global defaults across all projects
 [defaults]
