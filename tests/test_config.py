@@ -230,9 +230,7 @@ env = ["CI=true"]
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.create(
-            context="test", config_file=str(config_file)
-        )
+        config = ContainerConfig.create(context="test", config_file=str(config_file))
 
         # Should use context values
         assert config.image == "alpine:latest"
@@ -284,9 +282,7 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.create(
-            config_file=str(config_file), context="default"
-        )
+        config = ContainerConfig.create(config_file=str(config_file), context="default")
 
         # Should merge builtin default with user default
         assert config.image == "ubuntu:latest"  # From builtin default
