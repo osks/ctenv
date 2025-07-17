@@ -190,7 +190,7 @@ def find_all_config_files(
         start_dir = Path.cwd()
 
     # Find global config
-    global_config = Path.home() / ".ctenv" / "config.toml"
+    global_config = Path.home() / ".ctenv" / "ctenv.toml"
     global_config_path = (
         global_config if (global_config.exists() and global_config.is_file()) else None
     )
@@ -202,7 +202,7 @@ def find_all_config_files(
     project_config_path = None
 
     while True:
-        config_path = current / ".ctenv" / "config.toml"
+        config_path = current / ".ctenv" / "ctenv.toml"
         if config_path.exists() and config_path.is_file():
             project_config_path = config_path
             logging.debug(f"Found project config: {project_config_path}")
