@@ -76,15 +76,11 @@ class TestRunCommandParsing:
         result = self.runner.invoke(cli, ["run", "invalid"])
 
         assert result.exit_code == 1
-        assert "Context 'invalid' not found" in result.output
+        assert "Configuration error: Unknown context 'invalid'" in result.output
         assert "Available: ['dev']" in result.output
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
-    @patch("ctenv.ContainerRunner.run_container")
-    def test_run_with_command_only(
-        self, mock_run_container, mock_config_from_cli, mock_config_file_load
-    ):
+    def test_run_with_command_only(self, mock_config_file_load):
         """Test: ctenv run -- echo test (edge case: treats echo as context, fails as expected)."""
         from ctenv import ConfigFile
 
@@ -96,7 +92,7 @@ class TestRunCommandParsing:
 
         # This is an edge case with simplified Click parsing - echo is treated as context
         assert result.exit_code == 1
-        assert "Context 'echo' not found" in result.output
+        assert "Configuration error: Unknown context 'echo'" in result.output
 
     @patch("ctenv.ConfigFile.load")
     @patch("ctenv.ContainerConfig.from_cli_options")
@@ -160,14 +156,10 @@ class TestRunCommandParsing:
         result = self.runner.invoke(cli, ["run", "dev"])
 
         assert result.exit_code == 1
-        assert "Context 'dev' not found" in result.output
+        assert "Configuration error: Unknown context 'dev'" in result.output
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
-    @patch("ctenv.ContainerRunner.run_container")
-    def test_run_with_options(
-        self, mock_run_container, mock_config_from_cli, mock_config_file_load
-    ):
+    def test_run_with_options(self, mock_config_file_load):
         """Test: ctenv run --image alpine -- whoami (edge case: treats whoami as context, fails)."""
         from ctenv import ConfigFile
 
@@ -181,7 +173,7 @@ class TestRunCommandParsing:
 
         # This is an edge case with simplified Click parsing - whoami is treated as context
         assert result.exit_code == 1
-        assert "Context 'whoami' not found" in result.output
+        assert "Configuration error: Unknown context 'whoami'" in result.output
 
     @patch("ctenv.ConfigFile.load")
     @patch("ctenv.ContainerConfig.from_cli_options")
@@ -278,14 +270,10 @@ class TestRunCommandEdgeCases:
 
         # Should fail because 'echo' is not a valid context
         assert result.exit_code == 1
-        assert "Context 'echo' not found" in result.output
+        assert "Configuration error: Unknown context 'echo'" in result.output
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
-    @patch("ctenv.ContainerRunner.run_container")
-    def test_run_multiple_commands(
-        self, mock_run_container, mock_config_from_cli, mock_config_file_load
-    ):
+    def test_run_multiple_commands(self, mock_config_file_load):
         """Test: ctenv run -- sh -c 'echo hello && echo world' (edge case: treats sh as context)."""
         from ctenv import ConfigFile
 
@@ -299,7 +287,7 @@ class TestRunCommandEdgeCases:
 
         # This is an edge case with simplified Click parsing - sh is treated as context
         assert result.exit_code == 1
-        assert "Context 'sh' not found" in result.output
+        assert "Configuration error: Unknown context 'sh'" in result.output
 
     @patch("ctenv.ConfigFile.load")
     def test_load_config_error(self, mock_config_file_load):
@@ -309,4 +297,4 @@ class TestRunCommandEdgeCases:
         result = self.runner.invoke(cli, ["run", "dev"])
 
         assert result.exit_code == 1
-        assert "Error loading configuration: Config error" in result.output
+        assert "Configuration error: Config error" in result.output

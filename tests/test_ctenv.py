@@ -228,11 +228,11 @@ def test_stdout_stderr_separation():
 
 
 @pytest.mark.unit
-def test_entrypoint_extra_cli_option():
+def test_entrypoint_cmd_cli_option():
     """Test --entrypoint-extra CLI option."""
     # Test that CLI entrypoint extra commands are included in the config
     config = ContainerConfig.from_cli_options(
-        context="default", entrypoint_extra=["npm install", "npm run build"]
+        context="default", entrypoint_cmd=["npm install", "npm run build"]
     )
 
     # Should contain the CLI entrypoint extra commands
@@ -241,7 +241,7 @@ def test_entrypoint_extra_cli_option():
 
 
 @pytest.mark.unit
-def test_entrypoint_extra_merging():
+def test_entrypoint_cmd_merging():
     """Test that CLI entrypoint extra commands are merged with config file commands."""
     import tempfile
 
@@ -260,7 +260,7 @@ entrypoint_commands = ["echo config-cmd"]
         config = ContainerConfig.from_cli_options(
             context="test",
             config_file=config_file,
-            entrypoint_extra=["echo cli-cmd1", "echo cli-cmd2"],
+            entrypoint_cmd=["echo cli-cmd1", "echo cli-cmd2"],
         )
 
         # Should contain both config file and CLI commands
@@ -279,10 +279,10 @@ entrypoint_commands = ["echo config-cmd"]
 
 
 @pytest.mark.unit
-def test_entrypoint_extra_in_generated_script():
+def test_entrypoint_cmd_in_generated_script():
     """Test that entrypoint extra commands appear in generated script."""
     config = ContainerConfig.from_cli_options(
-        context="default", entrypoint_extra=["npm install", "npm run test"]
+        context="default", entrypoint_cmd=["npm install", "npm run test"]
     )
 
     script = build_entrypoint_script(config, verbose=True)

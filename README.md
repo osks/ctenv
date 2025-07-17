@@ -5,15 +5,39 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-ctenv is a tool for running programs in Docker/Podman containers while preserving user identity and file permissions.
+ctenv is a tool for easily running commands in a container as the
+current user with the current directory mounted.
 
-## Features
+- Makes sure that the container has a user that has the same name
+  and UID/GID, so that permissions in mounted volumes match.
 
-- **User Identity Preservation**: Automatically maps your current user/group into the container
-- **Directory Mounting**: Mounts your current directory into the container at `/repo`
-- **File Permissions**: Files created in containers have correct ownership on the host
-- **Self-Contained**: Only requires `gosu` binary for privilege dropping
-- **Container Runtime Support**: Works with both Docker and Podman
+- Optionally chown:s mounted volumes (similar to Podman's `:U`
+  option to volumes) so they match the UID/GID.
+
+- Configurable contexts for specifying how the container should be
+  created and what should be mounted, for easily starting different
+  containers.
+
+Use cases:
+
+- Running a build system container against a local repository
+- Running Claude Code in a directory with more limited restrictions
+
+ctenv is a bit similar to parts of the functionality that
+devcontainers has, but starts a new container for every command,
+rather than keeping a container running in the background.
+
+
+## Design
+
+ctenv starts the container as root to have permissions for chown, and
+then drops permissions using `gosu` before running the command. It
+does this by generating an entrypoint bash script that it mounts and
+runs.
+
+Implemented in a single Python file that can be used by itself, or
+installed via `uv` or `pip` (etc).
+
 
 ## Installation
 
@@ -70,7 +94,7 @@ ctenv run test -- npm test       # Use 'test' context, run npm test
 - `--network`: Enable container networking (default: disabled for security)
 - `--dir`: Directory to mount as workdir (default: current directory)
 - `--dry-run`: Show Docker command without running container
-- `--entrypoint-extra`: Add extra command to run before main command (can be used multiple times)
+- `--entrypoint-cmd`: Add extra command to run before main command (can be used multiple times)
 
 **Configuration commands:**
 - `ctenv config show [CONTEXT]`: Show configuration or specific context

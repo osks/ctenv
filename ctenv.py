@@ -380,8 +380,11 @@ class ContainerConfig:
         logging.debug("Creating ContainerConfig from CLI options")
 
         # Load file-based configuration
-        explicit_config = Path(config_file) if config_file else None
-        config_file_obj = ConfigFile.load(explicit_config_file=explicit_config)
+        try:
+            explicit_config = Path(config_file) if config_file else None
+            config_file_obj = ConfigFile.load(explicit_config_file=explicit_config)
+        except Exception as e:
+            raise ValueError(str(e)) from e
 
         # Resolve config values with context (context is never None now)
         if not context:
@@ -456,7 +459,7 @@ class ContainerConfig:
             volumes=tuple(get_config_value("volumes", default=[])),
             entrypoint_commands=tuple(
                 list(get_config_value("entrypoint_commands", default=[]))
-                + list(cli_options.get("entrypoint_extra", []))
+                + list(cli_options.get("entrypoint_cmd", []))
             ),
             ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo", default=False),
@@ -877,7 +880,7 @@ def cli(ctx, verbose, quiet):
     help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
 )
 @click.option(
-    "--entrypoint-extra",
+    "--entrypoint-cmd",
     multiple=True,
     help="Add extra command to run before main command (can be used multiple times)",
 )
@@ -895,7 +898,7 @@ def run(
     network,
     dir,
     gosu_path,
-    entrypoint_extra,
+    entrypoint_cmd,
 ):
     """Run command in container
 
@@ -913,7 +916,7 @@ def run(
 
         ctenv run --dry-run dev           # Show Docker command without running
 
-        ctenv run --entrypoint-extra "npm install" --entrypoint-extra "npm run build" # Run extra commands before main command
+        ctenv run --entrypoint-cmd "npm install" --entrypoint-cmd "npm run build" # Run extra commands before main command
 
     Note: Use '--' to separate commands from context/options.
     """
@@ -932,22 +935,6 @@ def run(
     if not context:
         context = "default"
 
-    # Validate context (including "default" which should always be available)
-    try:
-        config_file = ConfigFile.load()
-        if context not in config_file.contexts:
-            available = list(config_file.contexts.keys())
-            click.echo(
-                f"Error: Context '{context}' not found. Available: {available}",
-                err=True,
-            )
-            sys.exit(1)
-    except Exception as e:
-        click.echo(f"Error loading configuration: {e}", err=True)
-        sys.exit(1)
-
-    # Context validation was already done during parsing above
-
     # Create config from CLI options and discovered configuration
     try:
         config = ContainerConfig.from_cli_options(
@@ -961,7 +948,7 @@ def run(
             sudo=sudo,
             network=network,
             gosu_path=gosu_path,
-            entrypoint_extra=entrypoint_extra,
+            entrypoint_cmd=entrypoint_cmd,
             tty=sys.stdin.isatty(),
         )
     except ValueError as e:
