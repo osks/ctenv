@@ -172,7 +172,7 @@ def test_resolve_config_values_unknown_context():
 
 
 @pytest.mark.unit
-def test_config_from_cli_options_with_file():
+def test_config_create_with_file():
     """Test Config creation with config file (contexts only, no defaults section)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -192,7 +192,7 @@ sudo = true
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.from_cli_options(
+        config = ContainerConfig.create(
             config_file=str(config_file),
             # Override image via CLI
             image="ubuntu:22.04",
@@ -206,7 +206,7 @@ sudo = true
 
 
 @pytest.mark.unit
-def test_config_from_cli_options_with_context():
+def test_config_create_with_context():
     """Test Config creation with context."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -230,7 +230,7 @@ env = ["CI=true"]
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.from_cli_options(
+        config = ContainerConfig.create(
             context="test", config_file=str(config_file)
         )
 
@@ -284,7 +284,7 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.from_cli_options(
+        config = ContainerConfig.create(
             config_file=str(config_file), context="default"
         )
 
@@ -319,7 +319,7 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.from_cli_options(
+        config = ContainerConfig.create(
             context="dev",
             config_file=str(config_file),
             # CLI override

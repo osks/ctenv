@@ -69,19 +69,6 @@ def substitute_in_context(context_data: dict, variables: dict[str, str]) -> dict
     return result
 
 
-def get_current_user_info():
-    """Get current user and group information."""
-    user_info = pwd.getpwuid(os.getuid())
-    group_info = grp.getgrgid(os.getgid())
-
-    return {
-        "user_name": user_info.pw_name,
-        "user_id": user_info.pw_uid,
-        "group_name": group_info.gr_name,
-        "group_id": group_info.gr_gid,
-        "user_home": user_info.pw_dir,
-    }
-
 
 def get_platform_specific_gosu_name() -> str:
     """Get platform-specific gosu binary name.
@@ -371,7 +358,7 @@ class ContainerConfig:
         return f"ctenv-{dir_id}"
 
     @classmethod
-    def from_cli_options(
+    def create(
         cls,
         context: Optional[str] = None,
         config_file: Optional[str] = None,
@@ -392,12 +379,6 @@ class ContainerConfig:
             context = "default"
         file_config = config_file_obj.resolve_context(context)
 
-        # Get user info if not provided
-        user_info = get_current_user_info()
-        logging.debug(
-            f"User info: {user_info['user_name']} (UID: {user_info['user_id']})"
-        )
-
         # Get script directory
         script_dir = Path(__file__).parent.resolve()
         logging.debug(f"Script directory: {script_dir}")
@@ -407,8 +388,34 @@ class ContainerConfig:
         working_dir = Path(dir_param) if dir_param else Path(os.getcwd())
         logging.debug(f"Working directory: {working_dir}")
 
+        # Get current user and group information for defaults
+        user_info = pwd.getpwuid(os.getuid())
+        group_info = grp.getgrgid(os.getgid())
+        logging.debug(f"User info: {user_info.pw_name} (UID: {user_info.pw_uid})")
+
+        # Default values for configuration options
+        config_defaults = {
+            # User identity (defaults to current user)
+            "user_name": user_info.pw_name,
+            "user_id": user_info.pw_uid,
+            "group_name": group_info.gr_name,
+            "group_id": group_info.gr_gid,
+            "user_home": user_info.pw_dir,
+            # Container settings
+            "image": "ubuntu:latest",
+            "command": "bash",
+            "container_name": None,
+            "env": [],
+            "volumes": [],
+            "entrypoint_commands": [],
+            "ulimits": None,
+            "sudo": False,
+            "network": None,
+            "gosu_path": None,
+        }
+
         # Helper function to get value with precedence: CLI > config file > default
-        def get_config_value(key: str, cli_key: str = None, default=None):
+        def get_config_value(key: str, cli_key: str = None):
             cli_key = cli_key or key
             cli_value = cli_options.get(cli_key)
             if cli_value is not None:
@@ -416,7 +423,7 @@ class ContainerConfig:
             file_value = file_config.get(key)
             if file_value is not None:
                 return file_value
-            return default
+            return config_defaults.get(key)
 
         # Discover gosu binary path
         gosu_path_override = get_config_value("gosu_path")
@@ -441,29 +448,29 @@ class ContainerConfig:
         logging.debug(f"Found gosu binary: {gosu_binary}")
 
         return cls(
-            # User identity
-            user_name=user_info["user_name"],
-            user_id=user_info["user_id"],
-            group_name=user_info["group_name"],
-            group_id=user_info["group_id"],
-            user_home=user_info["user_home"],
+            # User identity (CLI > config file > system defaults)
+            user_name=get_config_value("user_name"),
+            user_id=get_config_value("user_id"),
+            group_name=get_config_value("group_name"),
+            group_id=get_config_value("group_id"),
+            user_home=get_config_value("user_home"),
             # Paths
             script_dir=script_dir,
             working_dir=working_dir,
             gosu_path=gosu_binary,
             # Container settings (CLI > config file > defaults)
-            image=get_config_value("image", default="ubuntu:latest"),
-            command=get_config_value("command", default="bash"),
+            image=get_config_value("image"),
+            command=get_config_value("command"),
             container_name=get_config_value("container_name"),
             # Options (CLI > config file > defaults)
-            env_vars=tuple(get_config_value("env", "env_vars", [])),
-            volumes=tuple(get_config_value("volumes", default=[])),
+            env_vars=tuple(get_config_value("env", "env_vars")),
+            volumes=tuple(get_config_value("volumes")),
             entrypoint_commands=tuple(
-                list(get_config_value("entrypoint_commands", default=[]))
+                list(get_config_value("entrypoint_commands"))
                 + list(cli_options.get("entrypoint_cmd", []))
             ),
             ulimits=get_config_value("ulimits"),
-            sudo=get_config_value("sudo", default=False),
+            sudo=get_config_value("sudo"),
             network=get_config_value("network"),
             tty=cli_options.get(
                 "tty", False
@@ -891,7 +898,7 @@ def cmd_run(args):
 
     # Create config from CLI options and discovered configuration
     try:
-        config = ContainerConfig.from_cli_options(
+        config = ContainerConfig.create(
             context=context,
             config_file=args.config,
             image=args.image,
