@@ -25,7 +25,7 @@ def test_version():
 def test_config_user_detection():
     """Test that Config correctly detects user information."""
     # Use explicit image to avoid config file interference
-    config = ContainerConfig.from_cli_options(image="ubuntu:latest")
+    config = ContainerConfig.create(image="ubuntu:latest")
 
     assert config.user_name == os.getenv("USER")
     assert config.user_id == os.getuid()
@@ -58,9 +58,9 @@ def test_config_with_mock_user():
 @pytest.mark.unit
 def test_container_name_generation():
     """Test consistent container name generation."""
-    config1 = ContainerConfig.from_cli_options(dir="/path/to/project")
-    config2 = ContainerConfig.from_cli_options(dir="/path/to/project")
-    config3 = ContainerConfig.from_cli_options(dir="/different/path")
+    config1 = ContainerConfig.create(dir="/path/to/project")
+    config2 = ContainerConfig.create(dir="/path/to/project")
+    config3 = ContainerConfig.create(dir="/different/path")
 
     name1 = config1.get_container_name()
     name2 = config2.get_container_name()
@@ -226,7 +226,7 @@ def test_stdout_stderr_separation():
 def test_entrypoint_cmd_cli_option():
     """Test --entrypoint-extra CLI option."""
     # Test that CLI entrypoint extra commands are included in the config
-    config = ContainerConfig.from_cli_options(
+    config = ContainerConfig.create(
         context="default", entrypoint_cmd=["npm install", "npm run build"]
     )
 
@@ -252,7 +252,7 @@ entrypoint_commands = ["echo config-cmd"]
 
     try:
         # Test that both config file and CLI commands are included
-        config = ContainerConfig.from_cli_options(
+        config = ContainerConfig.create(
             context="test",
             config_file=config_file,
             entrypoint_cmd=["echo cli-cmd1", "echo cli-cmd2"],
@@ -276,7 +276,7 @@ entrypoint_commands = ["echo config-cmd"]
 @pytest.mark.unit
 def test_entrypoint_cmd_in_generated_script():
     """Test that entrypoint extra commands appear in generated script."""
-    config = ContainerConfig.from_cli_options(
+    config = ContainerConfig.create(
         context="default", entrypoint_cmd=["npm install", "npm run test"]
     )
 

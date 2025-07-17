@@ -15,7 +15,7 @@ class TestRunCommandParsing:
         self.parser = create_parser()
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
+    @patch("ctenv.ContainerConfig.create")
     @patch("ctenv.ContainerRunner.run_container")
     def test_run_no_arguments(
         self, mock_run_container, mock_config_from_cli, mock_config_file_load
@@ -42,7 +42,7 @@ class TestRunCommandParsing:
         assert call_kwargs["context"] == "default"
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
+    @patch("ctenv.ContainerConfig.create")
     @patch("ctenv.ContainerRunner.run_container")
     def test_run_with_valid_context(
         self, mock_run_container, mock_config_from_cli, mock_config_file_load
@@ -106,7 +106,7 @@ class TestRunCommandParsing:
         assert args.command == ["test"]  # Rest becomes command
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
+    @patch("ctenv.ContainerConfig.create")
     @patch("ctenv.ContainerRunner.run_container")
     def test_run_with_context_and_command(
         self, mock_run_container, mock_config_from_cli, mock_config_file_load
@@ -132,7 +132,7 @@ class TestRunCommandParsing:
         assert call_kwargs["context"] == "dev"
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
+    @patch("ctenv.ContainerConfig.create")
     @patch("ctenv.ContainerRunner.run_container")
     def test_run_ambiguous_parsing_context_command(
         self, mock_run_container, mock_config_from_cli, mock_config_file_load
@@ -179,7 +179,7 @@ class TestRunCommandParsing:
             assert "Configuration error: Unknown context 'dev'" in stderr_output
 
     @patch("ctenv.ConfigFile.load")
-    @patch("ctenv.ContainerConfig.from_cli_options")
+    @patch("ctenv.ContainerConfig.create")
     @patch("ctenv.ContainerRunner.run_container")
     def test_run_context_with_options(
         self, mock_run_container, mock_config_from_cli, mock_config_file_load
