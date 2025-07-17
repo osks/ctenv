@@ -11,7 +11,8 @@ current user with the current directory mounted.
 Use cases:
 
 - Running a build system container against a local repository
-- Running Claude Code in a directory with more limited restrictions
+
+- Running Claude Code more contained
 
 ctenv is somewhat related to `devcontainers`, but has a much smaller
 scope. It can start a new container directly for a command, rather than
