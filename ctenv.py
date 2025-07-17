@@ -803,43 +803,57 @@ class ContainerRunner:
         # Generate entrypoint script content
         script_content = build_entrypoint_script(config, chown_paths, verbose)
         
-        # Create temporary script file
-        script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
-        logging.debug(f"Created temporary entrypoint script: {script_path}")
-        
-        try:
-            with os.fdopen(script_fd, "w") as f:
-                f.write(script_content)
-            os.chmod(script_path, 0o755)
-            
-            # Build Docker arguments with known script path
+        if dry_run:
+            # Dry-run mode: don't create any files, use placeholder path
+            script_path = "/tmp/entrypoint.sh"  # Placeholder for display
             docker_args = ContainerRunner.build_run_args(config, script_path, verbose)
 
             logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
-            # Execute Docker command or print for dry-run
-            if dry_run:
-                # Print the command that would be executed
-                print(" ".join(docker_args))
-                # Return a mock successful result
-                result = subprocess.CompletedProcess(docker_args, 0)
-                logging.debug("Dry-run mode: Docker command printed, not executed")
-                return result
-            else:
+            # Print the command that would be executed
+            print(" ".join(docker_args))
+            
+            # Show entrypoint script in verbose mode
+            if verbose:
+                print("\n" + "="*60, file=sys.stderr)
+                print("Entrypoint script that would be executed:", file=sys.stderr)
+                print("="*60, file=sys.stderr)
+                print(script_content, file=sys.stderr)
+                print("="*60 + "\n", file=sys.stderr)
+            
+            # Return a mock successful result
+            result = subprocess.CompletedProcess(docker_args, 0)
+            logging.debug("Dry-run mode: Docker command printed, not executed")
+            return result
+        else:
+            # Real execution: create temporary script file
+            script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
+            logging.debug(f"Created temporary entrypoint script: {script_path}")
+            
+            try:
+                with os.fdopen(script_fd, "w") as f:
+                    f.write(script_content)
+                os.chmod(script_path, 0o755)
+                
+                # Build Docker arguments with actual script path
+                docker_args = ContainerRunner.build_run_args(config, script_path, verbose)
+
+                logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
+
                 result = subprocess.run(docker_args, check=False)
                 if result.returncode != 0:
                     logging.debug(f"Container exited with code: {result.returncode}")
                 return result
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Container execution failed: {e}")
-            raise RuntimeError(f"Container execution failed: {e}")
-        finally:
-            # Always clean up temporary script file
-            try:
-                os.unlink(script_path)
-                logging.debug(f"Cleaned up temporary script: {script_path}")
-            except OSError:
-                pass
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Container execution failed: {e}")
+                raise RuntimeError(f"Container execution failed: {e}")
+            finally:
+                # Clean up temporary script file
+                try:
+                    os.unlink(script_path)
+                    logging.debug(f"Cleaned up temporary script: {script_path}")
+                except OSError:
+                    pass
 
 
 def setup_logging(verbose, quiet):
