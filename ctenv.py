@@ -773,7 +773,7 @@ class ContainerRunner:
 
     @staticmethod
     def run_container(
-        config: ContainerConfig, verbose: bool = False
+        config: ContainerConfig, verbose: bool = False, dry_run: bool = False
     ) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
         logging.debug("Starting container execution")
@@ -807,12 +807,20 @@ class ContainerRunner:
 
         logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
-        # Execute Docker command
+        # Execute Docker command or print for dry-run
         try:
-            result = subprocess.run(docker_args, check=False)
-            if result.returncode != 0:
-                logging.debug(f"Container exited with code: {result.returncode}")
-            return result
+            if dry_run:
+                # Print the command that would be executed
+                print(" ".join(docker_args))
+                # Return a mock successful result
+                result = subprocess.CompletedProcess(docker_args, 0)
+                logging.debug("Dry-run mode: Docker command printed, not executed")
+                return result
+            else:
+                result = subprocess.run(docker_args, check=False)
+                if result.returncode != 0:
+                    logging.debug(f"Container exited with code: {result.returncode}")
+                return result
         except subprocess.CalledProcessError as e:
             logging.error(f"Container execution failed: {e}")
             raise RuntimeError(f"Container execution failed: {e}")
@@ -899,20 +907,9 @@ def cmd_run(args):
     if not quiet:
         print("[ctenv] run", file=sys.stderr)
 
-    if args.dry_run:
-        # Show what Docker command would be executed
-        docker_args, script_path = ContainerRunner.build_run_args(config, verbose)
-        print(" ".join(docker_args))
-        # Clean up temp script file from dry-run mode
-        try:
-            os.unlink(script_path)
-        except OSError:
-            pass
-        return
-
-    # Execute container
+    # Execute container (or dry-run)
     try:
-        result = ContainerRunner.run_container(config, verbose)
+        result = ContainerRunner.run_container(config, verbose, dry_run=args.dry_run)
         sys.exit(result.returncode)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
