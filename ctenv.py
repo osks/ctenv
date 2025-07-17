@@ -12,12 +12,16 @@ import getpass
 import grp
 import logging
 import os
+import platform
 import pwd
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
+import urllib.request
+import urllib.error
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
@@ -85,8 +89,6 @@ def get_platform_specific_gosu_name() -> str:
     Note: gosu only provides Linux binaries since containers run Linux
     regardless of the host OS.
     """
-    import platform
-
     machine = platform.machine().lower()
 
     # Map machine types to standard names
@@ -617,28 +619,16 @@ class ContainerRunner:
     """Manages Docker container operations."""
 
     @staticmethod
-    def build_run_args(
-        config: ContainerConfig, verbose: bool = False
-    ) -> tuple[list, str]:
-        """Build Docker run arguments. Returns (args, script_path) for cleanup."""
-        import tempfile
-
-        logging.debug("Building Docker run arguments")
-
-        args = [
-            "docker",
-            "run",
-            "--rm",
-            "--init",
-            "--platform=linux/amd64",
-            f"--name={config.get_container_name()}",
-        ]
-
-        # Parse volume options and track chown paths
+    def parse_volumes(volumes: tuple[str, ...]) -> tuple[list[str], list[str]]:
+        """Parse volume strings and extract chown paths.
+        
+        Returns:
+            tuple of (processed_volumes, chown_paths)
+        """
         chown_paths = []
         processed_volumes = []
 
-        for volume in config.volumes:
+        for volume in volumes:
             if ":" not in volume:
                 raise ValueError(
                     f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
@@ -674,102 +664,107 @@ class ContainerRunner:
                 volume_arg = f"{host_path}:{container_path}"
 
             processed_volumes.append(volume_arg)
+        
+        return processed_volumes, chown_paths
 
-        # Generate and write entrypoint script to temporary file
-        entrypoint_script = build_entrypoint_script(config, chown_paths, verbose)
-        script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
-        logging.debug(f"Created temporary entrypoint script: {script_path}")
-        try:
-            with os.fdopen(script_fd, "w") as f:
-                f.write(entrypoint_script)
-            os.chmod(script_path, 0o755)
+    @staticmethod
+    def build_run_args(
+        config: ContainerConfig, script_path: str, verbose: bool = False
+    ) -> list[str]:
+        """Build Docker run arguments with provided script path."""
+        logging.debug("Building Docker run arguments")
 
-            # Volume mounts
-            volume_args = [
-                f"--volume={config.working_dir}:{config.dir_mount}:z,rw",
-                f"--volume={config.gosu_path}:{config.gosu_mount}:z,ro",
-                f"--volume={script_path}:/entrypoint.sh:z,ro",
-                f"--workdir={config.dir_mount}",
-            ]
-            args.extend(volume_args)
+        args = [
+            "docker",
+            "run",
+            "--rm",
+            "--init",
+            "--platform=linux/amd64",
+            f"--name={config.get_container_name()}",
+        ]
 
-            logging.debug("Volume mounts:")
-            logging.debug(f"  Working dir: {config.working_dir} -> {config.dir_mount}")
-            logging.debug(f"  Gosu binary: {config.gosu_path} -> {config.gosu_mount}")
-            logging.debug(f"  Entrypoint script: {script_path} -> /entrypoint.sh")
+        # Parse volume options 
+        processed_volumes, chown_paths = ContainerRunner.parse_volumes(config.volumes)
 
-            # Additional volume mounts
-            if processed_volumes:
-                logging.debug("Additional volume mounts:")
-                for volume in processed_volumes:
-                    args.extend([f"--volume={volume}:z"])
-                    logging.debug(f"  {volume}")
+        # Volume mounts
+        volume_args = [
+            f"--volume={config.working_dir}:{config.dir_mount}:z,rw",
+            f"--volume={config.gosu_path}:{config.gosu_mount}:z,ro",
+            f"--volume={script_path}:/entrypoint.sh:z,ro",
+            f"--workdir={config.dir_mount}",
+        ]
+        args.extend(volume_args)
 
-                if chown_paths:
-                    logging.debug("Volumes with chown enabled:")
-                    for path in chown_paths:
-                        logging.debug(f"  {path}")
+        logging.debug("Volume mounts:")
+        logging.debug(f"  Working dir: {config.working_dir} -> {config.dir_mount}")
+        logging.debug(f"  Gosu binary: {config.gosu_path} -> {config.gosu_mount}")
+        logging.debug(f"  Entrypoint script: {script_path} -> /entrypoint.sh")
 
-            # Environment variables
-            if config.env_vars:
-                logging.debug("Environment variables:")
-                for env_var in config.env_vars:
-                    if "=" in env_var:
-                        # Set specific value: NAME=VALUE
-                        args.extend([f"--env={env_var}"])
-                        logging.debug(f"  Setting: {env_var}")
-                    else:
-                        # Pass from host: NAME
-                        args.extend([f"--env={env_var}"])
-                        value = os.environ.get(env_var, "<not set>")
-                        logging.debug(f"  Passing: {env_var}={value}")
+        # Additional volume mounts
+        if processed_volumes:
+            logging.debug("Additional volume mounts:")
+            for volume in processed_volumes:
+                args.extend([f"--volume={volume}:z"])
+                logging.debug(f"  {volume}")
 
-            # Resource limits (ulimits)
-            if config.ulimits:
-                logging.debug("Resource limits (ulimits):")
-                for limit_name, limit_value in config.ulimits.items():
-                    args.extend([f"--ulimit={limit_name}={limit_value}"])
-                    logging.debug(f"  {limit_name}={limit_value}")
+            if chown_paths:
+                logging.debug("Volumes with chown enabled:")
+                for path in chown_paths:
+                    logging.debug(f"  {path}")
 
-            # Network configuration
-            if config.network:
-                if config.network == "none":
-                    args.extend(["--network=none"])
-                elif config.network == "host":
-                    args.extend(["--network=host"])
-                elif config.network == "bridge":
-                    args.extend(["--network=bridge"])
+        # Environment variables
+        if config.env_vars:
+            logging.debug("Environment variables:")
+            for env_var in config.env_vars:
+                if "=" in env_var:
+                    # Set specific value: NAME=VALUE
+                    args.extend([f"--env={env_var}"])
+                    logging.debug(f"  Setting: {env_var}")
                 else:
-                    # Custom network name
-                    args.extend([f"--network={config.network}"])
-                logging.debug(f"Network mode: {config.network}")
-            else:
-                # Default: no networking for security
+                    # Pass from host: NAME
+                    args.extend([f"--env={env_var}"])
+                    value = os.environ.get(env_var, "<not set>")
+                    logging.debug(f"  Passing: {env_var}={value}")
+
+        # Resource limits (ulimits)
+        if config.ulimits:
+            logging.debug("Resource limits (ulimits):")
+            for limit_name, limit_value in config.ulimits.items():
+                args.extend([f"--ulimit={limit_name}={limit_value}"])
+                logging.debug(f"  {limit_name}={limit_value}")
+
+        # Network configuration
+        if config.network:
+            if config.network == "none":
                 args.extend(["--network=none"])
-                logging.debug("Network mode: none (default)")
-
-            # TTY flags if running interactively
-            if config.tty:
-                args.extend(["-t", "-i"])
-                logging.debug("TTY mode: enabled")
+            elif config.network == "host":
+                args.extend(["--network=host"])
+            elif config.network == "bridge":
+                args.extend(["--network=bridge"])
             else:
-                logging.debug("TTY mode: disabled")
+                # Custom network name
+                args.extend([f"--network={config.network}"])
+            logging.debug(f"Network mode: {config.network}")
+        else:
+            # Default: no networking for security
+            args.extend(["--network=none"])
+            logging.debug("Network mode: none (default)")
 
-            # Set entrypoint to our script
-            args.extend(["--entrypoint", "/entrypoint.sh"])
+        # TTY flags if running interactively
+        if config.tty:
+            args.extend(["-t", "-i"])
+            logging.debug("TTY mode: enabled")
+        else:
+            logging.debug("TTY mode: disabled")
 
-            # Container image
-            args.append(config.image)
-            logging.debug(f"Container image: {config.image}")
+        # Set entrypoint to our script
+        args.extend(["--entrypoint", "/entrypoint.sh"])
 
-            return args, script_path
-        except Exception:
-            # Cleanup on error
-            try:
-                os.unlink(script_path)
-            except OSError:
-                pass
-            raise
+        # Container image
+        args.append(config.image)
+        logging.debug(f"Container image: {config.image}")
+
+        return args
 
     @staticmethod
     def run_container(
@@ -802,13 +797,27 @@ class ContainerRunner:
         if not config.working_dir.is_dir():
             raise FileNotFoundError(f"Path {config.working_dir} is not a directory.")
 
-        # Build Docker arguments
-        docker_args, script_path = ContainerRunner.build_run_args(config, verbose)
-
-        logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
-
-        # Execute Docker command or print for dry-run
+        # Parse volumes to get chown paths for script generation
+        _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
+        
+        # Generate entrypoint script content
+        script_content = build_entrypoint_script(config, chown_paths, verbose)
+        
+        # Create temporary script file
+        script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
+        logging.debug(f"Created temporary entrypoint script: {script_path}")
+        
         try:
+            with os.fdopen(script_fd, "w") as f:
+                f.write(script_content)
+            os.chmod(script_path, 0o755)
+            
+            # Build Docker arguments with known script path
+            docker_args = ContainerRunner.build_run_args(config, script_path, verbose)
+
+            logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
+
+            # Execute Docker command or print for dry-run
             if dry_run:
                 # Print the command that would be executed
                 print(" ".join(docker_args))
@@ -825,13 +834,12 @@ class ContainerRunner:
             logging.error(f"Container execution failed: {e}")
             raise RuntimeError(f"Container execution failed: {e}")
         finally:
-            # Clean up temporary script file
-            if script_path:
-                try:
-                    os.unlink(script_path)
-                    logging.debug(f"Cleaned up temporary script: {script_path}")
-                except OSError:
-                    pass
+            # Always clean up temporary script file
+            try:
+                os.unlink(script_path)
+                logging.debug(f"Cleaned up temporary script: {script_path}")
+            except OSError:
+                pass
 
 
 def setup_logging(verbose, quiet):
@@ -1025,9 +1033,6 @@ def cmd_contexts(args):
 
 def cmd_setup(args):
     """Download gosu binaries for all platforms."""
-    import urllib.request
-    import urllib.error
-
     force = args.force
 
     print("🔧 Setting up ctenv...")
