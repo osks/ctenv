@@ -8,6 +8,15 @@
 ctenv is a tool for easily running commands in a container as the
 current user with the current directory mounted.
 
+Use cases:
+
+- Running a build system container against a local repository
+- Running Claude Code in a directory with more limited restrictions
+
+ctenv is somewhat related to `devcontainers`, but has a much smaller
+scope. It can start a new container directly for a command, rather than
+keeping a container running in the background.
+
 - Makes sure that the container has a user that has the same name
   and UID/GID, so that permissions in mounted volumes match.
 
@@ -18,14 +27,6 @@ current user with the current directory mounted.
   created and what should be mounted, for easily starting different
   containers.
 
-Use cases:
-
-- Running a build system container against a local repository
-- Running Claude Code in a directory with more limited restrictions
-
-ctenv is a bit similar to parts of the functionality that
-devcontainers has, but starts a new container for every command,
-rather than keeping a container running in the background.
 
 
 ## Design
@@ -35,16 +36,19 @@ then drops permissions using `gosu` before running the command. It
 does this by generating an entrypoint bash script that it mounts and
 runs.
 
-Implemented in a single Python file that can be used by itself, or
-installed via `uv` or `pip` (etc).
+Implemented in a single Python file only depending on Python 3.11. Can
+be used by itself, or installed via `uv` or `pip` (etc).
 
 
 ## Installation
+
+With `uv` you can just run `uv tool ctenv` to use it directly.
 
 Install this tool using `pip`:
 ```bash
 pip install ctenv
 ```
+
 
 ## Usage
 

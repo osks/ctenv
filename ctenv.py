@@ -2,26 +2,25 @@
 #
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["click"]
+# dependencies = []
 # ///
 
 __version__ = "0.1"
 
+import argparse
+import getpass
+import grp
+import logging
 import os
 import pwd
-import grp
+import re
+import shutil
 import subprocess
 import sys
-import shutil
-import logging
 import tomllib
-import re
-import getpass
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
-
-import click
 
 
 def substitute_template_variables(text: str, variables: dict[str, str]) -> str:
@@ -827,19 +826,8 @@ class ContainerRunner:
                     pass
 
 
-@click.group()
-@click.version_option(version=__version__)
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
-@click.option("--quiet", "-q", is_flag=True, help="Suppress non-essential output")
-@click.pass_context
-def cli(ctx, verbose, quiet):
-    """ctenv is a tool for running a program in a container as current user"""
-    # Store verbosity in context for subcommands to access
-    ctx.ensure_object(dict)
-    ctx.obj["verbose"] = verbose
-    ctx.obj["quiet"] = quiet
-
-    # Configure logging to stderr to keep stdout clean for command output
+def setup_logging(verbose, quiet):
+    """Configure logging based on verbosity flags."""
     if verbose:
         logging.basicConfig(
             level=logging.DEBUG, format="%(message)s", stream=sys.stderr
@@ -850,86 +838,22 @@ def cli(ctx, verbose, quiet):
         logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 
 
-@cli.command()
-@click.argument("context", required=False)
-@click.argument("command_args", nargs=-1)
-@click.option("--image", help="Container image to use (default: ubuntu:latest)")
-@click.option(
-    "--dry-run", is_flag=True, help="Show Docker command without running container"
-)
-@click.option("--config", help="Path to configuration file")
-@click.option(
-    "--env",
-    multiple=True,
-    help="Set environment variable (NAME=VALUE) or pass from host (NAME)",
-)
-@click.option(
-    "--volume", multiple=True, help="Mount additional volume (HOST:CONTAINER format)"
-)
-@click.option(
-    "--sudo", is_flag=True, help="Add user to sudoers with NOPASSWD inside container"
-)
-@click.option(
-    "--network", help="Enable container networking (default: disabled for security)"
-)
-@click.option(
-    "--dir", help="Directory to mount as workdir (default: current directory)"
-)
-@click.option(
-    "--gosu-path",
-    help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
-)
-@click.option(
-    "--entrypoint-cmd",
-    multiple=True,
-    help="Add extra command to run before main command (can be used multiple times)",
-)
-@click.pass_context
-def run(
-    ctx,
-    context,
-    command_args,
-    image,
-    dry_run,
-    config,
-    env,
-    volume,
-    sudo,
-    network,
-    dir,
-    gosu_path,
-    entrypoint_cmd,
-):
-    """Run command in container
+def cmd_run(args):
+    """Run command in container."""
+    verbose = args.verbose
+    quiet = args.quiet
 
-    Examples:
+    # Parse context and command from args
+    context = args.context
+    command_args = args.command
 
-        ctenv run                          # Interactive bash with defaults
-
-        ctenv run dev                      # Use 'dev' context with default command
-
-        ctenv run dev -- npm test         # Use 'dev' context, run npm test
-
-        ctenv run -- ls -la               # Use defaults, run ls -la
-
-        ctenv run --image alpine dev      # Override image, use dev context
-
-        ctenv run --dry-run dev           # Show Docker command without running
-
-        ctenv run --entrypoint-cmd "npm install" --entrypoint-cmd "npm run build" # Run extra commands before main command
-
-    Note: Use '--' to separate commands from context/options.
-    """
-    verbose = ctx.obj.get("verbose", False)
-    quiet = ctx.obj.get("quiet", False)
-
-    # Simple Click-style parsing - this allows some ambiguous cases but is standard
+    # Simple parsing logic
     if command_args:
         # Command specified
         command = command_args
     else:
         # No command, default to bash
-        command = ("bash",)
+        command = ["bash"]
 
     # Use "default" context if none specified
     if not context:
@@ -939,20 +863,20 @@ def run(
     try:
         config = ContainerConfig.from_cli_options(
             context=context,
-            config_file=config,
-            image=image,
+            config_file=args.config,
+            image=args.image,
             command=" ".join(command),
-            dir=dir,
-            env_vars=env,
-            volumes=volume,
-            sudo=sudo,
-            network=network,
-            gosu_path=gosu_path,
-            entrypoint_cmd=entrypoint_cmd,
+            dir=args.dir,
+            env_vars=args.env or [],
+            volumes=args.volume or [],
+            sudo=args.sudo,
+            network=args.network,
+            gosu_path=args.gosu_path,
+            entrypoint_cmd=args.entrypoint_cmd or [],
             tty=sys.stdin.isatty(),
         )
     except ValueError as e:
-        click.echo(f"Configuration error: {e}", err=True)
+        print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
 
     if verbose:
@@ -973,12 +897,12 @@ def run(
         logging.debug(f"  Gosu binary: {config.gosu_path}")
 
     if not quiet:
-        click.echo("[ctenv] run", err=True)
+        print("[ctenv] run", file=sys.stderr)
 
-    if dry_run:
+    if args.dry_run:
         # Show what Docker command would be executed
         docker_args, script_path = ContainerRunner.build_run_args(config, verbose)
-        click.echo(" ".join(docker_args))
+        print(" ".join(docker_args))
         # Clean up temp script file from dry-run mode
         try:
             os.unlink(script_path)
@@ -991,24 +915,18 @@ def run(
         result = ContainerRunner.run_container(config, verbose)
         sys.exit(result.returncode)
     except FileNotFoundError as e:
-        click.echo(f"Error: {e}", err=True)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
-@cli.group()
-def config():
-    """Configuration management commands"""
-    pass
+def cmd_config_show(args):
+    """Show configuration or context details."""
+    context = args.context
+    config = args.config
 
-
-@config.command()
-@click.argument("context", required=False)
-@click.option("--config", help="Path to configuration file")
-def show(context, config):
-    """Show configuration or context details"""
     try:
         # Load file-based configuration
         explicit_config = Path(config) if config else None
@@ -1018,74 +936,75 @@ def show(context, config):
             # Show specific context
             if context not in config_file.contexts:
                 available = list(config_file.contexts.keys())
-                click.echo(
-                    f"Context '{context}' not found. Available: {available}", err=True
+                print(
+                    f"Context '{context}' not found. Available: {available}",
+                    file=sys.stderr,
                 )
                 sys.exit(1)
 
             # Show which config files are being used
             if len(config_file.source_files) == 0:
-                click.echo(f"Context '{context}' (builtin default only):")
+                print(f"Context '{context}' (builtin default only):")
             elif len(config_file.source_files) == 1:
-                click.echo(f"Context '{context}' from {config_file.source_files[0]}:")
+                print(f"Context '{context}' from {config_file.source_files[0]}:")
             else:
-                click.echo(f"Context '{context}' from merged configs:")
+                print(f"Context '{context}' from merged configs:")
                 for source_file in config_file.source_files:
-                    click.echo(f"  {source_file}")
+                    print(f"  {source_file}")
 
             # Show context configuration with templating applied
             resolved_context = config_file.resolve_context(context)
             for key, value in resolved_context.items():
-                click.echo(f"  {key}: {value}")
+                print(f"  {key}: {value}")
         else:
             # Show all configuration
-            click.echo("Configuration:")
+            print("Configuration:")
 
             # Show which config files are being used
             if len(config_file.source_files) == 0:
-                click.echo("\nUsing builtin contexts only")
+                print("\nUsing builtin contexts only")
             elif len(config_file.source_files) == 1:
-                click.echo(f"\nUsing config file: {config_file.source_files[0]}")
+                print(f"\nUsing config file: {config_file.source_files[0]}")
             else:
-                click.echo("\nUsing merged config files:")
+                print("\nUsing merged config files:")
                 for source_file in config_file.source_files:
-                    click.echo(f"  {source_file}")
+                    print(f"  {source_file}")
 
             # Show contexts (there's always at least the default context)
             if config_file.contexts:
-                click.echo("\nContexts:")
+                print("\nContexts:")
                 for ctx_name in sorted(config_file.contexts.keys()):
-                    click.echo(f"  {ctx_name}")
+                    print(f"  {ctx_name}")
 
     except Exception as e:
-        click.echo(f"Error: {e}", err=True)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
-@config.command()
-@click.option("--config", help="Path to configuration file")
-def path(config):
-    """Show path to configuration file being used"""
+def cmd_config_path(args):
+    """Show path to configuration file being used."""
+    config = args.config
+
     if config:
         config_path = Path(config)
         if config_path.exists():
-            click.echo(str(config_path.resolve()))
+            print(str(config_path.resolve()))
         else:
-            click.echo(f"Config file not found: {config_path}", err=True)
+            print(f"Config file not found: {config_path}", file=sys.stderr)
             sys.exit(1)
     else:
         discovered_config = find_config_file()
         if discovered_config:
-            click.echo(str(discovered_config))
+            print(str(discovered_config))
         else:
-            click.echo("No configuration file found", err=True)
+            print("No configuration file found", file=sys.stderr)
             sys.exit(1)
 
 
-@cli.command()
-@click.option("--config", help="Path to configuration file")
-def contexts(config):
-    """List available contexts"""
+def cmd_contexts(args):
+    """List available contexts."""
+    config = args.config
+
     try:
         # Load file-based configuration
         explicit_config = Path(config) if config else None
@@ -1093,31 +1012,29 @@ def contexts(config):
 
         if config_file.contexts:
             if config:
-                click.echo(f"Contexts from {config}:")
+                print(f"Contexts from {config}:")
             else:
-                click.echo("Available contexts:")
+                print("Available contexts:")
             for ctx_name in sorted(config_file.contexts.keys()):
-                click.echo(f"  {ctx_name}")
+                print(f"  {ctx_name}")
         else:
             # This should never happen since we always have at least builtin default
-            click.echo("No contexts available")
+            print("No contexts available")
 
     except Exception as e:
-        click.echo(f"Error: {e}", err=True)
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
-@cli.command()
-@click.option(
-    "--force", is_flag=True, help="Re-download gosu binaries even if they exist"
-)
-def setup(force):
-    """Download gosu binaries for all platforms"""
+def cmd_setup(args):
+    """Download gosu binaries for all platforms."""
     import urllib.request
     import urllib.error
 
-    click.echo("🔧 Setting up ctenv...")
-    click.echo()
+    force = args.force
+
+    print("🔧 Setting up ctenv...")
+    print()
 
     # Ensure .ctenv directory exists
     ctenv_dir = Path.home() / ".ctenv"
@@ -1130,7 +1047,7 @@ def setup(force):
         ("gosu-arm64", "linux/arm64"),
     ]
 
-    click.echo("Downloading gosu binaries for all platforms...")
+    print("Downloading gosu binaries for all platforms...")
 
     success_count = 0
 
@@ -1139,7 +1056,7 @@ def setup(force):
 
         # Skip if already exists and not forcing
         if binary_path.exists() and not force:
-            click.echo(f"✓ {binary_name} already exists ({platform_desc})")
+            print(f"✓ {binary_name} already exists ({platform_desc})")
             success_count += 1
             continue
 
@@ -1147,29 +1064,177 @@ def setup(force):
         url = f"https://github.com/tianon/gosu/releases/latest/download/{binary_name}"
 
         try:
-            click.echo(f"  Downloading {binary_name}...", nl=False)
+            print(f"  Downloading {binary_name}...", end="")
             urllib.request.urlretrieve(url, binary_path)
             binary_path.chmod(0o755)
-            click.echo(f" ✓ Downloaded {binary_name} ({platform_desc})")
+            print(f" ✓ Downloaded {binary_name} ({platform_desc})")
             success_count += 1
         except urllib.error.URLError as e:
-            click.echo(f" ✗ Failed to download {binary_name}: {e}")
+            print(f" ✗ Failed to download {binary_name}: {e}")
         except Exception as e:
-            click.echo(f" ✗ Error downloading {binary_name}: {e}")
+            print(f" ✗ Error downloading {binary_name}: {e}")
 
-    click.echo()
+    print()
 
     if success_count == len(binaries):
-        click.echo("ctenv is ready to use! Try: ctenv run -- echo hello")
+        print("ctenv is ready to use! Try: ctenv run -- echo hello")
     elif success_count > 0:
-        click.echo(
+        print(
             f"Setup partially complete ({success_count}/{len(binaries)} binaries available)"
         )
-        click.echo("ctenv should work for most use cases.")
+        print("ctenv should work for most use cases.")
     else:
-        click.echo("Setup failed. Please check your internet connection and try again.")
+        print("Setup failed. Please check your internet connection and try again.")
+        sys.exit(1)
+
+
+def create_parser():
+    """Create the main argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="ctenv",
+        description="ctenv is a tool for running a program in a container as current user",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument("--version", action="version", version=f"ctenv {__version__}")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
+    )
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress non-essential output"
+    )
+
+    subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
+
+    # run command
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run command in container",
+        description="""Run command in container
+
+Examples:
+    ctenv run                          # Interactive bash with defaults
+    ctenv run dev                      # Use 'dev' context with default command
+    ctenv run dev -- npm test         # Use 'dev' context, run npm test
+    ctenv run -- ls -la               # Use defaults, run ls -la
+    ctenv run --image alpine dev      # Override image, use dev context
+    ctenv run --dry-run dev           # Show Docker command without running
+    ctenv run --entrypoint-cmd "npm install" --entrypoint-cmd "npm run build" # Run extra commands before main command
+
+Note: Use '--' to separate commands from context/options.""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    run_parser.add_argument(
+        "context", nargs="?", help="Context to use (default: 'default')"
+    )
+    run_parser.add_argument("command", nargs="*", help="Command to run (default: bash)")
+    run_parser.add_argument(
+        "--image", help="Container image to use (default: ubuntu:latest)"
+    )
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show Docker command without running container",
+    )
+    run_parser.add_argument("--config", help="Path to configuration file")
+    run_parser.add_argument(
+        "--env",
+        action="append",
+        help="Set environment variable (NAME=VALUE) or pass from host (NAME)",
+    )
+    run_parser.add_argument(
+        "--volume",
+        action="append",
+        help="Mount additional volume (HOST:CONTAINER format)",
+    )
+    run_parser.add_argument(
+        "--sudo",
+        action="store_true",
+        help="Add user to sudoers with NOPASSWD inside container",
+    )
+    run_parser.add_argument(
+        "--network", help="Enable container networking (default: disabled for security)"
+    )
+    run_parser.add_argument(
+        "--dir", help="Directory to mount as workdir (default: current directory)"
+    )
+    run_parser.add_argument(
+        "--gosu-path",
+        help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
+    )
+    run_parser.add_argument(
+        "--entrypoint-cmd",
+        action="append",
+        help="Add extra command to run before main command (can be used multiple times)",
+    )
+
+    # config subcommand group
+    config_parser = subparsers.add_parser(
+        "config", help="Configuration management commands"
+    )
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", help="Config subcommands"
+    )
+
+    # config show
+    config_show_parser = config_subparsers.add_parser(
+        "show", help="Show configuration or context details"
+    )
+    config_show_parser.add_argument(
+        "context", nargs="?", help="Context to show (default: show all)"
+    )
+    config_show_parser.add_argument("--config", help="Path to configuration file")
+
+    # config path
+    config_path_parser = config_subparsers.add_parser(
+        "path", help="Show path to configuration file being used"
+    )
+    config_path_parser.add_argument("--config", help="Path to configuration file")
+
+    # contexts command
+    contexts_parser = subparsers.add_parser("contexts", help="List available contexts")
+    contexts_parser.add_argument("--config", help="Path to configuration file")
+
+    # setup command
+    setup_parser = subparsers.add_parser(
+        "setup", help="Download gosu binaries for all platforms"
+    )
+    setup_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download gosu binaries even if they exist",
+    )
+
+    return parser
+
+
+def main():
+    """Main entry point."""
+    parser = create_parser()
+    args = parser.parse_args()
+
+    # Setup logging
+    setup_logging(args.verbose, args.quiet)
+
+    # Route to appropriate command handler
+    if args.subcommand == "run":
+        cmd_run(args)
+    elif args.subcommand == "config":
+        if args.config_command == "show":
+            cmd_config_show(args)
+        elif args.config_command == "path":
+            cmd_config_path(args)
+        else:
+            parser.parse_args(["config", "--help"])
+    elif args.subcommand == "contexts":
+        cmd_contexts(args)
+    elif args.subcommand == "setup":
+        cmd_setup(args)
+    else:
+        parser.print_help()
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    cli()
+    main()

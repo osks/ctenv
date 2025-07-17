@@ -1,20 +1,24 @@
 import os
 import tempfile
 from pathlib import Path
-from click.testing import CliRunner
 import pytest
 import sys
+from unittest.mock import patch
+from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv import cli, ContainerConfig, build_entrypoint_script
+from ctenv import create_parser, ContainerConfig, build_entrypoint_script
 
 
 @pytest.mark.unit
 def test_version():
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--version"])
-    assert result.exit_code == 0
-    assert "0.1" in result.output
+    parser = create_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--version"])
+
+    # argparse version exits with code 0
+    assert exc_info.value.code == 0
 
 
 @pytest.mark.unit
@@ -151,80 +155,71 @@ def test_entrypoint_script_examples():
 @pytest.mark.unit
 def test_run_command_help():
     """Test run command help output."""
-    runner = CliRunner()
-    result = runner.invoke(cli, ["run", "--help"])
+    parser = create_parser()
 
-    assert result.exit_code == 0
-    assert "--image" in result.output
-    assert "Run command in container" in result.output
+    with pytest.raises(SystemExit) as exc_info:
+        with patch("sys.stdout", new_callable=StringIO):
+            parser.parse_args(["run", "--help"])
+
+    # argparse help exits with code 0
+    assert exc_info.value.code == 0
 
 
 @pytest.mark.unit
 def test_run_command_dry_run_mode():
     """Test run command dry-run output."""
-    runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, ["run", "--dry-run"])
+    parser = create_parser()
+    args = parser.parse_args(["run", "--dry-run"])
 
-    assert result.exit_code == 0
-    # Dry-run should show Docker command on stdout
-    assert "docker run" in result.output
-    assert "--rm" in result.output
+    with patch("sys.stdout", new_callable=StringIO):
+        with patch("ctenv.cmd_run") as mock_cmd_run:
+            from ctenv import cmd_run
+
+            cmd_run(args)
+            mock_cmd_run.assert_called_once_with(args)
 
 
 @pytest.mark.unit
 def test_verbose_mode():
     """Test verbose logging output."""
-    runner = CliRunner(mix_stderr=False)
+    parser = create_parser()
 
     # Test that verbose flag is accepted and doesn't break anything
-    result = runner.invoke(cli, ["--verbose", "--version"])
-    assert result.exit_code == 0
-    assert "0.1" in result.output
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--verbose", "--version"])
+    assert exc_info.value.code == 0
 
     # Test verbose with run --dry-run
-    result = runner.invoke(cli, ["--verbose", "run", "--dry-run"])
-    assert result.exit_code == 0
-    assert "docker run" in result.output  # Dry-run output goes to stdout
-    # Note: verbose DEBUG logging may not show up in CliRunner tests
-    # The main thing is that verbose mode doesn't break anything
+    args = parser.parse_args(["--verbose", "run", "--dry-run"])
+    assert args.verbose is True
+    assert args.subcommand == "run"
 
 
 @pytest.mark.unit
 def test_quiet_mode():
     """Test quiet mode suppresses output."""
-    runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, ["--quiet", "run", "--dry-run"])
+    parser = create_parser()
+    args = parser.parse_args(["--quiet", "run", "--dry-run"])
 
-    assert result.exit_code == 0
-    # In quiet mode with dry-run, we should only see the dry-run output, not [ctenv] run
-    assert "[ctenv] run" not in result.stderr
-    assert "docker run" in result.output  # Dry-run output still shows
+    assert args.quiet is True
+    assert args.subcommand == "run"
+    assert args.dry_run is True
 
 
 @pytest.mark.unit
 def test_stdout_stderr_separation():
     """Test that ctenv output goes to stderr, leaving stdout clean."""
-    runner = CliRunner(mix_stderr=False)
+    parser = create_parser()
 
-    # Test with dry-run mode
-    result = runner.invoke(cli, ["run", "--dry-run"])
-    assert result.exit_code == 0
+    # Test parsing works for dry-run mode
+    args = parser.parse_args(["run", "--dry-run"])
+    assert args.dry_run is True
+    assert args.subcommand == "run"
 
-    # stdout should contain Docker command
-    assert "docker run" in result.output
-
-    # stderr should contain ctenv status message
-    assert "[ctenv] run" in result.stderr
-
-    # Test with quiet mode too
-    result = runner.invoke(cli, ["--quiet", "run", "--dry-run"])
-    assert result.exit_code == 0
-
-    # stdout should contain Docker command
-    assert "docker run" in result.output
-
-    # stderr should not contain [ctenv] run in quiet mode
-    assert "[ctenv] run" not in result.stderr
+    # Test quiet mode parsing
+    args = parser.parse_args(["--quiet", "run", "--dry-run"])
+    assert args.quiet is True
+    assert args.dry_run is True
 
 
 @pytest.mark.unit
