@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import patch
 import sys
 import tempfile
-import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -12,7 +11,6 @@ from ctenv import ContainerRunner, ContainerConfig, build_entrypoint_script
 @pytest.mark.unit
 def test_docker_command_examples():
     """Test and display actual Docker commands that would be generated."""
-    import os
 
     # Create config with test data
     config = ContainerConfig(
@@ -28,7 +26,9 @@ def test_docker_command_examples():
         gosu_path=Path("/test/gosu"),
     )
 
-    args, script_path = ContainerRunner.build_run_args(config)
+    # Create a test script path for build_run_args
+    test_script_path = "/tmp/test_entrypoint.sh"
+    args = ContainerRunner.build_run_args(config, test_script_path)
 
     try:
         # Verify command structure
@@ -50,28 +50,15 @@ def test_docker_command_examples():
         print(f"  {' '.join(args[: args.index('ubuntu:latest') + 1])}")
 
     finally:
-        # Clean up the script path
-        try:
-            os.unlink(script_path)
-        except OSError:
-            pass
+        # No cleanup needed for test script path
+        pass
 
 
 @pytest.mark.unit
 def test_docker_command_scenarios():
     """Show Docker commands for different common scenarios."""
-    import os
 
-    base_config = ContainerConfig(
-        user_name="developer",
-        user_id=1001,
-        group_name="developers",
-        group_id=1001,
-        user_home="/home/developer",
-        script_dir=Path("/usr/local/bin"),
-        working_dir=Path("/workspace"),
-        gosu_path=Path("/usr/local/bin/gosu"),
-    )
+    # Base configuration template (unused but shows common config structure)
 
     scenarios = [
         {
@@ -133,7 +120,9 @@ def test_docker_command_scenarios():
                 image=full_config["IMAGE"],
                 command=full_config["COMMAND"],
             )
-            args, script_path = ContainerRunner.build_run_args(scenario_config)
+            # Create a test script path for build_run_args
+            test_script_path = "/tmp/test_entrypoint.sh"
+            args = ContainerRunner.build_run_args(scenario_config, test_script_path)
 
             # Format command nicely
             print(f"\n{scenario['name']}:")
@@ -162,12 +151,8 @@ def test_docker_command_scenarios():
             print(f"  Docker: {' '.join(docker_cmd)}")
 
         finally:
-            # Cleanup temp script file
-            if "script_path" in locals():
-                try:
-                    os.unlink(script_path)
-                except OSError:
-                    pass
+            # No cleanup needed for test script path
+            pass
 
     print(f"\n{'=' * 60}")
 
@@ -175,7 +160,6 @@ def test_docker_command_scenarios():
 @pytest.mark.unit
 def test_new_cli_options():
     """Test Docker commands generated with new CLI options."""
-    import os
 
     # Create config with new CLI options
     config = ContainerConfig(
@@ -197,7 +181,9 @@ def test_new_cli_options():
     )
 
     try:
-        args, script_path = ContainerRunner.build_run_args(config)
+        # Create a test script path for build_run_args
+        test_script_path = "/tmp/test_entrypoint.sh"
+        args = ContainerRunner.build_run_args(config, test_script_path)
 
         # Test environment variables
         assert "--env=TEST_VAR=hello" in args
@@ -222,12 +208,8 @@ def test_new_cli_options():
         print(f"  Network: {config.network}")
 
     finally:
-        # Cleanup temp script file
-        if "script_path" in locals():
-            try:
-                os.unlink(script_path)
-            except OSError:
-                pass
+        # No cleanup needed for test script path
+        pass
 
 
 @pytest.mark.unit
@@ -282,7 +264,6 @@ def test_sudo_entrypoint_script():
 @patch("subprocess.run")
 def test_docker_command_construction(mock_run):
     """Test that Docker commands are constructed correctly."""
-    import os
 
     mock_run.return_value.returncode = 0
 
@@ -302,7 +283,8 @@ def test_docker_command_construction(mock_run):
     )
 
     # Test argument building
-    args, script_path = ContainerRunner.build_run_args(config)
+    test_script_path = "/tmp/test_entrypoint.sh"
+    args = ContainerRunner.build_run_args(config, test_script_path)
 
     try:
         # Check command structure
@@ -313,11 +295,8 @@ def test_docker_command_construction(mock_run):
         assert "ubuntu:latest" in args
         assert f"--name={config.container_name}" in args
     finally:
-        # Cleanup temp script file
-        try:
-            os.unlink(script_path)
-        except OSError:
-            pass
+        # No cleanup needed for test script path
+        pass
 
 
 @pytest.mark.unit
@@ -377,7 +356,6 @@ def test_container_failure_handling(mock_run):
 @pytest.mark.unit
 def test_tty_detection():
     """Test TTY flag handling."""
-    import os
 
     # Test with TTY enabled
     config_with_tty = ContainerConfig(
@@ -394,14 +372,9 @@ def test_tty_detection():
         tty=True,
     )
 
-    args, script_path = ContainerRunner.build_run_args(config_with_tty)
+    test_script_path = "/tmp/test_entrypoint.sh"
+    args = ContainerRunner.build_run_args(config_with_tty, test_script_path)
     assert "-t" in args and "-i" in args
-
-    # Cleanup
-    try:
-        os.unlink(script_path)
-    except OSError:
-        pass
 
     # Test without TTY
     config_without_tty = ContainerConfig(
@@ -418,14 +391,8 @@ def test_tty_detection():
         tty=False,
     )
 
-    args, script_path = ContainerRunner.build_run_args(config_without_tty)
+    args = ContainerRunner.build_run_args(config_without_tty, test_script_path)
     assert "-t" not in args and "-i" not in args
-
-    # Cleanup
-    try:
-        os.unlink(script_path)
-    except OSError:
-        pass
 
 
 @pytest.mark.unit
@@ -459,7 +426,8 @@ def test_volume_chown_option():
         )
 
         # Test that build_run_args processes chown correctly
-        docker_args, script_path = ContainerRunner.build_run_args(config)
+        test_script_path = "/tmp/test_entrypoint.sh"
+        docker_args = ContainerRunner.build_run_args(config, test_script_path)
 
         try:
             # Check that chown was removed from volume args
@@ -482,9 +450,9 @@ def test_volume_chown_option():
             assert data_volume == "--volume=data-vol:/data:z"
             assert logs_volume == "--volume=logs:/logs:ro:z"
 
-            # Read the generated entrypoint script and check for chown commands
-            with open(script_path, "r") as f:
-                script_content = f.read()
+            # Generate entrypoint script content to check for chown commands
+            _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
+            script_content = build_entrypoint_script(config, chown_paths, verbose=False)
 
             # Should contain chown commands for cache and data, but not logs
             assert 'chown -R "$USER_ID:$GROUP_ID" "/var/cache"' in script_content
@@ -492,11 +460,8 @@ def test_volume_chown_option():
             assert 'chown -R "$USER_ID:$GROUP_ID" "/logs"' not in script_content
 
         finally:
-            # Clean up
-            try:
-                os.unlink(script_path)
-            except OSError:
-                pass
+            # No cleanup needed for test script path
+            pass
 
 
 @pytest.mark.unit
@@ -529,43 +494,31 @@ def test_entrypoint_commands():
             ),
         )
 
-        # Generate entrypoint script
-        docker_args, script_path = ContainerRunner.build_run_args(config)
+        # Generate entrypoint script content directly
+        script_content = build_entrypoint_script(config)
 
-        try:
-            # Read the generated entrypoint script
-            with open(script_path, "r") as f:
-                script_content = f.read()
+        # Should contain entrypoint commands section
+        assert "# Execute entrypoint commands" in script_content
+        assert "source /bitbake-venv/bin/activate" in script_content
+        assert "mkdir -p /var/cache/custom" in script_content
+        assert "echo 'Setup complete'" in script_content
 
-            # Should contain entrypoint commands section
-            assert "# Execute entrypoint commands" in script_content
-            assert "source /bitbake-venv/bin/activate" in script_content
-            assert "mkdir -p /var/cache/custom" in script_content
-            assert "echo 'Setup complete'" in script_content
+        # Commands should be executed before the gosu command
+        lines = script_content.split("\n")
+        entrypoint_start = None
+        gosu_line = None
 
-            # Commands should be executed before the gosu command
-            lines = script_content.split("\n")
-            entrypoint_start = None
-            gosu_line = None
+        for i, line in enumerate(lines):
+            if "# Execute entrypoint commands" in line:
+                entrypoint_start = i
+            elif "exec /gosu" in line:
+                gosu_line = i
+                break
 
-            for i, line in enumerate(lines):
-                if "# Execute entrypoint commands" in line:
-                    entrypoint_start = i
-                elif "exec /gosu" in line:
-                    gosu_line = i
-                    break
-
-            # Entrypoint commands should come before gosu
-            assert entrypoint_start is not None
-            assert gosu_line is not None
-            assert entrypoint_start < gosu_line
-
-        finally:
-            # Clean up
-            try:
-                os.unlink(script_path)
-            except OSError:
-                pass
+        # Entrypoint commands should come before gosu
+        assert entrypoint_start is not None
+        assert gosu_line is not None
+        assert entrypoint_start < gosu_line
 
 
 @pytest.mark.unit
@@ -595,24 +548,17 @@ def test_ulimits_configuration():
         )
 
         # Test that build_run_args generates ulimit flags
-        docker_args, script_path = ContainerRunner.build_run_args(config)
+        test_script_path = "/tmp/test_entrypoint.sh"
+        docker_args = ContainerRunner.build_run_args(config, test_script_path)
 
-        try:
-            # Check that ulimit flags are present
-            ulimit_args = [arg for arg in docker_args if arg.startswith("--ulimit=")]
+        # Check that ulimit flags are present
+        ulimit_args = [arg for arg in docker_args if arg.startswith("--ulimit=")]
 
-            # Should have 3 ulimit flags
-            assert len(ulimit_args) == 3
-            assert "--ulimit=nofile=1024" in ulimit_args
-            assert "--ulimit=nproc=2048" in ulimit_args
-            assert "--ulimit=core=0" in ulimit_args
-
-        finally:
-            # Clean up
-            try:
-                os.unlink(script_path)
-            except OSError:
-                pass
+        # Should have 3 ulimit flags
+        assert len(ulimit_args) == 3
+        assert "--ulimit=nofile=1024" in ulimit_args
+        assert "--ulimit=nproc=2048" in ulimit_args
+        assert "--ulimit=core=0" in ulimit_args
 
 
 @pytest.mark.skip(reason="Test environment interference - TODO: fix isolation")
