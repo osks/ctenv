@@ -12,7 +12,6 @@ license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 classifiers = []
 dependencies = [
-    "click",
 ]
 dynamic = ["version"]
 
