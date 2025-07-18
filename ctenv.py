@@ -306,60 +306,26 @@ def load_project_config(start_dir: Optional[Path] = None) -> Optional[ConfigFile
 
 @dataclass
 class CtenvConfig:
-    """Represents the complete ctenv configuration from multiple sources.
+    """Represents the computed ctenv configuration.
 
-    Config files are stored in priority order (highest to lowest):
-    - Explicit config file (if provided via --config)
+    Contains pre-computed defaults and contexts from all config sources.
+    Config sources are processed in priority order during load():
+    - Explicit config files (if provided via --config)
     - Project config (./.ctenv/ctenv.toml found via upward search)
     - User config (~/.ctenv/ctenv.toml)
-    - Builtin defaults
+    - System defaults
     """
 
-    config_files: list[ConfigFile]  # Ordered by priority (highest first)
-
-    @property
-    def source_files(self) -> list[Path]:
-        """Get list of source files that were loaded."""
-        files = []
-        for config_file in self.config_files:
-            if config_file.path:
-                files.append(config_file.path)
-        return files
+    defaults: Dict[str, Any]  # Computed defaults (system + first file defaults found)
+    contexts: Dict[str, Dict[str, Any]]  # All contexts from all files (higher priority wins)
+    source_files: List[Path]  # List of config files that were loaded
 
     def find_context(self, context_name: str) -> Optional[Dict[str, Any]]:
-        """Find context in config files by priority order.
+        """Find context by name.
 
-        Returns the first context found with the given name, or None if not found.
+        Returns the context dict if found, or None if not found.
         """
-        for config_file in self.config_files:
-            if context_name in config_file.contexts:
-                return config_file.contexts[context_name]
-        return None
-
-    @property
-    def available_contexts(self) -> List[str]:
-        """Get list of all available context names across all config files."""
-        contexts = set()
-        for config_file in self.config_files:
-            contexts.update(config_file.contexts.keys())
-        return sorted(contexts)
-
-    @property
-    def computed_defaults(self) -> Dict[str, Any]:
-        """Get computed defaults using highest priority [defaults] section over system defaults.
-
-        Uses the first [defaults] section found in priority order, or system defaults if none.
-        """
-        # Start with system defaults
-        result = get_default_config_dict()
-
-        # Find the first config file with [defaults] section (highest priority wins)
-        for config_file in self.config_files:
-            if config_file.defaults:
-                result = merge_config(result, config_file.defaults)
-                break  # Stop after first [defaults] section found
-
-        return result
+        return self.contexts.get(context_name)
 
     def resolve_container_config(
         self,
@@ -369,8 +335,8 @@ class CtenvConfig:
         """Resolve a complete ContainerConfig for the given context with CLI overrides.
 
         Priority order:
-        1. Computed defaults (system defaults + merged file defaults)
-        2. Context config (first context found in priority order)
+        1. Precomputed defaults 
+        2. Context config (if specified)
         3. CLI overrides (highest priority)
 
         All merging is done with raw dicts, ContainerConfig is created only at the end.
@@ -378,18 +344,17 @@ class CtenvConfig:
         if cli_overrides is None:
             cli_overrides = {}
 
-        # Start with computed defaults (system + all file defaults merged)
-        result_dict = self.computed_defaults.copy()
+        # Start with precomputed defaults
+        result_dict = self.defaults.copy()
 
         # Layer 2: Context config (if specified)
         if context is not None:
             context_config = self.find_context(context)
             if context_config is None:
-                available = self.available_contexts
+                available = sorted(self.contexts.keys())
                 raise ValueError(f"Unknown context '{context}'. Available: {available}")
 
             result_dict = merge_config(result_dict, context_config)
-            logging.debug(f"Applied context '{context}'")
         else:
             logging.debug("No context specified")
 
@@ -401,7 +366,6 @@ class CtenvConfig:
             }
 
             result_dict = merge_config(result_dict, filtered_overrides)
-            logging.debug(f"Applied CLI overrides: {list(filtered_overrides.keys())}")
 
         # Create ContainerConfig from complete merged dict
         return ContainerConfig.from_dict(result_dict)
@@ -413,22 +377,24 @@ class CtenvConfig:
         explicit_config_files: Optional[list[Path]] = None,
         start_dir: Optional[Path] = None,
     ) -> "CtenvConfig":
-        """Load configuration from files in priority order.
+        """Load and compute configuration from files in priority order.
 
         Priority order (highest to lowest):
         1. Explicit config files (in order specified via --config)
         2. Project config (./.ctenv/ctenv.toml)
         3. User config (~/.ctenv/ctenv.toml)
-
-        Note: Builtin defaults are handled separately in resolve_container_config()
+        4. System defaults
         """
         config_files = []
+        source_files = []
 
         # Highest priority: explicit config files (in order)
         if explicit_config_files:
             for config_file in explicit_config_files:
                 try:
-                    config_files.append(ConfigFile.from_file(config_file))
+                    loaded_config = ConfigFile.from_file(config_file)
+                    config_files.append(loaded_config)
+                    source_files.append(config_file)
                 except Exception as e:
                     raise ValueError(
                         f"Failed to load explicit config file {config_file}: {e}"
@@ -439,13 +405,34 @@ class CtenvConfig:
             project_config = load_project_config(start_dir)
             if project_config:
                 config_files.append(project_config)
+                if project_config.path:
+                    source_files.append(project_config.path)
 
         # User config
         user_config = load_user_config(start_dir)
         if user_config:
             config_files.append(user_config)
+            if user_config.path:
+                source_files.append(user_config.path)
 
-        return cls(config_files=config_files)
+        # Compute defaults (system defaults + first file defaults found)
+        defaults = get_default_config_dict()
+        for config_file in config_files:
+            if config_file.defaults:
+                defaults = merge_config(defaults, config_file.defaults)
+                break  # Stop after first [defaults] section found
+
+        # Compute contexts (merge all contexts, higher priority wins)
+        contexts = {}
+        # Process in reverse order so higher priority overrides
+        for config_file in reversed(config_files):
+            contexts.update(config_file.contexts)
+
+        return cls(
+            defaults=defaults,
+            contexts=contexts,
+            source_files=source_files
+        )
 
 
 @dataclass
