@@ -578,7 +578,7 @@ env = ["NODE_ENV=development"]
         args.sudo = None
         args.network = None
         args.gosu_path = str(gosu_path)
-        args.entrypoint_cmd = None
+        args.post_start_cmd = None
         
         # Mock docker execution to capture the config
         captured_config = {}

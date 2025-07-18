@@ -342,7 +342,7 @@ class ContainerConfig:
     # Options
     env_vars: tuple[str, ...] = ()
     volumes: tuple[str, ...] = ()
-    entrypoint_commands: tuple[str, ...] = ()
+    post_start_cmds: tuple[str, ...] = ()
     ulimits: Dict[str, Any] = None
     sudo: bool = False
     network: Optional[str] = None
@@ -406,7 +406,7 @@ class ContainerConfig:
             "container_name": None,
             "env": [],
             "volumes": [],
-            "entrypoint_commands": [],
+            "post_start_cmds": [],
             "ulimits": None,
             "sudo": False,
             "network": None,
@@ -480,9 +480,9 @@ class ContainerConfig:
             # Options (merged lists: config file + CLI additions)
             env_vars=tuple(get_merged_list_value("env", "env_vars")),
             volumes=tuple(get_merged_list_value("volumes", "volumes")),
-            entrypoint_commands=tuple(
-                list(get_config_value("entrypoint_commands") or [])
-                + list(cli_options.get("entrypoint_cmd") or [])
+            post_start_cmds=tuple(
+                list(get_config_value("post_start_cmds") or [])
+                + list(cli_options.get("post_start_cmd") or [])
             ),
             ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo"),
@@ -520,24 +520,24 @@ log "Checking volumes for ownership fixes"
 log "No chown-enabled volumes configured"
 """
 
-    # Build entrypoint commands section
-    entrypoint_commands = ""
-    if config.entrypoint_commands:
-        entrypoint_commands = """
-# Execute entrypoint commands
-log "Executing entrypoint commands"
+    # Build post-start commands section
+    post_start_commands = ""
+    if config.post_start_cmds:
+        post_start_commands = """
+# Execute post-start commands
+log "Executing post-start commands"
 """
-        for cmd in config.entrypoint_commands:
+        for cmd in config.post_start_cmds:
             # Escape quotes in the command
             escaped_cmd = cmd.replace('"', '\\"')
-            entrypoint_commands += (
-                f'log "Executing entrypoint command: {escaped_cmd}"\n'
+            post_start_commands += (
+                f'log "Executing post-start command: {escaped_cmd}"\n'
             )
-            entrypoint_commands += f"{cmd}\n"
+            post_start_commands += f"{cmd}\n"
     else:
-        entrypoint_commands = """
-# No entrypoint commands configured
-log "No entrypoint commands to execute"
+        post_start_commands = """
+# No post-start commands configured
+log "No post-start commands to execute"
 """
 
     script = f"""#!/bin/bash
@@ -602,7 +602,7 @@ log "Setting ownership of home directory"
 chown "$USER_NAME" "$HOME"
 
 {chown_commands}
-{entrypoint_commands}
+{post_start_commands}
 
 # Setup sudo if requested
 if [ "$ADD_SUDO" = "1" ]; then
@@ -933,7 +933,7 @@ def cmd_run(args):
             sudo=args.sudo,
             network=args.network,
             gosu_path=args.gosu_path,
-            entrypoint_cmd=args.entrypoint_cmd if args.entrypoint_cmd else None,
+            post_start_cmd=getattr(args, 'post_start_cmd', None),
             tty=sys.stdin.isatty(),
         )
     except ValueError as e:
@@ -1164,7 +1164,7 @@ Examples:
     ctenv run -- ls -la               # Use defaults, run ls -la
     ctenv run --image alpine dev      # Override image, use dev context
     ctenv run --dry-run dev           # Show Docker command without running
-    ctenv run --entrypoint-cmd "npm install" --entrypoint-cmd "npm run build" # Run extra commands before main command
+    ctenv run --post-start-cmd "npm install" --post-start-cmd "npm run build" # Run extra commands after container starts
 
 Note: Use '--' to separate commands from context/options.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1209,9 +1209,9 @@ Note: Use '--' to separate commands from context/options.""",
         help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
     )
     run_parser.add_argument(
-        "--entrypoint-cmd",
+        "--post-start-cmd",
         action="append",
-        help="Add extra command to run before main command (can be used multiple times)",
+        help="Add extra command to run after container starts (can be used multiple times)",
     )
 
     # config subcommand group

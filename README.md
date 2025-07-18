@@ -18,8 +18,9 @@ ctenv is somewhat related to `devcontainers`, but has a much smaller
 scope. It can start a new container directly for a command, rather than
 keeping a container running in the background.
 
-- Makes sure that the container has a user that has the same name
-  and UID/GID, so that permissions in mounted volumes match.
+- Makes sure that the container has a user that has the same name,
+  same UID/GID and same path to HOME, so that permissions in mounted
+  volumes match.
 
 - Optionally chown:s mounted volumes (similar to Podman's `:U`
   option to volumes) so they match the UID/GID.
@@ -28,6 +29,16 @@ keeping a container running in the background.
   created and what should be mounted, for easily starting different
   containers.
 
+## Installation
+
+Requirements: Python 3.11
+
+With `uv` you can just run `uv tool ctenv` to use it directly.
+
+Install this tool using `pip`:
+```bash
+pip install ctenv
+```
 
 
 ## Design
@@ -41,13 +52,57 @@ Implemented in a single Python file only depending on Python 3.11. Can
 be used by itself, or installed via `uv` or `pip` (etc).
 
 
-## Installation
+## Use cases
 
-With `uv` you can just run `uv tool ctenv` to use it directly.
+### Use case: Claude Code
 
-Install this tool using `pip`:
-```bash
-pip install ctenv
+Example config:
+```toml
+[contexts.claude]
+image = "node:20"
+network = "bridge"
+entrypoint_commands = ["npm install -g @anthropic-ai/claude-code"]
+volumes = ["${env:HOME}/.claude.json:${env:HOME}/.claude.json", "${env:HOME}/.claude:${env:HOME}/.claude"]
+```
+
+Note: Be aware that on macOS Claude Code seem to store the credentials
+in the keychain if you have a Claude account. The credentials therefor
+won't be available in the container. But if you go through /login in
+the container, it will write them to `~/.claude/.credentials.json`
+instead.
+
+
+### Use case: Build system container
+
+The build system it was originally written for contained the build
+environment in a container image. An internal script similar to ctenv
+was used to run the build. ctenv could then be used to start a shell
+or run other commands in the same environment as the build system.
+
+That build system also used a volume for storing a cache and the
+cached files contained hard-coded paths, so it was important that the
+environment in the container was as similar as possible to the regular
+user environment outside the container. For sharing the cache between
+different clones of the repository, the repository needed to be
+mounted at a fixed path. The caching is also the reason for matching
+the path to HOME (which is otherwise different on for example macOS vs
+typical Linux distributions).
+
+The ctenv config could look something like this, to show which
+features that were used:
+
+```toml
+[contexts.build-system]
+image = "registry.company.internal/build-system:v1"
+env = [
+    "BB_NUMBER_THREADS",
+    "CACHE_MIRROR=http://build-cache.company.internal/",
+    "BUILD_CACHES_DIR=/var/cache/build-caches/image-${image|slug}",
+]
+volumes = [
+    "build-caches-user-${USER}:/var/cache/build-caches:rw,chown"
+]
+entrypoint_commands = ["source /venv/bin/activate"]
 ```
 
 

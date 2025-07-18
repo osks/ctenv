@@ -465,8 +465,8 @@ def test_volume_chown_option():
 
 
 @pytest.mark.unit
-def test_entrypoint_commands():
-    """Test entrypoint commands execution in container script."""
+def test_post_start_commands():
+    """Test post-start commands execution in container script."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -475,7 +475,7 @@ def test_entrypoint_commands():
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        # Test config with entrypoint commands
+        # Test config with post-start commands
         config = ContainerConfig(
             user_name="testuser",
             user_id=1000,
@@ -487,7 +487,7 @@ def test_entrypoint_commands():
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
-            entrypoint_commands=(
+            post_start_cmds=(
                 "source /bitbake-venv/bin/activate",
                 "mkdir -p /var/cache/custom",
                 "echo 'Setup complete'",
@@ -497,28 +497,28 @@ def test_entrypoint_commands():
         # Generate entrypoint script content directly
         script_content = build_entrypoint_script(config)
 
-        # Should contain entrypoint commands section
-        assert "# Execute entrypoint commands" in script_content
+        # Should contain post-start commands section
+        assert "# Execute post-start commands" in script_content
         assert "source /bitbake-venv/bin/activate" in script_content
         assert "mkdir -p /var/cache/custom" in script_content
         assert "echo 'Setup complete'" in script_content
 
         # Commands should be executed before the gosu command
         lines = script_content.split("\n")
-        entrypoint_start = None
+        post_start_start = None
         gosu_line = None
 
         for i, line in enumerate(lines):
-            if "# Execute entrypoint commands" in line:
-                entrypoint_start = i
+            if "# Execute post-start commands" in line:
+                post_start_start = i
             elif "exec /gosu" in line:
                 gosu_line = i
                 break
 
-        # Entrypoint commands should come before gosu
-        assert entrypoint_start is not None
+        # Post-start commands should come before gosu
+        assert post_start_start is not None
         assert gosu_line is not None
-        assert entrypoint_start < gosu_line
+        assert post_start_start < gosu_line
 
 
 @pytest.mark.unit

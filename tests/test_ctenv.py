@@ -223,27 +223,27 @@ def test_stdout_stderr_separation():
 
 
 @pytest.mark.unit
-def test_entrypoint_cmd_cli_option():
-    """Test --entrypoint-extra CLI option."""
-    # Test that CLI entrypoint extra commands are included in the config
+def test_post_start_cmd_cli_option():
+    """Test --post-start-cmd CLI option."""
+    # Test that CLI post-start extra commands are included in the config
     config = ContainerConfig.create(
-        context="default", entrypoint_cmd=["npm install", "npm run build"]
+        context="default", post_start_cmd=["npm install", "npm run build"]
     )
 
-    # Should contain the CLI entrypoint extra commands
-    assert "npm install" in config.entrypoint_commands
-    assert "npm run build" in config.entrypoint_commands
+    # Should contain the CLI post-start extra commands
+    assert "npm install" in config.post_start_cmds
+    assert "npm run build" in config.post_start_cmds
 
 
 @pytest.mark.unit
-def test_entrypoint_cmd_merging():
-    """Test that CLI entrypoint extra commands are merged with config file commands."""
+def test_post_start_cmd_merging():
+    """Test that CLI post-start extra commands are merged with config file commands."""
     import tempfile
 
-    # Create a temporary config file with entrypoint commands
+    # Create a temporary config file with post-start commands
     config_content = """
 [contexts.test]
-entrypoint_commands = ["echo config-cmd"]
+post_start_cmds = ["echo config-cmd"]
 """
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -255,16 +255,16 @@ entrypoint_commands = ["echo config-cmd"]
         config = ContainerConfig.create(
             context="test",
             config_file=config_file,
-            entrypoint_cmd=["echo cli-cmd1", "echo cli-cmd2"],
+            post_start_cmd=["echo cli-cmd1", "echo cli-cmd2"],
         )
 
         # Should contain both config file and CLI commands
-        assert "echo config-cmd" in config.entrypoint_commands
-        assert "echo cli-cmd1" in config.entrypoint_commands
-        assert "echo cli-cmd2" in config.entrypoint_commands
+        assert "echo config-cmd" in config.post_start_cmds
+        assert "echo cli-cmd1" in config.post_start_cmds
+        assert "echo cli-cmd2" in config.post_start_cmds
 
         # Config file command should come first, then CLI commands
-        commands = list(config.entrypoint_commands)
+        commands = list(config.post_start_cmds)
         assert commands.index("echo config-cmd") < commands.index("echo cli-cmd1")
 
     finally:
@@ -274,16 +274,16 @@ entrypoint_commands = ["echo config-cmd"]
 
 
 @pytest.mark.unit
-def test_entrypoint_cmd_in_generated_script():
-    """Test that entrypoint extra commands appear in generated script."""
+def test_post_start_cmd_in_generated_script():
+    """Test that post-start extra commands appear in generated script."""
     config = ContainerConfig.create(
-        context="default", entrypoint_cmd=["npm install", "npm run test"]
+        context="default", post_start_cmd=["npm install", "npm run test"]
     )
 
     script = build_entrypoint_script(config, verbose=True)
 
-    # Should contain the entrypoint commands in the script
+    # Should contain the post-start commands in the script
     assert "npm install" in script
     assert "npm run test" in script
-    assert 'log "Executing entrypoint command: npm install"' in script
-    assert 'log "Executing entrypoint command: npm run test"' in script
+    assert 'log "Executing post-start command: npm install"' in script
+    assert 'log "Executing post-start command: npm run test"' in script
