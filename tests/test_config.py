@@ -604,6 +604,134 @@ env = ["NODE_ENV=development"]
 
 
 @pytest.mark.unit
+def test_container_config_get_defaults():
+    """Test that ContainerConfig.get_defaults() returns the expected default values."""
+    from ctenv import ContainerConfig
+    import os
+    import pwd
+    import grp
+    from pathlib import Path
+    
+    defaults = ContainerConfig.get_defaults()
+    
+    # Check that it returns a ContainerConfig instance
+    assert isinstance(defaults, ContainerConfig)
+    
+    # Check that user identity matches current user
+    user_info = pwd.getpwuid(os.getuid())
+    group_info = grp.getgrgid(os.getgid())
+    
+    assert defaults.user_name == user_info.pw_name
+    assert defaults.user_id == user_info.pw_uid
+    assert defaults.group_name == group_info.gr_name
+    assert defaults.group_id == group_info.gr_gid
+    assert defaults.user_home == user_info.pw_dir
+    
+    # Check container settings defaults
+    assert defaults.image == "ubuntu:latest"
+    assert defaults.command == "bash"
+    assert defaults.container_name is None
+    assert defaults.working_dir == Path(os.getcwd())
+    assert defaults.env_vars == ()
+    assert defaults.volumes == ()
+    assert defaults.post_start_cmds == ()
+    assert defaults.ulimits is None
+    assert defaults.sudo is False
+    assert defaults.network is None
+    assert defaults.tty is False
+    # gosu_path should be a Path object if found, or None if not found
+    assert defaults.gosu_path is None or isinstance(defaults.gosu_path, Path)
+
+
+@pytest.mark.unit
+def test_working_dir_config():
+    """Test that working_dir can be configured via CLI and config file."""
+    import tempfile
+    import os
+    from ctenv import ContainerConfig
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        
+        # Create config file with working_dir
+        config_file = tmpdir / "ctenv.toml"
+        config_content = """
+[contexts.test]
+image = "alpine:latest"
+working_dir = "/custom/path"
+"""
+        config_file.write_text(config_content)
+        
+        # Create fake gosu
+        gosu_path = tmpdir / "gosu"
+        gosu_path.write_text('#!/bin/sh\nexec "$@"')
+        gosu_path.chmod(0o755)
+        
+        # Test config file working_dir
+        config = ContainerConfig.create(context="test", config_file=str(config_file))
+        assert config.working_dir == Path("/custom/path")
+        
+        # Test CLI override
+        config_cli = ContainerConfig.create(
+            context="test", 
+            config_file=str(config_file),
+            dir="/cli/override"
+        )
+        assert config_cli.working_dir == Path("/cli/override")
+        
+        # Test default (no config file, no CLI)
+        config_default = ContainerConfig.create()
+        assert config_default.working_dir == Path(os.getcwd())
+
+
+@pytest.mark.unit
+def test_gosu_path_config():
+    """Test that gosu_path can be configured via CLI and config file."""
+    import tempfile
+    import os
+    from ctenv import ContainerConfig
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        
+        # Create a fake gosu binary in the temp directory
+        fake_gosu = tmpdir / "fake_gosu"
+        fake_gosu.write_text('#!/bin/sh\nexec "$@"')
+        fake_gosu.chmod(0o755)
+        
+        # Create config file with gosu_path
+        config_file = tmpdir / "ctenv.toml"
+        config_content = f"""
+[contexts.test]
+image = "alpine:latest"
+gosu_path = "{fake_gosu}"
+"""
+        config_file.write_text(config_content)
+        
+        # Create another fake gosu for the temp directory itself
+        # (so tests can run even if system doesn't have gosu)
+        temp_gosu = tmpdir / "gosu"
+        temp_gosu.write_text('#!/bin/sh\nexec "$@"')
+        temp_gosu.chmod(0o755)
+        
+        # Test config file gosu_path
+        config = ContainerConfig.create(context="test", config_file=str(config_file))
+        assert config.gosu_path == fake_gosu
+        
+        # Test CLI override
+        cli_gosu = tmpdir / "cli_gosu"
+        cli_gosu.write_text('#!/bin/sh\nexec "$@"')
+        cli_gosu.chmod(0o755)
+        
+        config_cli = ContainerConfig.create(
+            context="test", 
+            config_file=str(config_file),
+            gosu_path=str(cli_gosu)
+        )
+        assert config_cli.gosu_path == cli_gosu
+
+
+@pytest.mark.unit
 def test_volume_options_preserved():
     """Test that volume options like :ro are preserved and :z is properly merged."""
     from ctenv import ContainerRunner
