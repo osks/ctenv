@@ -465,9 +465,9 @@ class ContainerConfig:
     container_name: Optional[str] = None
 
     # Options (optional - None/empty means "not specified")
-    env: Optional[tuple[str, ...]] = None
-    volumes: Optional[tuple[str, ...]] = None
-    post_start_cmds: Optional[tuple[str, ...]] = None
+    env: Optional[list[str]] = None
+    volumes: Optional[list[str]] = None
+    post_start_cmds: Optional[list[str]] = None
     ulimits: Optional[Dict[str, Any]] = None
     sudo: Optional[bool] = None
     network: Optional[str] = None
@@ -485,82 +485,29 @@ class ContainerConfig:
         self, variables: Optional[Dict[str, str]] = None
     ) -> "ContainerConfig":
         """Return a new ContainerConfig with template variables resolved."""
+        from dataclasses import asdict
+        
         if variables is None:
             variables = {
                 "USER": getpass.getuser(),
                 "image": self.image or "",
             }
-
-        # Apply substitution to string fields (only if not None)
-        resolved_image = (
-            substitute_template_variables(self.image, variables) if self.image else None
-        )
-        resolved_command = (
-            substitute_template_variables(self.command, variables)
-            if self.command
-            else None
-        )
-        resolved_container_name = None
-        if self.container_name:
-            resolved_container_name = substitute_template_variables(
-                self.container_name, variables
-            )
-
-        # Apply substitution to list fields (only if not None)
-        resolved_env = None
-        if self.env is not None:
-            resolved_env = tuple(
-                substitute_template_variables(var, variables)
-                if isinstance(var, str)
-                else var
-                for var in self.env
-            )
-
-        resolved_volumes = None
-        if self.volumes is not None:
-            resolved_volumes = tuple(
-                substitute_template_variables(vol, variables)
-                if isinstance(vol, str)
-                else vol
-                for vol in self.volumes
-            )
-
-        resolved_post_start_cmds = None
-        if self.post_start_cmds is not None:
-            resolved_post_start_cmds = tuple(
-                substitute_template_variables(cmd, variables)
-                if isinstance(cmd, str)
-                else cmd
-                for cmd in self.post_start_cmds
-            )
-
-        # Create new ContainerConfig with resolved values
-        return ContainerConfig(
-            # User identity (no templates)
-            user_name=self.user_name,
-            user_id=self.user_id,
-            group_name=self.group_name,
-            group_id=self.group_id,
-            user_home=self.user_home,
-            # Paths (no templates)
-            working_dir=self.working_dir,
-            gosu_path=self.gosu_path,
-            # Container settings (with templates resolved)
-            image=resolved_image,
-            command=resolved_command,
-            container_name=resolved_container_name,
-            # Mount points (no templates)
-            working_dir_mount=self.working_dir_mount,
-            gosu_mount=self.gosu_mount,
-            # Options (with templates resolved)
-            env=resolved_env,
-            volumes=resolved_volumes,
-            post_start_cmds=resolved_post_start_cmds,
-            ulimits=self.ulimits,
-            sudo=self.sudo,
-            network=self.network,
-            tty=self.tty,
-        )
+        
+        # Convert to dict
+        config_dict = asdict(self)
+        
+        # Apply templates to appropriate fields
+        for key, value in config_dict.items():
+            if isinstance(value, str):
+                config_dict[key] = substitute_template_variables(value, variables)
+            elif isinstance(value, (list, tuple)) and value:
+                config_dict[key] = [
+                    substitute_template_variables(item, variables) if isinstance(item, str) else item
+                    for item in value
+                ]
+        
+        # Convert back
+        return ContainerConfig.from_dict(config_dict)
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "ContainerConfig":
@@ -579,7 +526,7 @@ class ContainerConfig:
                 kwargs[key] = Path(value) if value else None
             # Handle list fields  
             elif key in ("env", "volumes", "post_start_cmds") and isinstance(value, (list, tuple)):
-                kwargs[key] = tuple(value)
+                kwargs[key] = list(value)
             # Everything else passes through
             else:
                 kwargs[key] = value

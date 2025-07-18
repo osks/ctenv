@@ -124,7 +124,7 @@ def test_resolve_config_values_context():
     assert resolved.image == "node:18"
     assert resolved.network == "bridge"
     assert resolved.sudo is False
-    assert resolved.env == ("DEBUG=1",)
+    assert resolved.env == ["DEBUG=1"]
 
 
 @pytest.mark.unit
@@ -227,7 +227,7 @@ env = ["CI=true"]
         # Should use context values
         assert config.image == "alpine:latest"
         assert config.network == "bridge"
-        assert config.env == ("CI=true",)
+        assert config.env == ["CI=true"]
 
 
 @pytest.mark.unit
@@ -441,13 +441,13 @@ env = ["NODE_ENV=development", "DEBUG=true"]
         config = ctenv_config.resolve_container_config(context="dev")
 
         # Check that volumes are loaded correctly
-        assert config.volumes == (
+        assert config.volumes == [
             "./node_modules:/app/node_modules",
             "./src:/app/src:ro",
-        )
+        ]
         assert config.image == "node:18"
         assert config.network == "bridge"
-        assert config.env == ("NODE_ENV=development", "DEBUG=true")
+        assert config.env == ["NODE_ENV=development", "DEBUG=true"]
 
 
 @pytest.mark.unit
@@ -484,17 +484,17 @@ env = ["NODE_ENV=development"]
         )
 
         # CLI volumes should be appended to config file volumes
-        assert config.volumes == (
+        assert config.volumes == [
             "./node_modules:/app/node_modules",
             "./data:/data",
             "./cache:/cache",
-        )
+        ]
         # CLI env vars should be appended to config file env vars
-        assert config.env == (
+        assert config.env == [
             "NODE_ENV=development",
             "DEBUG=true",
             "LOG_LEVEL=info",
-        )
+        ]
         assert config.image == "node:18"  # Other settings preserved
 
 
@@ -527,8 +527,8 @@ image = "alpine:latest"
         )
 
         # Should only contain CLI volumes/env
-        assert config.volumes == ("./data:/data",)
-        assert config.env == ("TEST=true",)
+        assert config.volumes == ["./data:/data"]
+        assert config.env == ["TEST=true"]
         assert config.image == "alpine:latest"
 
 
@@ -634,11 +634,11 @@ env = ["NODE_ENV=development"]
             cmd_run(args)
 
         # Verify config file volumes were preserved (not overridden by empty CLI list)
-        assert captured_config["volumes"] == (
+        assert captured_config["volumes"] == [
             "./node_modules:/app/node_modules",
             "./data:/data",
-        )
-        assert captured_config["env"] == ("NODE_ENV=development",)
+        ]
+        assert captured_config["env"] == ["NODE_ENV=development"]
         assert captured_config["image"] == "node:18"
 
 
