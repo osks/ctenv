@@ -317,7 +317,9 @@ class CtenvConfig:
     """
 
     defaults: Dict[str, Any]  # Computed defaults (system + first file defaults found)
-    contexts: Dict[str, Dict[str, Any]]  # All contexts from all files (higher priority wins)
+    contexts: Dict[
+        str, Dict[str, Any]
+    ]  # All contexts from all files (higher priority wins)
     source_files: List[Path]  # List of config files that were loaded
 
     def find_context(self, context_name: str) -> Optional[Dict[str, Any]]:
@@ -335,7 +337,7 @@ class CtenvConfig:
         """Resolve a complete ContainerConfig for the given context with CLI overrides.
 
         Priority order:
-        1. Precomputed defaults 
+        1. Precomputed defaults
         2. Context config (if specified)
         3. CLI overrides (highest priority)
 
@@ -369,7 +371,6 @@ class CtenvConfig:
 
         # Create ContainerConfig from complete merged dict
         return ContainerConfig.from_dict(result_dict)
-
 
     @classmethod
     def load(
@@ -428,11 +429,7 @@ class CtenvConfig:
         for config_file in reversed(config_files):
             contexts.update(config_file.contexts)
 
-        return cls(
-            defaults=defaults,
-            contexts=contexts,
-            source_files=source_files
-        )
+        return cls(defaults=defaults, contexts=contexts, source_files=source_files)
 
 
 @dataclass
@@ -486,26 +483,28 @@ class ContainerConfig:
     ) -> "ContainerConfig":
         """Return a new ContainerConfig with template variables resolved."""
         from dataclasses import asdict
-        
+
         if variables is None:
             variables = {
                 "USER": getpass.getuser(),
                 "image": self.image or "",
             }
-        
+
         # Convert to dict
         config_dict = asdict(self)
-        
+
         # Apply templates to appropriate fields
         for key, value in config_dict.items():
             if isinstance(value, str):
                 config_dict[key] = substitute_template_variables(value, variables)
             elif isinstance(value, (list, tuple)) and value:
                 config_dict[key] = [
-                    substitute_template_variables(item, variables) if isinstance(item, str) else item
+                    substitute_template_variables(item, variables)
+                    if isinstance(item, str)
+                    else item
                     for item in value
                 ]
-        
+
         # Convert back
         return ContainerConfig.from_dict(config_dict)
 
@@ -516,21 +515,23 @@ class ContainerConfig:
         No fallback logic - expects a complete dict with all required fields.
         """
         kwargs = {}
-        
+
         for key, value in config_dict.items():
             if value is None:
                 continue
-                
+
             # Handle path fields
             if key in ("working_dir", "gosu_path") and isinstance(value, str):
                 kwargs[key] = Path(value) if value else None
-            # Handle list fields  
-            elif key in ("env", "volumes", "post_start_cmds") and isinstance(value, (list, tuple)):
+            # Handle list fields
+            elif key in ("env", "volumes", "post_start_cmds") and isinstance(
+                value, (list, tuple)
+            ):
                 kwargs[key] = list(value)
             # Everything else passes through
             else:
                 kwargs[key] = value
-                
+
         return cls(**kwargs)
 
 

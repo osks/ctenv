@@ -9,17 +9,13 @@ from ctenv import create_parser, cmd_run
 def create_test_ctenv_config(contexts, defaults=None):
     """Helper to create CtenvConfig for testing."""
     from ctenv import CtenvConfig, get_default_config_dict, merge_config
-    
+
     # Compute defaults (system defaults + file defaults if any)
     computed_defaults = get_default_config_dict()
     if defaults:
         computed_defaults = merge_config(computed_defaults, defaults)
-    
-    return CtenvConfig(
-        defaults=computed_defaults,
-        contexts=contexts,
-        source_files=[]
-    )
+
+    return CtenvConfig(defaults=computed_defaults, contexts=contexts, source_files=[])
 
 
 @pytest.mark.unit
