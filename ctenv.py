@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run -q --script
 #
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.10"
 # dependencies = []
 # ///
 
@@ -21,15 +21,18 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 import urllib.request
 import urllib.error
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 
-def substitute_template_variables(text: str, variables: dict[str, str]) -> str:
+def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
     """Substitute ${var} and ${var|filter} patterns in text."""
     pattern = r"\$\{([^}|]+)(?:\|([^}]+))?\}"
 
@@ -53,7 +56,7 @@ def substitute_template_variables(text: str, variables: dict[str, str]) -> str:
     return re.sub(pattern, replace_match, text)
 
 
-def substitute_in_context(context_data: dict, variables: dict[str, str]) -> dict:
+def substitute_in_context(context_data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
     """Apply variable substitution to all string values in context."""
     result = {}
     for key, value in context_data.items():
@@ -372,7 +375,7 @@ class CtenvConfig:
     @classmethod
     def load(
         cls,
-        explicit_config_files: Optional[list[Path]] = None,
+        explicit_config_files: Optional[List[Path]] = None,
         start_dir: Optional[Path] = None,
     ) -> "CtenvConfig":
         """Load and compute configuration from files in priority order.
@@ -453,9 +456,9 @@ class ContainerConfig:
     container_name: Optional[str] = None
 
     # Options (optional - None/empty means "not specified")
-    env: Optional[list[str]] = None
-    volumes: Optional[list[str]] = None
-    post_start_cmds: Optional[list[str]] = None
+    env: Optional[List[str]] = None
+    volumes: Optional[List[str]] = None
+    post_start_cmds: Optional[List[str]] = None
     ulimits: Optional[Dict[str, Any]] = None
     sudo: Optional[bool] = None
     network: Optional[str] = None
@@ -527,7 +530,7 @@ class ContainerConfig:
 
 
 def build_entrypoint_script(
-    config: ContainerConfig, chown_paths: list[str] = None, verbose: bool = False
+    config: ContainerConfig, chown_paths: List[str] = None, verbose: bool = False
 ) -> str:
     """Generate bash script for container entrypoint."""
     chown_paths = chown_paths or []
@@ -675,8 +678,8 @@ class ContainerRunner:
 
     @staticmethod
     def parse_volumes(
-        volumes: Optional[tuple[str, ...]],
-    ) -> tuple[list[str], list[str]]:
+        volumes: Optional[Tuple[str, ...]],
+    ) -> Tuple[List[str], List[str]]:
         """Parse volume strings and extract chown paths.
 
         Returns:
@@ -730,7 +733,7 @@ class ContainerRunner:
     @staticmethod
     def build_run_args(
         config: ContainerConfig, entrypoint_script_path: str, verbose: bool = False
-    ) -> list[str]:
+    ) -> List[str]:
         """Build Docker run arguments with provided script path."""
         logging.debug("Building Docker run arguments")
 
