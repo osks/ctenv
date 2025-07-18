@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
 try:
     import tomllib
 except ImportError:
@@ -56,7 +57,9 @@ def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
     return re.sub(pattern, replace_match, text)
 
 
-def substitute_in_context(context_data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
+def substitute_in_context(
+    context_data: Dict[str, Any], variables: Dict[str, str]
+) -> Dict[str, Any]:
     """Apply variable substitution to all string values in context."""
     result = {}
     for key, value in context_data.items():
@@ -320,7 +323,9 @@ class CtenvConfig:
     """
 
     defaults: Dict[str, Any]  # Computed defaults (system + first file defaults found)
-    contexts: Dict[str, Dict[str, Any]]  # All contexts from all files (higher priority wins)
+    contexts: Dict[
+        str, Dict[str, Any]
+    ]  # All contexts from all files (higher priority wins)
 
     def find_context(self, context_name: str) -> Optional[Dict[str, Any]]:
         """Find context by name.

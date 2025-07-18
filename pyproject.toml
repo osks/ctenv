@@ -9,7 +9,7 @@ readme = "README.md"
 authors = [{name = "Oskar Skoog", email = "oskar@osd.se"}]
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 classifiers = []
 dependencies = [
     "tomli; python_version < '3.11'",

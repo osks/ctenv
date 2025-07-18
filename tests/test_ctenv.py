@@ -37,6 +37,7 @@ def test_config_user_detection():
         )
 
     import getpass
+
     assert config.user_name == getpass.getuser()
     assert config.user_id == os.getuid()
     assert config.group_id == os.getgid()
