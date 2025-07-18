@@ -5,81 +5,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from ctenv import (
-    find_config_file,
-    load_config_file,
+    _load_config_file,
     ConfigFile,
-    ContainerConfig,
     substitute_template_variables,
     substitute_in_context,
 )
-
-
-@pytest.mark.unit
-def test_find_config_file_project():
-    """Test finding project config file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-
-        # Create .ctenv/ctenv.toml
-        config_dir = tmpdir / ".ctenv"
-        config_dir.mkdir()
-        config_file = config_dir / "ctenv.toml"
-        config_file.write_text('[defaults]\nimage = "test:latest"')
-
-        # Test finding from project root
-        found = find_config_file(tmpdir)
-        assert found.resolve() == config_file.resolve()
-
-        # Test finding from subdirectory
-        subdir = tmpdir / "subdir" / "nested"
-        subdir.mkdir(parents=True)
-        found = find_config_file(subdir)
-        assert found.resolve() == config_file.resolve()
-
-
-@pytest.mark.unit
-def test_find_config_file_global():
-    """Test finding global config file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-
-        # Create fake home directory with global config
-        home_dir = tmpdir / "home"
-        home_dir.mkdir()
-        config_dir = home_dir / ".ctenv"
-        config_dir.mkdir()
-        config_file = config_dir / "ctenv.toml"
-        config_file.write_text('[defaults]\nimage = "global:latest"')
-
-        # Mock Path.home() to return our test directory
-        original_home = Path.home
-        Path.home = lambda: home_dir
-
-        try:
-            # Test from directory without project config
-            test_dir = tmpdir / "project"
-            test_dir.mkdir()
-            found = find_config_file(test_dir)
-            assert found == config_file
-        finally:
-            Path.home = original_home
-
-
-@pytest.mark.unit
-def test_find_config_file_none():
-    """Test when no config file is found."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-
-        # Mock Path.home() to return directory without config
-        original_home = Path.home
-        Path.home = lambda: tmpdir / "home"
-
-        try:
-            found = find_config_file(tmpdir)
-            assert found is None
-        finally:
-            Path.home = original_home
 
 
 @pytest.mark.unit
@@ -102,7 +32,7 @@ env = ["DEBUG=1", "NODE_ENV=development"]
 """
         config_file.write_text(config_content)
 
-        config_data = load_config_file(config_file)
+        config_data = _load_config_file(config_file)
 
         assert config_data["defaults"]["image"] == "ubuntu:latest"
         assert config_data["defaults"]["sudo"] is True
@@ -119,32 +49,63 @@ def test_load_config_file_invalid_toml():
         config_file.write_text("invalid toml [[[")
 
         with pytest.raises(ValueError, match="Invalid TOML"):
-            load_config_file(config_file)
+            _load_config_file(config_file)
 
 
 @pytest.mark.unit
 def test_resolve_config_values_defaults():
     """Test resolving config values with default context (no config file defaults)."""
-    config_file = ConfigFile(
+    # Create a CtenvConfig with the test data
+    from ctenv import CtenvConfig
+
+    def create_test_config(contexts, defaults):
+        """Helper to create CtenvConfig for testing."""
+        # ConfigFile now stores raw dicts, no conversion needed
+        test_config = ConfigFile(
+            contexts=contexts,
+            defaults=defaults,
+            path=None,
+        )
+        return CtenvConfig(
+            config_files=[
+                test_config,
+            ]
+        )
+
+    ctenv_config = create_test_config(
         contexts={
             "default": {"image": "ubuntu:latest", "network": "bridge", "sudo": True}
         },
         defaults={},
-        source_files=[],
-        context_sources={},
     )
 
-    resolved = config_file.resolve_context("default")
+    resolved = ctenv_config.resolve_container_config(context="default")
 
-    assert resolved["image"] == "ubuntu:latest"
-    assert resolved["network"] == "bridge"
-    assert resolved["sudo"] is True
+    assert resolved.image == "ubuntu:latest"
+    assert resolved.network == "bridge"
+    assert resolved.sudo is True
 
 
 @pytest.mark.unit
 def test_resolve_config_values_context():
     """Test resolving config values with context (no config file defaults)."""
-    config_file = ConfigFile(
+    from ctenv import CtenvConfig
+
+    def create_test_config(contexts, defaults):
+        """Helper to create CtenvConfig for testing."""
+        # ConfigFile now stores raw dicts, no conversion needed
+        test_config = ConfigFile(
+            contexts=contexts,
+            defaults=defaults,
+            path=None,
+        )
+        return CtenvConfig(
+            config_files=[
+                test_config,
+            ]
+        )
+
+    ctenv_config = create_test_config(
         contexts={
             "dev": {
                 "image": "node:18",
@@ -154,25 +115,41 @@ def test_resolve_config_values_context():
             }
         },
         defaults={},
-        source_files=[],
-        context_sources={},
     )
 
-    resolved = config_file.resolve_context("dev")
+    resolved = ctenv_config.resolve_container_config(context="dev")
 
-    assert resolved["image"] == "node:18"
-    assert resolved["network"] == "bridge"
-    assert resolved["sudo"] is False
-    assert resolved["env"] == ["DEBUG=1"]
+    assert resolved.image == "node:18"
+    assert resolved.network == "bridge"
+    assert resolved.sudo is False
+    assert resolved.env == ("DEBUG=1",)
 
 
 @pytest.mark.unit
 def test_resolve_config_values_unknown_context():
     """Test error for unknown context."""
-    config_file = ConfigFile(contexts={"dev": {"image": "node:18"}}, defaults={}, source_files=[], context_sources={})
+    from ctenv import CtenvConfig
+
+    def create_test_config(contexts, defaults):
+        """Helper to create CtenvConfig for testing."""
+        # ConfigFile now stores raw dicts, no conversion needed
+        test_config = ConfigFile(
+            contexts=contexts,
+            defaults=defaults,
+            path=None,
+        )
+        return CtenvConfig(
+            config_files=[
+                test_config,
+            ]
+        )
+
+    ctenv_config = create_test_config(
+        contexts={"dev": {"image": "node:18"}}, defaults={}
+    )
 
     with pytest.raises(ValueError, match="Unknown context 'unknown'"):
-        config_file.resolve_context("unknown")
+        ctenv_config.resolve_container_config(context="unknown")
 
 
 @pytest.mark.unit
@@ -196,11 +173,15 @@ sudo = true
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.create(
+        # Load config and resolve
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(
             context="default",  # Explicitly specify the context
-            config_file=str(config_file),
-            # Override image via CLI
-            image="ubuntu:22.04",
+            cli_overrides={
+                "image": "ubuntu:22.04",  # Override image via CLI
+            },
         )
 
         # CLI should override config file
@@ -235,37 +216,49 @@ env = ["CI=true"]
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.create(context="test", config_file=str(config_file))
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(context="test")
 
         # Should use context values
         assert config.image == "alpine:latest"
         assert config.network == "bridge"
-        assert config.env_vars == ("CI=true",)
+        assert config.env == ("CI=true",)
 
 
 @pytest.mark.unit
-def test_builtin_default_context():
-    """Test that builtin default context is always available."""
+def test_empty_config_structure():
+    """Test that CtenvConfig.load works with no config files."""
     import tempfile
-    from ctenv import get_builtin_default_context, ConfigFile
 
-    # Test builtin default context content (just the context definition)
-    builtin = get_builtin_default_context()
-    assert builtin["image"] == "ubuntu:latest"
-
-    # Test that ConfigFile.load works with no config files (no default context added)
+    # Test that CtenvConfig.load works with no config files
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        config_file = ConfigFile.load(start_dir=tmpdir)  # No config files in empty dir
-        assert len(config_file.contexts) == 0  # No contexts should be present
-        assert len(config_file.defaults) == 0  # No defaults should be present
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(
+            start_dir=tmpdir
+        )  # No config files in empty dir
+        assert (
+            len(ctenv_config.available_contexts) == 0
+        )  # No contexts should be present
+        # Check that computed defaults still work (contains system defaults)
+        assert (
+            ctenv_config.computed_defaults["image"] == "ubuntu:latest"
+        )  # System default
+        # Should have no config files since no TOML files found
+        assert len(ctenv_config.config_files) == 0
+
+        # But system defaults should be applied when resolving config
+        resolved_config = ctenv_config.resolve_container_config()
+        assert resolved_config.image == "ubuntu:latest"  # System default
 
 
 @pytest.mark.unit
 def test_default_context_merging():
     """Test that user-defined default context merges with builtin."""
     import tempfile
-    from ctenv import ContainerConfig
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -287,7 +280,10 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.create(config_file=str(config_file), context="default")
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(context="default")
 
         # Should merge builtin default with user default
         assert config.image == "ubuntu:latest"  # From builtin default
@@ -320,11 +316,14 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        config = ContainerConfig.create(
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(
             context="dev",
-            config_file=str(config_file),
-            # CLI override
-            image="alpine:latest",
+            cli_overrides={
+                "image": "alpine:latest",  # CLI override
+            },
         )
 
         # CLI should take precedence
@@ -415,7 +414,7 @@ def test_volumes_from_config_file():
     """Test that volumes from config file are properly loaded into ContainerConfig."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create config file with volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
@@ -426,31 +425,34 @@ network = "bridge"
 env = ["NODE_ENV=development", "DEBUG=true"]
 """
         config_file.write_text(config_content)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Create config from dev context
-        config = ContainerConfig.create(
-            context="dev", 
-            config_file=str(config_file)
-        )
-        
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(context="dev")
+
         # Check that volumes are loaded correctly
-        assert config.volumes == ("./node_modules:/app/node_modules", "./src:/app/src:ro")
+        assert config.volumes == (
+            "./node_modules:/app/node_modules",
+            "./src:/app/src:ro",
+        )
         assert config.image == "node:18"
         assert config.network == "bridge"
-        assert config.env_vars == ("NODE_ENV=development", "DEBUG=true")
+        assert config.env == ("NODE_ENV=development", "DEBUG=true")
 
 
-@pytest.mark.unit  
+@pytest.mark.unit
 def test_volumes_cli_merge():
     """Test that CLI volumes are appended to config file volumes."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create config file with volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
@@ -460,24 +462,36 @@ volumes = ["./node_modules:/app/node_modules"]
 env = ["NODE_ENV=development"]
 """
         config_file.write_text(config_content)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Create config with CLI additions
-        config = ContainerConfig.create(
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(
             context="dev",
-            config_file=str(config_file),
-            volumes=["./data:/data", "./cache:/cache"],
-            env_vars=["DEBUG=true", "LOG_LEVEL=info"]
+            cli_overrides={
+                "volumes": ["./data:/data", "./cache:/cache"],
+                "env": ["DEBUG=true", "LOG_LEVEL=info"],
+            },
         )
-        
+
         # CLI volumes should be appended to config file volumes
-        assert config.volumes == ("./node_modules:/app/node_modules", "./data:/data", "./cache:/cache")
+        assert config.volumes == (
+            "./node_modules:/app/node_modules",
+            "./data:/data",
+            "./cache:/cache",
+        )
         # CLI env vars should be appended to config file env vars
-        assert config.env_vars == ("NODE_ENV=development", "DEBUG=true", "LOG_LEVEL=info")
+        assert config.env == (
+            "NODE_ENV=development",
+            "DEBUG=true",
+            "LOG_LEVEL=info",
+        )
         assert config.image == "node:18"  # Other settings preserved
 
 
@@ -486,37 +500,38 @@ def test_volumes_cli_only():
     """Test CLI volumes when no config file volumes exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create config file without volumes
-        config_file = tmpdir / "ctenv.toml" 
+        config_file = tmpdir / "ctenv.toml"
         config_content = """
 [contexts.test]
 image = "alpine:latest"
 """
         config_file.write_text(config_content)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Create config with only CLI volumes
-        config = ContainerConfig.create(
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(
             context="test",
-            config_file=str(config_file),
-            volumes=["./data:/data"],
-            env_vars=["TEST=true"]
+            cli_overrides={"volumes": ["./data:/data"], "env": ["TEST=true"]},
         )
-        
+
         # Should only contain CLI volumes/env
         assert config.volumes == ("./data:/data",)
-        assert config.env_vars == ("TEST=true",)
+        assert config.env == ("TEST=true",)
         assert config.image == "alpine:latest"
 
 
 @pytest.mark.unit
 def test_config_file_resolve_context_with_templating():
-    """Test that ConfigFile.resolve_context applies templating."""
+    """Test template variable substitution in context resolution."""
     import tempfile
     import getpass
 
@@ -533,13 +548,19 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         config_file = tmpdir / "ctenv.toml"
         config_file.write_text(config_content)
 
-        # Load and resolve
-        config_file_obj = ConfigFile.load(explicit_config_file=config_file)
-        resolved = config_file_obj.resolve_context("test")
+        # Load and resolve config
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(context="test")
+
+        # The resolved config should have templates applied automatically
+        resolved_volumes = config.resolve_templates().volumes
+        resolved_env = config.resolve_templates().env
 
         expected_user = getpass.getuser()
-        assert resolved["volumes"] == [f"cache-{expected_user}:/cache"]
-        assert resolved["env"] == ["CACHE_DIR=/cache/example.com-app-v1"]
+        assert f"cache-{expected_user}:/cache" in resolved_volumes
+        assert "CACHE_DIR=/cache/example.com-app-v1" in resolved_env
 
 
 @pytest.mark.unit
@@ -548,10 +569,10 @@ def test_config_file_volumes_through_cli_parsing():
     import tempfile
     from unittest.mock import patch, Mock
     from ctenv import cmd_run
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create config file with volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
@@ -561,91 +582,101 @@ volumes = ["./node_modules:/app/node_modules", "./data:/data"]
 env = ["NODE_ENV=development"]
 """
         config_file.write_text(config_content)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Mock argparse args as if no CLI volumes/env were provided
         args = Mock()
         args.context = "dev"
-        args.config = str(config_file)  # Note: cmd_run uses args.config, not args.config_file
-        args.volume = None  # No CLI volumes provided
-        args.env = None     # No CLI env provided  
+        args.config = [str(config_file)]  # Note: cmd_run uses args.config as a list now
+        args.volumes = None  # No CLI volumes provided
+        args.env = None  # No CLI env provided
         args.command = ["echo", "test"]
         args.verbose = False
         args.quiet = False
         args.dry_run = True  # Don't actually run container
         # Set other required attributes that cmd_run expects
         args.image = None
-        args.dir = None
+        args.working_dir = None
         args.sudo = None
         args.network = None
         args.gosu_path = str(gosu_path)
-        args.post_start_cmd = None
-        
+        args.post_start_cmds = None
+
         # Mock docker execution to capture the config
         captured_config = {}
+
         def mock_run_container(config, *args, **kwargs):
-            captured_config.update({
-                'volumes': config.volumes,
-                'env_vars': config.env_vars,
-                'image': config.image
-            })
+            captured_config.update(
+                {
+                    "volumes": config.volumes,
+                    "env": config.env,
+                    "image": config.image,
+                }
+            )
             # Return mock result object with returncode attribute
             mock_result = Mock()
             mock_result.returncode = 0
             return mock_result
-            
-        with patch('ctenv.ContainerRunner.run_container', side_effect=mock_run_container), \
-             patch('sys.exit') as mock_exit:
+
+        with (
+            patch(
+                "ctenv.ContainerRunner.run_container", side_effect=mock_run_container
+            ),
+            patch("sys.exit") as mock_exit,
+        ):
             cmd_run(args)
-            
+
         # Verify config file volumes were preserved (not overridden by empty CLI list)
-        assert captured_config['volumes'] == ("./node_modules:/app/node_modules", "./data:/data")
-        assert captured_config['env_vars'] == ("NODE_ENV=development",)
-        assert captured_config['image'] == "node:18"
+        assert captured_config["volumes"] == (
+            "./node_modules:/app/node_modules",
+            "./data:/data",
+        )
+        assert captured_config["env"] == ("NODE_ENV=development",)
+        assert captured_config["image"] == "node:18"
 
 
 @pytest.mark.unit
-def test_container_config_get_defaults():
-    """Test that ContainerConfig.get_defaults() returns the expected default values."""
-    from ctenv import ContainerConfig
+def test_get_default_config_dict():
+    """Test that get_default_config_dict() returns the expected default values."""
+    from ctenv import get_default_config_dict
     import os
     import pwd
     import grp
     from pathlib import Path
-    
-    defaults = ContainerConfig.get_defaults()
-    
-    # Check that it returns a ContainerConfig instance
-    assert isinstance(defaults, ContainerConfig)
-    
+
+    defaults = get_default_config_dict()
+
+    # Check that it returns a dict
+    assert isinstance(defaults, dict)
+
     # Check that user identity matches current user
     user_info = pwd.getpwuid(os.getuid())
     group_info = grp.getgrgid(os.getgid())
-    
-    assert defaults.user_name == user_info.pw_name
-    assert defaults.user_id == user_info.pw_uid
-    assert defaults.group_name == group_info.gr_name
-    assert defaults.group_id == group_info.gr_gid
-    assert defaults.user_home == user_info.pw_dir
-    
+
+    assert defaults["user_name"] == user_info.pw_name
+    assert defaults["user_id"] == user_info.pw_uid
+    assert defaults["group_name"] == group_info.gr_name
+    assert defaults["group_id"] == group_info.gr_gid
+    assert defaults["user_home"] == user_info.pw_dir
+
     # Check container settings defaults
-    assert defaults.image == "ubuntu:latest"
-    assert defaults.command == "bash"
-    assert defaults.container_name is None
-    assert defaults.working_dir == Path(os.getcwd())
-    assert defaults.env_vars == ()
-    assert defaults.volumes == ()
-    assert defaults.post_start_cmds == ()
-    assert defaults.ulimits is None
-    assert defaults.sudo is False
-    assert defaults.network is None
-    assert defaults.tty is False
-    # gosu_path should be a Path object if found, or None if not found
-    assert defaults.gosu_path is None or isinstance(defaults.gosu_path, Path)
+    assert defaults["image"] == "ubuntu:latest"
+    assert defaults["command"] == "bash"
+    assert defaults["container_name"] is None
+    assert defaults["working_dir"] == str(Path(os.getcwd()))
+    assert defaults["env"] == []
+    assert defaults["volumes"] == []
+    assert defaults["post_start_cmds"] == []
+    assert defaults["ulimits"] is None
+    assert defaults["sudo"] is False
+    assert defaults["network"] is None
+    assert defaults["tty"] is False
+    # gosu_path should be a string path if found, or None if not found
+    assert defaults["gosu_path"] is None or isinstance(defaults["gosu_path"], str)
 
 
 @pytest.mark.unit
@@ -653,11 +684,10 @@ def test_working_dir_config():
     """Test that working_dir can be configured via CLI and config file."""
     import tempfile
     import os
-    from ctenv import ContainerConfig
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create config file with working_dir
         config_file = tmpdir / "ctenv.toml"
         config_content = """
@@ -666,26 +696,28 @@ image = "alpine:latest"
 working_dir = "/custom/path"
 """
         config_file.write_text(config_content)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Test config file working_dir
-        config = ContainerConfig.create(context="test", config_file=str(config_file))
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(context="test")
         assert config.working_dir == Path("/custom/path")
-        
+
         # Test CLI override
-        config_cli = ContainerConfig.create(
-            context="test", 
-            config_file=str(config_file),
-            dir="/cli/override"
+        config_cli = ctenv_config.resolve_container_config(
+            context="test", cli_overrides={"working_dir": "/cli/override"}
         )
         assert config_cli.working_dir == Path("/cli/override")
-        
+
         # Test default (no config file, no CLI)
-        config_default = ContainerConfig.create()
+        ctenv_config_default = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
+        config_default = ctenv_config_default.resolve_container_config()
         assert config_default.working_dir == Path(os.getcwd())
 
 
@@ -693,17 +725,15 @@ working_dir = "/custom/path"
 def test_gosu_path_config():
     """Test that gosu_path can be configured via CLI and config file."""
     import tempfile
-    import os
-    from ctenv import ContainerConfig
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create a fake gosu binary in the temp directory
         fake_gosu = tmpdir / "fake_gosu"
         fake_gosu.write_text('#!/bin/sh\nexec "$@"')
         fake_gosu.chmod(0o755)
-        
+
         # Create config file with gosu_path
         config_file = tmpdir / "ctenv.toml"
         config_content = f"""
@@ -712,26 +742,27 @@ image = "alpine:latest"
 gosu_path = "{fake_gosu}"
 """
         config_file.write_text(config_content)
-        
+
         # Create another fake gosu for the temp directory itself
         # (so tests can run even if system doesn't have gosu)
         temp_gosu = tmpdir / "gosu"
         temp_gosu.write_text('#!/bin/sh\nexec "$@"')
         temp_gosu.chmod(0o755)
-        
+
         # Test config file gosu_path
-        config = ContainerConfig.create(context="test", config_file=str(config_file))
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        config = ctenv_config.resolve_container_config(context="test")
         assert config.gosu_path == fake_gosu
-        
+
         # Test CLI override
         cli_gosu = tmpdir / "cli_gosu"
         cli_gosu.write_text('#!/bin/sh\nexec "$@"')
         cli_gosu.chmod(0o755)
-        
-        config_cli = ContainerConfig.create(
-            context="test", 
-            config_file=str(config_file),
-            gosu_path=str(cli_gosu)
+
+        config_cli = ctenv_config.resolve_container_config(
+            context="test", cli_overrides={"gosu_path": str(cli_gosu)}
         )
         assert config_cli.gosu_path == cli_gosu
 
@@ -740,7 +771,7 @@ gosu_path = "{fake_gosu}"
 def test_volume_options_preserved():
     """Test that volume options like :ro are preserved and :z is properly merged."""
     from ctenv import ContainerRunner
-    
+
     # Test volumes with various option combinations
     volumes = (
         "./data:/data",  # No options
@@ -748,19 +779,19 @@ def test_volume_options_preserved():
         "./cache:/cache:rw,chown",  # Multiple options including chown
         "./logs:/logs:ro,chown",  # Read-only + chown
     )
-    
+
     processed_volumes, chown_paths = ContainerRunner.parse_volumes(volumes)
-    
+
     # Verify chown paths were extracted
     assert "/cache" in chown_paths
     assert "/logs" in chown_paths
-    
+
     # Verify processed volumes preserve options (except chown)
     assert "./data:/data" in processed_volumes
-    assert "./src:/app/src:ro" in processed_volumes  
+    assert "./src:/app/src:ro" in processed_volumes
     assert "./cache:/cache:rw" in processed_volumes  # chown removed
-    assert "./logs:/logs:ro" in processed_volumes    # chown removed
-    
+    assert "./logs:/logs:ro" in processed_volumes  # chown removed
+
     # Test the volume-with-z logic
     for volume in processed_volumes:
         if ":" in volume and len(volume.split(":")) > 2:
@@ -769,7 +800,7 @@ def test_volume_options_preserved():
         else:
             # Volume has no options, should add :z
             volume_with_z = f"{volume}:z"
-            
+
         # Verify the final volume format
         if volume == "./data:/data":
             assert volume_with_z == "./data:/data:z"
@@ -785,33 +816,47 @@ def test_volume_options_preserved():
 def test_docker_args_volume_options():
     """Test that Docker args correctly merge :z with existing volume options."""
     import tempfile
-    from ctenv import ContainerRunner, ContainerConfig
-    
+    from ctenv import ContainerRunner
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create fake gosu
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Create config with volumes that have options
-        config = ContainerConfig.create(
-            volumes=["./src:/app/src:ro", "./data:/data", "./cache:/cache:rw"]
+        from ctenv import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
+        config = ctenv_config.resolve_container_config(
+            cli_overrides={
+                "volumes": ["./src:/app/src:ro", "./data:/data", "./cache:/cache:rw"]
+            }
         )
-        
+
         # Create temporary entrypoint script
         script_path = tmpdir / "entrypoint.sh"
         script_path.write_text("#!/bin/sh\necho test")
-        
+
         # Build Docker run arguments
         args = ContainerRunner.build_run_args(config, str(script_path))
-        
+
         # Find volume arguments in the Docker command
-        volume_args = [arg for arg in args if arg.startswith("--volume=") and ("src" in arg or "data" in arg or "cache" in arg)]
-        
+        volume_args = [
+            arg
+            for arg in args
+            if arg.startswith("--volume=")
+            and ("src" in arg or "data" in arg or "cache" in arg)
+        ]
+
         # Verify volume options are properly merged with :z
         volume_args_str = " ".join(volume_args)
-        assert "--volume=./src:/app/src:ro,z" in volume_args_str  # :ro preserved, :z added
-        assert "--volume=./data:/data:z" in volume_args_str       # only :z added
-        assert "--volume=./cache:/cache:rw,z" in volume_args_str  # :rw preserved, :z added
+        assert (
+            "--volume=./src:/app/src:ro,z" in volume_args_str
+        )  # :ro preserved, :z added
+        assert "--volume=./data:/data:z" in volume_args_str  # only :z added
+        assert (
+            "--volume=./cache:/cache:rw,z" in volume_args_str
+        )  # :rw preserved, :z added

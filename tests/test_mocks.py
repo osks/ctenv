@@ -171,7 +171,7 @@ def test_new_cli_options():
         image="ubuntu:latest",
         command="bash",
         container_name="test-container",
-        env_vars=("TEST_VAR=hello", "USER"),
+        env=("TEST_VAR=hello", "USER"),
         volumes=("/host/data:/container/data",),
         sudo=True,
         network="bridge",
@@ -199,7 +199,7 @@ def test_new_cli_options():
         assert "ubuntu:latest" in args
 
         print("\nExample with new CLI options:")
-        print(f"  Environment: {config.env_vars}")
+        print(f"  Environment: {config.env}")
         print(f"  Volumes: {config.volumes}")
         print(f"  Sudo: {config.sudo}")
         print(f"  Network: {config.network}")

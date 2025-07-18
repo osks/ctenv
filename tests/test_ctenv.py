@@ -24,14 +24,23 @@ def test_version():
 @pytest.mark.unit
 def test_config_user_detection():
     """Test that Config correctly detects user information."""
+    import tempfile
+
     # Use explicit image to avoid config file interference
-    config = ContainerConfig.create(image="ubuntu:latest")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from ctenv import CtenvConfig
+        from pathlib import Path
+
+        ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
+        config = ctenv_config.resolve_container_config(
+            cli_overrides={"image": "ubuntu:latest"}
+        )
 
     assert config.user_name == os.getenv("USER")
     assert config.user_id == os.getuid()
     assert config.group_id == os.getgid()
     assert config.image == "ubuntu:latest"
-    assert config.dir_mount == "/repo"
+    assert config.working_dir_mount == "/repo"
 
 
 @pytest.mark.unit
@@ -56,9 +65,22 @@ def test_config_with_mock_user():
 @pytest.mark.unit
 def test_container_name_generation():
     """Test consistent container name generation."""
-    config1 = ContainerConfig.create(dir="/path/to/project")
-    config2 = ContainerConfig.create(dir="/path/to/project")
-    config3 = ContainerConfig.create(dir="/different/path")
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from ctenv import CtenvConfig
+        from pathlib import Path
+
+        ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
+        config1 = ctenv_config.resolve_container_config(
+            cli_overrides={"working_dir": "/path/to/project"}
+        )
+        config2 = ctenv_config.resolve_container_config(
+            cli_overrides={"working_dir": "/path/to/project"}
+        )
+        config3 = ctenv_config.resolve_container_config(
+            cli_overrides={"working_dir": "/different/path"}
+        )
 
     name1 = config1.get_container_name()
     name2 = config2.get_container_name()
@@ -220,10 +242,17 @@ def test_stdout_stderr_separation():
 @pytest.mark.unit
 def test_post_start_cmd_cli_option():
     """Test --post-start-cmd CLI option."""
+    import tempfile
+
     # Test that CLI post-start extra commands are included in the config
-    config = ContainerConfig.create(
-        context="default", post_start_cmd=["npm install", "npm run build"]
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from ctenv import CtenvConfig
+        from pathlib import Path
+
+        ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
+        config = ctenv_config.resolve_container_config(
+            cli_overrides={"post_start_cmds": ["npm install", "npm run build"]}
+        )
 
     # Should contain the CLI post-start extra commands
     assert "npm install" in config.post_start_cmds
@@ -247,10 +276,13 @@ post_start_cmds = ["echo config-cmd"]
 
     try:
         # Test that both config file and CLI commands are included
-        config = ContainerConfig.create(
+        from ctenv import CtenvConfig
+        from pathlib import Path
+
+        ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
+        config = ctenv_config.resolve_container_config(
             context="test",
-            config_file=config_file,
-            post_start_cmd=["echo cli-cmd1", "echo cli-cmd2"],
+            cli_overrides={"post_start_cmds": ["echo cli-cmd1", "echo cli-cmd2"]},
         )
 
         # Should contain both config file and CLI commands
@@ -271,9 +303,16 @@ post_start_cmds = ["echo config-cmd"]
 @pytest.mark.unit
 def test_post_start_cmd_in_generated_script():
     """Test that post-start extra commands appear in generated script."""
-    config = ContainerConfig.create(
-        context="default", post_start_cmd=["npm install", "npm run test"]
-    )
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from ctenv import CtenvConfig
+        from pathlib import Path
+
+        ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
+        config = ctenv_config.resolve_container_config(
+            cli_overrides={"post_start_cmds": ["npm install", "npm run test"]}
+        )
 
     script = build_entrypoint_script(config, verbose=True)
 
