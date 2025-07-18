@@ -317,10 +317,7 @@ class CtenvConfig:
     """
 
     defaults: Dict[str, Any]  # Computed defaults (system + first file defaults found)
-    contexts: Dict[
-        str, Dict[str, Any]
-    ]  # All contexts from all files (higher priority wins)
-    source_files: List[Path]  # List of config files that were loaded
+    contexts: Dict[str, Dict[str, Any]]  # All contexts from all files (higher priority wins)
 
     def find_context(self, context_name: str) -> Optional[Dict[str, Any]]:
         """Find context by name.
@@ -387,7 +384,6 @@ class CtenvConfig:
         4. System defaults
         """
         config_files = []
-        source_files = []
 
         # Highest priority: explicit config files (in order)
         if explicit_config_files:
@@ -395,7 +391,6 @@ class CtenvConfig:
                 try:
                     loaded_config = ConfigFile.from_file(config_file)
                     config_files.append(loaded_config)
-                    source_files.append(config_file)
                 except Exception as e:
                     raise ValueError(
                         f"Failed to load explicit config file {config_file}: {e}"
@@ -406,15 +401,11 @@ class CtenvConfig:
             project_config = load_project_config(start_dir)
             if project_config:
                 config_files.append(project_config)
-                if project_config.path:
-                    source_files.append(project_config.path)
 
         # User config
         user_config = load_user_config(start_dir)
         if user_config:
             config_files.append(user_config)
-            if user_config.path:
-                source_files.append(user_config.path)
 
         # Compute defaults (system defaults + first file defaults found)
         defaults = get_default_config_dict()
@@ -429,7 +420,7 @@ class CtenvConfig:
         for config_file in reversed(config_files):
             contexts.update(config_file.contexts)
 
-        return cls(defaults=defaults, contexts=contexts, source_files=source_files)
+        return cls(defaults=defaults, contexts=contexts)
 
 
 @dataclass
