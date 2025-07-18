@@ -38,3 +38,9 @@ py-modules = ["ctenv"]
 
 [tool.setuptools.dynamic]
 version = {attr = "ctenv.__version__"}
+
+[dependency-groups]
+test = [
+    "tox>=4.27.0",
+    "tox-uv>=1.26.1",
+]
