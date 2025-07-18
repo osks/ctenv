@@ -5,8 +5,8 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-ctenv is a tool for easily running commands in a container as the
-current user with the current directory mounted.
+ctenv is a tool for easily running commands in a container environment
+similar to the current user environment.
 
 Use cases:
 
