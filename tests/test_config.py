@@ -67,9 +67,7 @@ def test_resolve_config_values_defaults():
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
 
-        return CtenvConfig(
-            defaults=computed_defaults, contexts=contexts, source_files=[]
-        )
+        return CtenvConfig(defaults=computed_defaults, contexts=contexts)
 
     ctenv_config = create_test_config(
         contexts={
@@ -99,9 +97,7 @@ def test_resolve_config_values_context():
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
 
-        return CtenvConfig(
-            defaults=computed_defaults, contexts=contexts, source_files=[]
-        )
+        return CtenvConfig(defaults=computed_defaults, contexts=contexts)
 
     ctenv_config = create_test_config(
         contexts={
@@ -137,9 +133,7 @@ def test_resolve_config_values_unknown_context():
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
 
-        return CtenvConfig(
-            defaults=computed_defaults, contexts=contexts, source_files=[]
-        )
+        return CtenvConfig(defaults=computed_defaults, contexts=contexts)
 
     ctenv_config = create_test_config(
         contexts={"dev": {"image": "node:18"}}, defaults={}
@@ -240,8 +234,6 @@ def test_empty_config_structure():
         assert len(ctenv_config.contexts) == 0  # No contexts should be present
         # Check that defaults still work (contains system defaults)
         assert ctenv_config.defaults["image"] == "ubuntu:latest"  # System default
-        # Should have no source files since no TOML files found
-        assert len(ctenv_config.source_files) == 0
 
         # But system defaults should be applied when resolving config
         resolved_config = ctenv_config.resolve_container_config()

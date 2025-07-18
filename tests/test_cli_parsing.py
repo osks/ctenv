@@ -15,7 +15,7 @@ def create_test_ctenv_config(contexts, defaults=None):
     if defaults:
         computed_defaults = merge_config(computed_defaults, defaults)
 
-    return CtenvConfig(defaults=computed_defaults, contexts=contexts, source_files=[])
+    return CtenvConfig(defaults=computed_defaults, contexts=contexts)
 
 
 @pytest.mark.unit
