@@ -445,10 +445,10 @@ def test_volume_chown_option():
                 elif "logs:/logs" in arg:
                     logs_volume = arg
 
-            # Chown should be removed but other options preserved
-            assert cache_volume == "--volume=cache-vol:/var/cache:rw:z"
+            # Chown should be removed but other options preserved, z properly merged
+            assert cache_volume == "--volume=cache-vol:/var/cache:rw,z"
             assert data_volume == "--volume=data-vol:/data:z"
-            assert logs_volume == "--volume=logs:/logs:ro:z"
+            assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
             _, chown_paths = ContainerRunner.parse_volumes(config.volumes)

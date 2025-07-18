@@ -423,6 +423,22 @@ class ContainerConfig:
             if file_value is not None:
                 return file_value
             return config_defaults.get(key)
+        
+        # Helper function to merge list values: config file + CLI additions
+        def get_merged_list_value(key: str, cli_key: str = None):
+            cli_key = cli_key or key
+            # Start with config file values (or defaults)
+            file_value = file_config.get(key)
+            if file_value is None:
+                file_value = config_defaults.get(key, [])
+            base_list = list(file_value or [])
+            
+            # Add CLI values if provided
+            cli_value = cli_options.get(cli_key)
+            if cli_value:
+                base_list.extend(cli_value)
+            
+            return base_list
 
         # Discover gosu binary path
         gosu_path_override = get_config_value("gosu_path")
@@ -461,12 +477,12 @@ class ContainerConfig:
             image=get_config_value("image"),
             command=get_config_value("command"),
             container_name=get_config_value("container_name"),
-            # Options (CLI > config file > defaults)
-            env_vars=tuple(get_config_value("env", "env_vars")),
-            volumes=tuple(get_config_value("volumes")),
+            # Options (merged lists: config file + CLI additions)
+            env_vars=tuple(get_merged_list_value("env", "env_vars")),
+            volumes=tuple(get_merged_list_value("volumes", "volumes")),
             entrypoint_commands=tuple(
-                list(get_config_value("entrypoint_commands"))
-                + list(cli_options.get("entrypoint_cmd", []))
+                list(get_config_value("entrypoint_commands") or [])
+                + list(cli_options.get("entrypoint_cmd") or [])
             ),
             ulimits=get_config_value("ulimits"),
             sudo=get_config_value("sudo"),
@@ -710,8 +726,15 @@ class ContainerRunner:
         if processed_volumes:
             logging.debug("Additional volume mounts:")
             for volume in processed_volumes:
-                args.extend([f"--volume={volume}:z"])
-                logging.debug(f"  {volume}")
+                # Add :z option, merging with existing options if present
+                if ":" in volume and len(volume.split(":")) > 2:
+                    # Volume already has options, append z
+                    volume_with_z = f"{volume},z"
+                else:
+                    # Volume has no options, add z
+                    volume_with_z = f"{volume}:z"
+                args.extend([f"--volume={volume_with_z}"])
+                logging.debug(f"  {volume_with_z}")
 
             if chown_paths:
                 logging.debug("Volumes with chown enabled:")
@@ -905,12 +928,12 @@ def cmd_run(args):
             image=args.image,
             command=" ".join(command),
             dir=args.dir,
-            env_vars=args.env or [],
-            volumes=args.volume or [],
+            env_vars=args.env if args.env else None,
+            volumes=args.volume if args.volume else None,
             sudo=args.sudo,
             network=args.network,
             gosu_path=args.gosu_path,
-            entrypoint_cmd=args.entrypoint_cmd or [],
+            entrypoint_cmd=args.entrypoint_cmd if args.entrypoint_cmd else None,
             tty=sys.stdin.isatty(),
         )
     except ValueError as e:
@@ -925,10 +948,8 @@ def cmd_run(args):
         logging.debug(f"  Group: {config.group_name} (GID: {config.group_id})")
         logging.debug(f"  Working directory: {config.working_dir}")
         logging.debug(f"  Container name: {config.get_container_name()}")
-        if config.env_vars:
-            logging.debug(f"  Environment variables: {config.env_vars}")
-        if config.volumes:
-            logging.debug(f"  Additional volumes: {config.volumes}")
+        logging.debug(f"  Environment variables: {config.env_vars}")
+        logging.debug(f"  Volumes: {config.volumes}")
         logging.debug(f"  Network: {config.network or 'none'}")
         logging.debug(f"  Sudo: {config.sudo}")
         logging.debug(f"  TTY: {config.tty}")
