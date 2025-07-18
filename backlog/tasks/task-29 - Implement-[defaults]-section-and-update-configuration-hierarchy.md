@@ -1,10 +1,13 @@
 ---
 id: task-29
 title: 'Implement [defaults] section and update configuration hierarchy'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-16'
-labels: [enhancement, configuration]
+updated_date: '2025-07-18'
+labels:
+  - enhancement
+  - configuration
 dependencies: []
 ---
 

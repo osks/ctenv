@@ -249,10 +249,12 @@ def get_builtin_default_context() -> Dict[str, Any]:
 
 @dataclass
 class ConfigFile:
-    """Represents file-based configuration with contexts."""
+    """Represents file-based configuration with contexts and defaults."""
 
     contexts: Dict[str, Dict[str, Any]]
+    defaults: Dict[str, Any]
     source_files: list[Path]
+    context_sources: Dict[str, Path]  # Track which file provided each context
 
     @classmethod
     def load(
@@ -260,59 +262,88 @@ class ConfigFile:
         explicit_config_file: Optional[Path] = None,
         start_dir: Optional[Path] = None,
     ) -> "ConfigFile":
-        """Load configuration from files with builtin default context."""
-        # Start with empty contexts
+        """Load configuration from files with contexts and defaults."""
+        # Start with empty contexts and defaults
         merged_contexts = {}
+        merged_defaults = {}
         source_files = []
+        context_sources = {}
 
         if explicit_config_file:
             # Use only the explicit config file
             if not explicit_config_file.exists():
                 raise ValueError(f"Config file not found: {explicit_config_file}")
             user_config = load_config_file(explicit_config_file)
-            # Only extract contexts, ignore any [defaults] section
-            merged_contexts.update(user_config.get("contexts", {}))
+            
+            # Extract contexts and defaults
+            file_contexts = user_config.get("contexts", {})
+            merged_contexts.update(file_contexts)
+            merged_defaults.update(user_config.get("defaults", {}))
+            
+            # Track context sources
+            for context_name in file_contexts:
+                context_sources[context_name] = explicit_config_file
+            
             source_files = [explicit_config_file]
             logging.debug(f"Loaded explicit config from {explicit_config_file}")
         else:
-            # Auto-discover and merge global and project config files
+            # Auto-discover and load user and project config files
             global_config_path, project_config_path = find_all_config_files(start_dir)
 
-            # Load global config
+            # Load user config first
             if global_config_path:
                 global_config = load_config_file(global_config_path)
-                merged_contexts.update(global_config.get("contexts", {}))
+                file_contexts = global_config.get("contexts", {})
+                merged_contexts.update(file_contexts)
+                merged_defaults.update(global_config.get("defaults", {}))
+                
+                # Track context sources
+                for context_name in file_contexts:
+                    context_sources[context_name] = global_config_path
+                
                 source_files.append(global_config_path)
-                logging.debug(f"Merged global config from {global_config_path}")
+                logging.debug(f"Loaded user config from {global_config_path}")
 
-            # Overlay project config (contexts with same name override)
+            # Project config completely overrides user config
             if project_config_path:
                 project_config = load_config_file(project_config_path)
-                merged_contexts.update(project_config.get("contexts", {}))
+                file_contexts = project_config.get("contexts", {})
+                
+                # Project contexts completely override user contexts
+                merged_contexts.update(file_contexts)
+                
+                # Project defaults completely override user defaults
+                project_defaults = project_config.get("defaults", {})
+                if project_defaults:
+                    merged_defaults = project_defaults  # Complete override
+                
+                # Update context sources (project overrides user)
+                for context_name in file_contexts:
+                    context_sources[context_name] = project_config_path
+                
                 source_files.append(project_config_path)
-                logging.debug(f"Merged project config from {project_config_path}")
+                logging.debug(f"Loaded project config from {project_config_path}")
 
-        # Ensure builtin default context is available (user can override)
-        builtin_default = get_builtin_default_context()
-        if "default" in merged_contexts:
-            # Merge user default with builtin (user takes precedence)
-            final_default = builtin_default.copy()
-            final_default.update(merged_contexts["default"])
-            merged_contexts["default"] = final_default
-            logging.debug("Merged user 'default' context with builtin default")
+        return cls(
+            contexts=merged_contexts,
+            defaults=merged_defaults,
+            source_files=source_files,
+            context_sources=context_sources,
+        )
+
+    def resolve_context(self, context: Optional[str] = None) -> Dict[str, Any]:
+        """Resolve configuration values for a specific context or defaults."""
+        if context is None:
+            # No context specified, use defaults directly
+            context_data = self.defaults.copy()
+            logging.debug("Using [defaults] section as no context specified")
         else:
-            merged_contexts["default"] = builtin_default
-            logging.debug("Added builtin 'default' context")
-
-        return cls(contexts=merged_contexts, source_files=source_files)
-
-    def resolve_context(self, context: str) -> Dict[str, Any]:
-        """Resolve configuration values for a specific context."""
-        if context not in self.contexts:
-            available = list(self.contexts.keys())
-            raise ValueError(f"Unknown context '{context}'. Available: {available}")
-
-        context_data = self.contexts[context].copy()
+            # Use specified context
+            if context not in self.contexts:
+                available = list(self.contexts.keys())
+                raise ValueError(f"Unknown context '{context}'. Available: {available}")
+            context_data = self.contexts[context].copy()
+            logging.debug(f"Using context '{context}'")
 
         # Prepare template variables
         variables = {
@@ -322,7 +353,7 @@ class ConfigFile:
 
         # Apply templating
         resolved = substitute_in_context(context_data, variables)
-        logging.debug(f"Resolved context '{context}' configuration with templating")
+        logging.debug(f"Resolved configuration with templating")
         return resolved
 
 
@@ -420,35 +451,59 @@ class ContainerConfig:
         except Exception as e:
             raise ValueError(str(e)) from e
 
-        # Resolve config values with context (context is never None now)
-        if not context:
-            context = "default"
+        # Resolve config values with context (allow None for defaults)
         file_config = config_file_obj.resolve_context(context)
 
         # Get default configuration values
-        defaults = cls.get_defaults()
+        builtin_defaults = cls.get_defaults()
+        file_defaults = config_file_obj.defaults
 
-        # Helper function to get value with precedence: CLI > config file > default
+        # Helper function with precedence: CLI > context > file defaults > builtin defaults
         def get_config_value(key: str, cli_key: str = None, default_value=None):
             cli_key = cli_key or key
+            
+            # 1. CLI options (highest priority)
             cli_value = cli_options.get(cli_key)
             if cli_value is not None:
                 return cli_value
+            
+            # 2. Context configuration (or defaults if no context)
             file_value = file_config.get(key)
             if file_value is not None:
                 return file_value
+            
+            # 3. File defaults (if not already used in step 2)
+            if context is not None:  # Only check file defaults if we used a context
+                file_default = file_defaults.get(key)
+                if file_default is not None:
+                    return file_default
+            
+            # 4. Built-in defaults or provided default
             if default_value is not None:
                 return default_value
-            return getattr(defaults, key, None)
+            return getattr(builtin_defaults, key, None)
         
-        # Helper function to merge list values: config file + CLI additions
+        # Helper function to merge list values with new precedence
         def get_merged_list_value(key: str, cli_key: str = None):
             cli_key = cli_key or key
-            # Start with config file values (or defaults)
+            
+            # Start with base list from precedence chain
+            base_list = []
+            
+            # Check context/defaults first
             file_value = file_config.get(key)
-            if file_value is None:
-                file_value = getattr(defaults, key, [])
-            base_list = list(file_value or [])
+            if file_value is not None:
+                base_list = list(file_value)
+            elif context is not None:
+                # Using context but no value - check file defaults
+                file_default = file_defaults.get(key)
+                if file_default is not None:
+                    base_list = list(file_default)
+                else:
+                    base_list = list(getattr(builtin_defaults, key, []))
+            else:
+                # No context (using defaults) - already resolved in file_config
+                base_list = list(getattr(builtin_defaults, key, []))
             
             # Add CLI values if provided
             cli_value = cli_options.get(cli_key)
@@ -940,9 +995,7 @@ def cmd_run(args):
         # No command, default to bash
         command = ["bash"]
 
-    # Use "default" context if none specified
-    if not context:
-        context = "default"
+    # context can be None to use [defaults] section
 
     # Create config from CLI options and discovered configuration
     try:
@@ -1014,15 +1067,12 @@ def cmd_config_show(args):
                 )
                 sys.exit(1)
 
-            # Show which config files are being used
-            if len(config_file.source_files) == 0:
-                print(f"Context '{context}' (builtin default only):")
-            elif len(config_file.source_files) == 1:
-                print(f"Context '{context}' from {config_file.source_files[0]}:")
+            # Show which config file provides this context
+            if context in config_file.context_sources:
+                source_file = config_file.context_sources[context]
+                print(f"Context '{context}' from {source_file}:")
             else:
-                print(f"Context '{context}' from merged configs:")
-                for source_file in config_file.source_files:
-                    print(f"  {source_file}")
+                print(f"Context '{context}' (builtin default only):")
 
             # Show context configuration with templating applied
             resolved_context = config_file.resolve_context(context)
@@ -1042,11 +1092,23 @@ def cmd_config_show(args):
                 for source_file in config_file.source_files:
                     print(f"  {source_file}")
 
-            # Show contexts (there's always at least the default context)
+            # Show defaults section if present
+            if config_file.defaults:
+                print("\nDefaults:")
+                for key, value in config_file.defaults.items():
+                    print(f"  {key}: {value}")
+
+            # Show contexts with source files
             if config_file.contexts:
                 print("\nContexts:")
                 for ctx_name in sorted(config_file.contexts.keys()):
-                    print(f"  {ctx_name}")
+                    if ctx_name in config_file.context_sources:
+                        source_file = config_file.context_sources[ctx_name]
+                        print(f"  {ctx_name} (from {source_file})")
+                    else:
+                        print(f"  {ctx_name} (builtin)")
+            else:
+                print("\nNo contexts defined")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

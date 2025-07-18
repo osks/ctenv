@@ -24,7 +24,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"default": {"image": "ubuntu:latest"}}, source_files=[]
+            contexts={"default": {"image": "ubuntu:latest"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
@@ -35,11 +38,11 @@ class TestRunCommandParsing:
         with patch("sys.exit"):
             cmd_run(args)
 
-        # Should call config with bash as default command and default context
+        # Should call config with bash as default command and None context (use defaults)
         mock_config_from_cli.assert_called_once()
         call_kwargs = mock_config_from_cli.call_args[1]
         assert call_kwargs["command"] == "bash"
-        assert call_kwargs["context"] == "default"
+        assert call_kwargs["context"] is None
 
     @patch("ctenv.ConfigFile.load")
     @patch("ctenv.ContainerConfig.create")
@@ -51,7 +54,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"dev": {"image": "ubuntu"}}, source_files=[]
+            contexts={"dev": {"image": "ubuntu"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
@@ -73,7 +79,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file = ConfigFile(
-            contexts={"dev": {"image": "ubuntu"}}, source_files=[]
+            contexts={"dev": {"image": "ubuntu"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config_file_load.return_value = mock_config_file
 
@@ -94,7 +103,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"default": {"image": "ubuntu:latest"}}, source_files=[]
+            contexts={"default": {"image": "ubuntu:latest"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
 
         # With argparse, no context means first arg is treated as context
@@ -115,7 +127,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"dev": {"image": "ubuntu"}}, source_files=[]
+            contexts={"dev": {"image": "ubuntu"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
@@ -141,7 +156,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"dev": {"image": "ubuntu"}}, source_files=[]
+            contexts={"dev": {"image": "ubuntu"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
@@ -164,7 +182,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file = ConfigFile(
-            contexts={"default": {"image": "ubuntu:latest"}}, source_files=[]
+            contexts={"default": {"image": "ubuntu:latest"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config_file_load.return_value = mock_config_file
 
@@ -188,7 +209,10 @@ class TestRunCommandParsing:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"dev": {"image": "ubuntu"}}, source_files=[]
+            contexts={"dev": {"image": "ubuntu"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
         mock_config = MagicMock()
         mock_config_from_cli.return_value = mock_config
@@ -220,7 +244,10 @@ class TestRunCommandEdgeCases:
         from ctenv import ConfigFile
 
         mock_config_file_load.return_value = ConfigFile(
-            contexts={"dev": {"image": "ubuntu"}}, source_files=[]
+            contexts={"dev": {"image": "ubuntu"}}, 
+            defaults={}, 
+            source_files=[], 
+            context_sources={}
         )
 
         args = self.parser.parse_args(["run", "echo"])
