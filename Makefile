@@ -26,6 +26,11 @@ test-cov: dev
 	@echo "Running tests with coverage..."
 	@uv run pytest tests/ -v --cov=ctenv --cov-report=term-missing
 
+.PHONY: test-all
+test-all: dev
+	@echo "Running tests on multiple Python versions with tox..."
+	@uv run tox
+
 .PHONY: lint
 lint: dev
 	@echo "Checking code style..."

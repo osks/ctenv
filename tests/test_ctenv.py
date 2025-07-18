@@ -36,7 +36,8 @@ def test_config_user_detection():
             cli_overrides={"image": "ubuntu:latest"}
         )
 
-    assert config.user_name == os.getenv("USER")
+    import getpass
+    assert config.user_name == getpass.getuser()
     assert config.user_id == os.getuid()
     assert config.group_id == os.getgid()
     assert config.image == "ubuntu:latest"
