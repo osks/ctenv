@@ -275,6 +275,35 @@ def merge_config(config, overrides):
     return result
 
 
+def load_user_config(start_dir: Optional[Path] = None) -> Optional[ConfigFile]:
+    """Load user configuration (~/.ctenv/ctenv.toml)."""
+    user_config_path = Path.home() / ".ctenv" / "ctenv.toml"
+
+    if not user_config_path.exists() or not user_config_path.is_file():
+        return None
+
+    return ConfigFile.from_file(user_config_path)
+
+
+def load_project_config(start_dir: Optional[Path] = None) -> Optional[ConfigFile]:
+    """Load project configuration (searched upward from start_dir)."""
+    if start_dir is None:
+        start_dir = Path.cwd()
+
+    current = start_dir.resolve()
+    while True:
+        config_path = current / ".ctenv" / "ctenv.toml"
+        if config_path.exists() and config_path.is_file():
+            return ConfigFile.from_file(config_path)
+
+        parent = current.parent
+        if parent == current:  # Reached filesystem root
+            break
+        current = parent
+
+    return None
+
+
 @dataclass
 class CtenvConfig:
     """Represents the complete ctenv configuration from multiple sources.
@@ -377,36 +406,6 @@ class CtenvConfig:
         # Create ContainerConfig from complete merged dict
         return ContainerConfig.from_dict(result_dict)
 
-    @classmethod
-    def load_user_config(cls, start_dir: Optional[Path] = None) -> Optional[ConfigFile]:
-        """Load user configuration (~/.ctenv/ctenv.toml)."""
-        user_config_path = Path.home() / ".ctenv" / "ctenv.toml"
-
-        if not user_config_path.exists() or not user_config_path.is_file():
-            return None
-
-        return ConfigFile.from_file(user_config_path)
-
-    @classmethod
-    def load_project_config(
-        cls, start_dir: Optional[Path] = None
-    ) -> Optional[ConfigFile]:
-        """Load project configuration (searched upward from start_dir)."""
-        if start_dir is None:
-            start_dir = Path.cwd()
-
-        current = start_dir.resolve()
-        while True:
-            config_path = current / ".ctenv" / "ctenv.toml"
-            if config_path.exists() and config_path.is_file():
-                return ConfigFile.from_file(config_path)
-
-            parent = current.parent
-            if parent == current:  # Reached filesystem root
-                break
-            current = parent
-
-        return None
 
     @classmethod
     def load(
@@ -437,12 +436,12 @@ class CtenvConfig:
 
         # Project config (if no explicit configs)
         if not explicit_config_files:
-            project_config = cls.load_project_config(start_dir)
+            project_config = load_project_config(start_dir)
             if project_config:
                 config_files.append(project_config)
 
         # User config
-        user_config = cls.load_user_config(start_dir)
+        user_config = load_user_config(start_dir)
         if user_config:
             config_files.append(user_config)
 
