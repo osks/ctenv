@@ -129,7 +129,9 @@ def test_resolve_config_values_defaults():
         contexts={
             "default": {"image": "ubuntu:latest", "network": "bridge", "sudo": True}
         },
+        defaults={},
         source_files=[],
+        context_sources={},
     )
 
     resolved = config_file.resolve_context("default")
@@ -151,7 +153,9 @@ def test_resolve_config_values_context():
                 "env": ["DEBUG=1"],
             }
         },
+        defaults={},
         source_files=[],
+        context_sources={},
     )
 
     resolved = config_file.resolve_context("dev")
@@ -165,7 +169,7 @@ def test_resolve_config_values_context():
 @pytest.mark.unit
 def test_resolve_config_values_unknown_context():
     """Test error for unknown context."""
-    config_file = ConfigFile(contexts={"dev": {"image": "node:18"}}, source_files=[])
+    config_file = ConfigFile(contexts={"dev": {"image": "node:18"}}, defaults={}, source_files=[], context_sources={})
 
     with pytest.raises(ValueError, match="Unknown context 'unknown'"):
         config_file.resolve_context("unknown")
@@ -193,6 +197,7 @@ sudo = true
         gosu_path.chmod(0o755)
 
         config = ContainerConfig.create(
+            context="default",  # Explicitly specify the context
             config_file=str(config_file),
             # Override image via CLI
             image="ubuntu:22.04",
@@ -248,12 +253,12 @@ def test_builtin_default_context():
     builtin = get_builtin_default_context()
     assert builtin["image"] == "ubuntu:latest"
 
-    # Test that ConfigFile.load always includes default context (with no config files)
+    # Test that ConfigFile.load works with no config files (no default context added)
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         config_file = ConfigFile.load(start_dir=tmpdir)  # No config files in empty dir
-        assert "default" in config_file.contexts
-        assert config_file.contexts["default"]["image"] == "ubuntu:latest"
+        assert len(config_file.contexts) == 0  # No contexts should be present
+        assert len(config_file.defaults) == 0  # No defaults should be present
 
 
 @pytest.mark.unit
