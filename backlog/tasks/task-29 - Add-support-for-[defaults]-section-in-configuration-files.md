@@ -12,6 +12,42 @@ dependencies: []
 
 Add support for a `[defaults]` section in configuration files that allows users to customize the default values that contexts fall back to. This doesn't change how contexts work (they already fall back to defaults when values aren't specified), but allows users to customize what those defaults are instead of being limited to hardcoded built-in defaults.
 
+## Overview
+
+```
+Configuration Merge Flow & Priority:
+
+0. BUILTIN DEFAULTS (hardcoded):
+   ContainerConfig.get_defaults() → image="ubuntu:latest", network=None, sudo=False, etc.
+
+1. FILE LOADING (merge order):
+   ~/.ctenv/ctenv.toml     → Load [defaults] and [contexts.*]
+   ./.ctenv/ctenv.toml     → Override with project [defaults] and [contexts.*]
+   
+2. CONTEXT RESOLUTION:
+   - Select context from CLI --context
+   - Apply variable substitution (${USER}, ${image|slug}, etc.)
+
+3. VALUE PRECEDENCE (highest to lowest):
+   CLI args         → --image ubuntu:22.04
+   ↓
+   Context config   → [contexts.dev] image = "node:18"
+   ↓
+   File defaults    → [defaults] image = "ubuntu:20.04"  (merged: global → project)
+   ↓
+   Builtin defaults → ContainerConfig.get_defaults() → image = "ubuntu:latest"
+
+Example:
+   ~/.ctenv/ctenv.toml:    [defaults] network = "none"
+   ./.ctenv/ctenv.toml:    [defaults] sudo = true
+                           [contexts.dev] image = "node:18"
+   
+   Result for --context dev:
+   - image: "node:18" (from context)
+   - network: "none" (from global defaults)
+   - sudo: true (from project defaults)
+```
+
 ## Current Behavior vs. What's Being Added
 
 ### Today (Current)
@@ -61,7 +97,7 @@ When resolving a configuration value, the system should check in this order:
 1. **CLI options** (highest priority) - if specified, use this value
 2. **Context configuration** - if specified in context, use this value  
 3. **User-defined defaults** (`[defaults]` section) - if specified in defaults, use this value
-4. **Built-in defaults** (lowest priority) - hardcoded fallback values
+4. **Built-in defaults** (lowest priority) - hardcoded fallback values from `ContainerConfig.get_defaults()`
 
 This maintains the existing fallback behavior but adds customizable user defaults in the chain.
 
@@ -71,75 +107,147 @@ Project-specific defaults should override user config defaults:
 - **Project config** (`.ctenv/config.toml`) `[defaults]` section overrides global
 - **Context** configuration inherits from applicable defaults
 
+## Design
+
+### Approach: User-Defined Defaults Layer
+Instead of changing how contexts work, we'll add a new layer in the configuration hierarchy. The `[defaults]` section will provide user-customizable defaults that sit between context values and built-in defaults in the precedence chain.
+
+### Key Design Decisions:
+1. **Keep the current "default" context** - It remains as a regular context that users can override
+2. **[defaults] is not a context** - It's a separate configuration layer
+3. **Explicit is better** - Contexts don't automatically inherit defaults; the merge happens during config resolution
+4. **Multi-level defaults** - Project defaults override global defaults
+
 ## Implementation
 
 ### 1. Update ConfigFile Class
-Modify `ConfigFile.load()` to extract and merge `[defaults]` sections:
+Add a `defaults` field to store user-defined defaults separately from contexts:
+
+```python
+@dataclass
+class ConfigFile:
+    """Represents file-based configuration with contexts and defaults."""
+    contexts: Dict[str, Dict[str, Any]]
+    defaults: Dict[str, Any]  # NEW: User-defined defaults
+    source_files: list[Path]
+
+    @classmethod
+    def load(cls, explicit_config_file: Optional[Path] = None, start_dir: Optional[Path] = None) -> "ConfigFile":
+        """Load configuration from files with user-defined defaults."""
+        merged_contexts = {}
+        merged_defaults = {}  # NEW: Track user defaults separately
+        source_files = []
+
+        if explicit_config_file:
+            # Use only the explicit config file
+            if not explicit_config_file.exists():
+                raise ValueError(f"Config file not found: {explicit_config_file}")
+            user_config = load_config_file(explicit_config_file)
+            merged_contexts.update(user_config.get("contexts", {}))
+            merged_defaults.update(user_config.get("defaults", {}))  # NEW: Extract defaults
+            source_files = [explicit_config_file]
+        else:
+            # Auto-discover and merge global and project config files
+            global_config_path, project_config_path = find_all_config_files(start_dir)
+
+            # Load global config
+            if global_config_path:
+                global_config = load_config_file(global_config_path)
+                merged_contexts.update(global_config.get("contexts", {}))
+                merged_defaults.update(global_config.get("defaults", {}))  # NEW
+                source_files.append(global_config_path)
+
+            # Overlay project config (contexts and defaults with same keys override)
+            if project_config_path:
+                project_config = load_config_file(project_config_path)
+                merged_contexts.update(project_config.get("contexts", {}))
+                merged_defaults.update(project_config.get("defaults", {}))  # NEW
+                source_files.append(project_config_path)
+
+        # Ensure builtin default context is available (user can override)
+        builtin_default = get_builtin_default_context()
+        if "default" in merged_contexts:
+            # Merge user default with builtin (user takes precedence)
+            final_default = builtin_default.copy()
+            final_default.update(merged_contexts["default"])
+            merged_contexts["default"] = final_default
+        else:
+            merged_contexts["default"] = builtin_default
+
+        return cls(contexts=merged_contexts, defaults=merged_defaults, source_files=source_files)
+```
+
+### 2. Update ContainerConfig.create()
+Modify the precedence logic to include user-defined defaults:
 
 ```python
 @classmethod
-def load(cls, explicit_config_file: Optional[Path] = None, start_dir: Optional[Path] = None) -> "ConfigFile":
-    # Start with built-in defaults
-    merged_defaults = get_builtin_defaults()
-    
-    # Load global config defaults
-    if global_config_path:
-        global_config = load_config_file(global_config_path)
-        if "defaults" in global_config:
-            merged_defaults.update(global_config["defaults"])
-    
-    # Load project config defaults (overrides global)
-    if project_config_path:
-        project_config = load_config_file(project_config_path)
-        if "defaults" in project_config:
-            merged_defaults.update(project_config["defaults"])
-    
-    # Apply defaults to contexts
-    for context_name, context_data in contexts.items():
-        resolved_context = merged_defaults.copy()
-        resolved_context.update(context_data)
-        contexts[context_name] = resolved_context
-```
+def create(cls, context: Optional[str] = None, config_file: Optional[str] = None, **cli_options) -> "ContainerConfig":
+    """Create ContainerConfig from CLI options, config files, and system defaults."""
+    # Load file-based configuration
+    try:
+        explicit_config = Path(config_file) if config_file else None
+        config_file_obj = ConfigFile.load(explicit_config_file=explicit_config)
+    except Exception as e:
+        raise ValueError(str(e)) from e
 
-### 2. Update resolve_context()
-Modify context resolution to use merged defaults:
+    # Resolve config values with context
+    if not context:
+        context = "default"
+    file_config = config_file_obj.resolve_context(context)
 
-```python
-def resolve_context(self, context: str) -> Dict[str, Any]:
-    if context not in self.contexts:
-        available = list(self.contexts.keys())
-        raise ValueError(f"Unknown context '{context}'. Available: {available}")
-    
-    # Context already includes merged defaults from load()
-    context_data = self.contexts[context].copy()
-    
-    # Apply templating
-    variables = {
-        "USER": getpass.getuser(),
-        "image": context_data.get("image", ""),
-    }
-    
-    return substitute_in_context(context_data, variables)
-```
+    # Get default configuration values
+    builtin_defaults = cls.get_defaults()
+    user_defaults = config_file_obj.defaults  # NEW: Get user-defined defaults
 
-### 3. Update ContainerConfig.from_cli_options()
-Ensure CLI options still override everything:
-
-```python
-@classmethod
-def from_cli_options(cls, context: Optional[str] = None, **cli_options) -> "ContainerConfig":
-    # Load file config (now includes merged defaults)
-    config_file_obj = ConfigFile.load(...)
-    file_config = config_file_obj.resolve_context(context or "default")
-    
-    # CLI options override file config (including defaults)
-    def get_config_value(key: str, cli_key: str = None, default=None):
+    # Helper function with updated precedence: CLI > context > user defaults > builtin defaults
+    def get_config_value(key: str, cli_key: str = None, default_value=None):
         cli_key = cli_key or key
+        
+        # 1. CLI options (highest priority)
         cli_value = cli_options.get(cli_key)
         if cli_value is not None:
             return cli_value
-        # file_config now includes merged defaults
-        return file_config.get(key, default)
+            
+        # 2. Context configuration
+        file_value = file_config.get(key)
+        if file_value is not None:
+            return file_value
+            
+        # 3. User-defined defaults (NEW)
+        user_default = user_defaults.get(key)
+        if user_default is not None:
+            return user_default
+            
+        # 4. Built-in defaults or provided default
+        if default_value is not None:
+            return default_value
+        return getattr(builtin_defaults, key, None)
+
+    # Helper function to merge list values with defaults consideration
+    def get_merged_list_value(key: str, cli_key: str = None):
+        cli_key = cli_key or key
+        
+        # Start with user defaults if available, otherwise builtin defaults
+        user_default_list = user_defaults.get(key)
+        if user_default_list is not None:
+            base_list = list(user_default_list)
+        else:
+            base_list = list(getattr(builtin_defaults, key, []))
+        
+        # Override with context values if specified
+        file_value = file_config.get(key)
+        if file_value is not None:
+            base_list = list(file_value)
+        
+        # Add CLI values if provided
+        cli_value = cli_options.get(cli_key)
+        if cli_value:
+            base_list.extend(cli_value)
+        
+        return base_list
+
+    # Rest of the create() method remains the same...
 ```
 
 ## Example Usage
