@@ -449,7 +449,7 @@ class ContainerConfig:
 
     # Core paths (always required)
     working_dir: Path
-    gosu_path: Optional[Path]
+    gosu_path: Optional[Path] = None
 
     # Mount points (structural, always set)
     working_dir_mount: str = "/repo"
@@ -517,6 +517,7 @@ class ContainerConfig:
 
         for key, value in config_dict.items():
             if value is None:
+                # Skip None values - let dataclass defaults handle them
                 continue
 
             # Handle path fields
