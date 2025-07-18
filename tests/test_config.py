@@ -61,16 +61,14 @@ def test_resolve_config_values_defaults():
     def create_test_config(contexts, defaults):
         """Helper to create CtenvConfig for testing."""
         from ctenv import get_default_config_dict, merge_config
-        
+
         # Compute defaults (system defaults + file defaults if any)
         computed_defaults = get_default_config_dict()
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
-        
+
         return CtenvConfig(
-            defaults=computed_defaults,
-            contexts=contexts,
-            source_files=[]
+            defaults=computed_defaults, contexts=contexts, source_files=[]
         )
 
     ctenv_config = create_test_config(
@@ -95,16 +93,14 @@ def test_resolve_config_values_context():
     def create_test_config(contexts, defaults):
         """Helper to create CtenvConfig for testing."""
         from ctenv import get_default_config_dict, merge_config
-        
+
         # Compute defaults (system defaults + file defaults if any)
         computed_defaults = get_default_config_dict()
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
-        
+
         return CtenvConfig(
-            defaults=computed_defaults,
-            contexts=contexts,
-            source_files=[]
+            defaults=computed_defaults, contexts=contexts, source_files=[]
         )
 
     ctenv_config = create_test_config(
@@ -135,16 +131,14 @@ def test_resolve_config_values_unknown_context():
     def create_test_config(contexts, defaults):
         """Helper to create CtenvConfig for testing."""
         from ctenv import get_default_config_dict, merge_config
-        
+
         # Compute defaults (system defaults + file defaults if any)
         computed_defaults = get_default_config_dict()
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
-        
+
         return CtenvConfig(
-            defaults=computed_defaults,
-            contexts=contexts,
-            source_files=[]
+            defaults=computed_defaults, contexts=contexts, source_files=[]
         )
 
     ctenv_config = create_test_config(
@@ -243,13 +237,9 @@ def test_empty_config_structure():
         ctenv_config = CtenvConfig.load(
             start_dir=tmpdir
         )  # No config files in empty dir
-        assert (
-            len(ctenv_config.contexts) == 0
-        )  # No contexts should be present
+        assert len(ctenv_config.contexts) == 0  # No contexts should be present
         # Check that defaults still work (contains system defaults)
-        assert (
-            ctenv_config.defaults["image"] == "ubuntu:latest"
-        )  # System default
+        assert ctenv_config.defaults["image"] == "ubuntu:latest"  # System default
         # Should have no source files since no TOML files found
         assert len(ctenv_config.source_files) == 0
 
