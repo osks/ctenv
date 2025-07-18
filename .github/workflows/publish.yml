@@ -20,7 +20,7 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         enable-cache: true
-        cache-dependency-path: pyproject.toml
+        cache-dependency-glob: "pyproject.toml"
     - name: Install dependencies
       run: |
         make dev
@@ -39,7 +39,7 @@ jobs:
       uses: astral-sh/setup-uv@v6
       with:
         enable-cache: true
-        cache-dependency-path: pyproject.toml
+        cache-dependency-glob: "pyproject.toml"
     - name: Install dependencies
       run: |
         pip install setuptools wheel build
