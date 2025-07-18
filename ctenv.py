@@ -89,29 +89,17 @@ def get_platform_specific_gosu_name() -> str:
     return f"gosu-{arch}"
 
 
-def find_gosu_binary(
-    start_dir: Optional[Path] = None, explicit_path: Optional[str] = None
-) -> Optional[Path]:
-    """Find gosu binary using fallback strategy.
+def find_default_gosu_path(start_dir: Optional[Path] = None) -> Optional[Path]:
+    """Find default gosu binary using fallback strategy.
 
     Search order:
-    1. explicit_path if provided
-    2. Platform-specific binary in .ctenv directories
-    3. Generic gosu in .ctenv directories
-    4. System PATH (shutil.which)
+    1. Platform-specific binary in .ctenv directories
+    2. Generic gosu in .ctenv directories
+    3. System PATH (shutil.which)
 
     Returns:
         Path to gosu binary if found, None otherwise
     """
-    if explicit_path:
-        explicit_gosu = Path(explicit_path)
-        if explicit_gosu.exists() and explicit_gosu.is_file():
-            logging.debug(f"Using explicit gosu path: {explicit_gosu}")
-            return explicit_gosu
-        else:
-            logging.warning(f"Explicit gosu path not found: {explicit_gosu}")
-            return None
-
     # Get platform-specific binary name
     platform_gosu = get_platform_specific_gosu_name()
 
@@ -162,6 +150,30 @@ def find_gosu_binary(
 
     logging.debug("No gosu binary found in .ctenv directories or PATH")
     return None
+
+
+def find_gosu_binary(
+    start_dir: Optional[Path] = None, explicit_path: Optional[str] = None
+) -> Optional[Path]:
+    """Find gosu binary using fallback strategy.
+
+    Search order:
+    1. explicit_path if provided
+    2. Default gosu search
+
+    Returns:
+        Path to gosu binary if found, None otherwise
+    """
+    if explicit_path:
+        explicit_gosu = Path(explicit_path)
+        if explicit_gosu.exists() and explicit_gosu.is_file():
+            logging.debug(f"Using explicit gosu path: {explicit_gosu}")
+            return explicit_gosu
+        else:
+            logging.warning(f"Explicit gosu path not found: {explicit_gosu}")
+            return None
+
+    return find_default_gosu_path(start_dir)
 
 
 def find_all_config_files(
@@ -328,7 +340,7 @@ class ContainerConfig:
     # Paths (required)
     script_dir: Path
     working_dir: Path
-    gosu_path: Path
+    gosu_path: Optional[Path]
 
     # Container settings with defaults
     image: str = "ubuntu:latest"
@@ -357,6 +369,43 @@ class ContainerConfig:
         return f"ctenv-{dir_id}"
 
     @classmethod
+    def get_defaults(cls) -> "ContainerConfig":
+        """Get default configuration instance."""
+        import pwd
+        import grp
+        import os
+        
+        user_info = pwd.getpwuid(os.getuid())
+        group_info = grp.getgrgid(os.getgid())
+        
+        # Find default gosu path from current directory (can be None)
+        default_gosu_path = find_default_gosu_path()
+        
+        return cls(
+            # User identity (defaults to current user)
+            user_name=user_info.pw_name,
+            user_id=user_info.pw_uid,
+            group_name=group_info.gr_name,
+            group_id=group_info.gr_gid,
+            user_home=user_info.pw_dir,
+            # Required paths
+            script_dir=Path(__file__).parent.resolve(),
+            working_dir=Path(os.getcwd()),
+            gosu_path=default_gosu_path,
+            # Container settings
+            image="ubuntu:latest",
+            command="bash",
+            container_name=None,
+            env_vars=(),
+            volumes=(),
+            post_start_cmds=(),
+            ulimits=None,
+            sudo=False,
+            network=None,
+            tty=False,
+        )
+
+    @classmethod
     def create(
         cls,
         context: Optional[str] = None,
@@ -382,39 +431,11 @@ class ContainerConfig:
         script_dir = Path(__file__).parent.resolve()
         logging.debug(f"Script directory: {script_dir}")
 
-        # Get working directory
-        dir_param = cli_options.get("dir") or file_config.get("dir")
-        working_dir = Path(dir_param) if dir_param else Path(os.getcwd())
-        logging.debug(f"Working directory: {working_dir}")
-
-        # Get current user and group information for defaults
-        user_info = pwd.getpwuid(os.getuid())
-        group_info = grp.getgrgid(os.getgid())
-        logging.debug(f"User info: {user_info.pw_name} (UID: {user_info.pw_uid})")
-
-        # Default values for configuration options
-        config_defaults = {
-            # User identity (defaults to current user)
-            "user_name": user_info.pw_name,
-            "user_id": user_info.pw_uid,
-            "group_name": group_info.gr_name,
-            "group_id": group_info.gr_gid,
-            "user_home": user_info.pw_dir,
-            # Container settings
-            "image": "ubuntu:latest",
-            "command": "bash",
-            "container_name": None,
-            "env": [],
-            "volumes": [],
-            "post_start_cmds": [],
-            "ulimits": None,
-            "sudo": False,
-            "network": None,
-            "gosu_path": None,
-        }
+        # Get default configuration values
+        defaults = cls.get_defaults()
 
         # Helper function to get value with precedence: CLI > config file > default
-        def get_config_value(key: str, cli_key: str = None):
+        def get_config_value(key: str, cli_key: str = None, default_value=None):
             cli_key = cli_key or key
             cli_value = cli_options.get(cli_key)
             if cli_value is not None:
@@ -422,7 +443,9 @@ class ContainerConfig:
             file_value = file_config.get(key)
             if file_value is not None:
                 return file_value
-            return config_defaults.get(key)
+            if default_value is not None:
+                return default_value
+            return getattr(defaults, key, None)
         
         # Helper function to merge list values: config file + CLI additions
         def get_merged_list_value(key: str, cli_key: str = None):
@@ -430,7 +453,7 @@ class ContainerConfig:
             # Start with config file values (or defaults)
             file_value = file_config.get(key)
             if file_value is None:
-                file_value = config_defaults.get(key, [])
+                file_value = getattr(defaults, key, [])
             base_list = list(file_value or [])
             
             # Add CLI values if provided
@@ -440,11 +463,19 @@ class ContainerConfig:
             
             return base_list
 
-        # Discover gosu binary path
-        gosu_path_override = get_config_value("gosu_path")
-        gosu_binary = find_gosu_binary(
-            start_dir=working_dir, explicit_path=gosu_path_override
-        )
+        # Resolve gosu binary path
+        working_dir_resolved = Path(get_config_value("working_dir", "dir"))
+        gosu_path_config = get_config_value("gosu_path")
+        
+        if gosu_path_config:
+            # Use configured gosu path (CLI or config file)
+            gosu_binary = Path(gosu_path_config)
+            if not gosu_binary.exists() or not gosu_binary.is_file():
+                raise FileNotFoundError(f"Configured gosu path not found: {gosu_binary}")
+        else:
+            # No gosu path found (default search failed)
+            gosu_binary = None
+            
         if gosu_binary is None:
             platform_name = get_platform_specific_gosu_name()
             raise FileNotFoundError(
@@ -471,7 +502,7 @@ class ContainerConfig:
             user_home=get_config_value("user_home"),
             # Paths
             script_dir=script_dir,
-            working_dir=working_dir,
+            working_dir=working_dir_resolved,
             gosu_path=gosu_binary,
             # Container settings (CLI > config file > defaults)
             image=get_config_value("image"),
