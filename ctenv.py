@@ -338,7 +338,6 @@ class ContainerConfig:
     user_home: str
 
     # Paths (required)
-    script_dir: Path
     working_dir: Path
     gosu_path: Optional[Path]
 
@@ -389,7 +388,6 @@ class ContainerConfig:
             group_id=group_info.gr_gid,
             user_home=user_info.pw_dir,
             # Required paths
-            script_dir=Path(__file__).parent.resolve(),
             working_dir=Path(os.getcwd()),
             gosu_path=default_gosu_path,
             # Container settings
@@ -426,10 +424,6 @@ class ContainerConfig:
         if not context:
             context = "default"
         file_config = config_file_obj.resolve_context(context)
-
-        # Get script directory
-        script_dir = Path(__file__).parent.resolve()
-        logging.debug(f"Script directory: {script_dir}")
 
         # Get default configuration values
         defaults = cls.get_defaults()
@@ -501,7 +495,6 @@ class ContainerConfig:
             group_id=get_config_value("group_id"),
             user_home=get_config_value("user_home"),
             # Paths
-            script_dir=script_dir,
             working_dir=working_dir_resolved,
             gosu_path=gosu_binary,
             # Container settings (CLI > config file > defaults)
@@ -722,7 +715,7 @@ class ContainerRunner:
 
     @staticmethod
     def build_run_args(
-        config: ContainerConfig, script_path: str, verbose: bool = False
+        config: ContainerConfig, entrypoint_script_path: str, verbose: bool = False
     ) -> list[str]:
         """Build Docker run arguments with provided script path."""
         logging.debug("Building Docker run arguments")
@@ -743,7 +736,7 @@ class ContainerRunner:
         volume_args = [
             f"--volume={config.working_dir}:{config.dir_mount}:z,rw",
             f"--volume={config.gosu_path}:{config.gosu_mount}:z,ro",
-            f"--volume={script_path}:/entrypoint.sh:z,ro",
+            f"--volume={entrypoint_script_path}:/entrypoint.sh:z,ro",
             f"--workdir={config.dir_mount}",
         ]
         args.extend(volume_args)
@@ -751,7 +744,7 @@ class ContainerRunner:
         logging.debug("Volume mounts:")
         logging.debug(f"  Working dir: {config.working_dir} -> {config.dir_mount}")
         logging.debug(f"  Gosu binary: {config.gosu_path} -> {config.gosu_mount}")
-        logging.debug(f"  Entrypoint script: {script_path} -> /entrypoint.sh")
+        logging.debug(f"  Entrypoint script: {entrypoint_script_path} -> /entrypoint.sh")
 
         # Additional volume mounts
         if processed_volumes:
@@ -865,8 +858,8 @@ class ContainerRunner:
 
         if dry_run:
             # Dry-run mode: don't create any files, use placeholder path
-            script_path = "/tmp/entrypoint.sh"  # Placeholder for display
-            docker_args = ContainerRunner.build_run_args(config, script_path, verbose)
+            entrypoint_script_path = "/tmp/entrypoint.sh"  # Placeholder for display
+            docker_args = ContainerRunner.build_run_args(config, entrypoint_script_path, verbose)
 
             logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
@@ -887,17 +880,17 @@ class ContainerRunner:
             return result
         else:
             # Real execution: create temporary script file
-            script_fd, script_path = tempfile.mkstemp(suffix=".sh", text=True)
-            logging.debug(f"Created temporary entrypoint script: {script_path}")
+            script_fd, entrypoint_script_path = tempfile.mkstemp(suffix=".sh", text=True)
+            logging.debug(f"Created temporary entrypoint script: {entrypoint_script_path}")
 
             try:
                 with os.fdopen(script_fd, "w") as f:
                     f.write(script_content)
-                os.chmod(script_path, 0o755)
+                os.chmod(entrypoint_script_path, 0o755)
 
                 # Build Docker arguments with actual script path
                 docker_args = ContainerRunner.build_run_args(
-                    config, script_path, verbose
+                    config, entrypoint_script_path, verbose
                 )
 
                 logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
@@ -912,8 +905,8 @@ class ContainerRunner:
             finally:
                 # Clean up temporary script file
                 try:
-                    os.unlink(script_path)
-                    logging.debug(f"Cleaned up temporary script: {script_path}")
+                    os.unlink(entrypoint_script_path)
+                    logging.debug(f"Cleaned up temporary script: {entrypoint_script_path}")
                 except OSError:
                     pass
 

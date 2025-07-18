@@ -44,14 +44,12 @@ def test_config_with_mock_user():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            script_dir=Path(tmpdir),
             working_dir=Path(tmpdir),
             gosu_path=Path("/test/gosu"),
         )
 
         assert config.user_name == "testuser"
         assert config.user_id == 1000
-        assert config.script_dir == Path(tmpdir)
         assert config.working_dir == Path(tmpdir)
 
 
@@ -80,7 +78,6 @@ def test_entrypoint_script_generation():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        script_dir=Path("/test"),
         working_dir=Path("/test"),
         gosu_path=Path("/test/gosu"),
         command="bash",
@@ -108,7 +105,6 @@ def test_entrypoint_script_examples():
                 group_name="staff",
                 group_id=20,
                 user_home="/home/developer",
-                script_dir=Path("/test"),
                 working_dir=Path("/test"),
                 gosu_path=Path("/test/gosu"),
                 command="bash",
@@ -122,7 +118,6 @@ def test_entrypoint_script_examples():
                 group_name="runners",
                 group_id=1000,
                 user_home="/home/runner",
-                script_dir=Path("/test"),
                 working_dir=Path("/test"),
                 gosu_path=Path("/test/gosu"),
                 command="python3 main.py --verbose",
