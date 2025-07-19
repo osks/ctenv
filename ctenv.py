@@ -79,27 +79,46 @@ def substitute_in_context(
     return result
 
 
-def get_platform_specific_gosu_name() -> str:
+def validate_platform(platform: str) -> bool:
+    """Validate that the platform is supported."""
+    supported_platforms = ["linux/amd64", "linux/arm64"]
+    return platform in supported_platforms
+
+
+def get_platform_specific_gosu_name(target_platform: Optional[str] = None) -> str:
     """Get platform-specific gosu binary name.
+
+    Args:
+        target_platform: Docker platform format (e.g., "linux/amd64", "linux/arm64")
+                        If None, detects host platform.
 
     Note: gosu only provides Linux binaries since containers run Linux
     regardless of the host OS.
     """
-    machine = platform.machine().lower()
-
-    # Map machine types to standard names
-    if machine in ("x86_64", "amd64"):
-        arch = "amd64"
-    elif machine in ("aarch64", "arm64"):
-        arch = "arm64"
+    if target_platform:
+        # Extract architecture from Docker platform format
+        if target_platform == "linux/amd64":
+            arch = "amd64"
+        elif target_platform == "linux/arm64":
+            arch = "arm64"
+        else:
+            # For unsupported platforms, default to amd64
+            arch = "amd64"
     else:
-        arch = "amd64"  # Default fallback
+        # Detect host platform
+        machine = platform.machine().lower()
+        if machine in ("x86_64", "amd64"):
+            arch = "amd64"
+        elif machine in ("aarch64", "arm64"):
+            arch = "arm64"
+        else:
+            arch = "amd64"  # Default fallback
 
     # Always use Linux binaries since containers run Linux
     return f"gosu-{arch}"
 
 
-def find_default_gosu_path(start_dir: Optional[Path] = None) -> Optional[Path]:
+def find_default_gosu_path(start_dir: Optional[Path] = None, target_platform: Optional[str] = None) -> Optional[Path]:
     """Find default gosu binary using fallback strategy.
 
     Search order:
@@ -107,11 +126,15 @@ def find_default_gosu_path(start_dir: Optional[Path] = None) -> Optional[Path]:
     2. Generic gosu in .ctenv directories
     3. System PATH (shutil.which)
 
+    Args:
+        start_dir: Starting directory for .ctenv search
+        target_platform: Target container platform (e.g., "linux/amd64")
+
     Returns:
         Path to gosu binary if found, None otherwise
     """
     # Get platform-specific binary name
-    platform_gosu = get_platform_specific_gosu_name()
+    platform_gosu = get_platform_specific_gosu_name(target_platform)
 
     # Search for .ctenv/gosu using same discovery as config files
     if start_dir is None:
@@ -119,37 +142,26 @@ def find_default_gosu_path(start_dir: Optional[Path] = None) -> Optional[Path]:
 
     current = start_dir.resolve()
 
-    # Search upward for platform-specific gosu first, then generic
+    # Search upward for platform-specific gosu only
     while True:
-        # Try platform-specific first
+        # Try platform-specific only in .ctenv directories
         ctenv_platform_gosu = current / ".ctenv" / platform_gosu
         if ctenv_platform_gosu.exists() and ctenv_platform_gosu.is_file():
             logging.debug(f"Found platform-specific gosu: {ctenv_platform_gosu}")
             return ctenv_platform_gosu
-
-        # Fall back to generic gosu
-        ctenv_gosu = current / ".ctenv" / "gosu"
-        if ctenv_gosu.exists() and ctenv_gosu.is_file():
-            logging.debug(f"Found gosu in project .ctenv: {ctenv_gosu}")
-            return ctenv_gosu
 
         parent = current.parent
         if parent == current:  # Reached filesystem root
             break
         current = parent
 
-    # Check global .ctenv/gosu (platform-specific first)
+    # Check global .ctenv/gosu (platform-specific only)
     global_platform_gosu = Path.home() / ".ctenv" / platform_gosu
     if global_platform_gosu.exists() and global_platform_gosu.is_file():
         logging.debug(
             f"Found platform-specific gosu in global .ctenv: {global_platform_gosu}"
         )
         return global_platform_gosu
-
-    global_gosu = Path.home() / ".ctenv" / "gosu"
-    if global_gosu.exists() and global_gosu.is_file():
-        logging.debug(f"Found gosu in global .ctenv: {global_gosu}")
-        return global_gosu
 
     # Fall back to system PATH
     system_gosu = shutil.which("gosu")
@@ -163,13 +175,18 @@ def find_default_gosu_path(start_dir: Optional[Path] = None) -> Optional[Path]:
 
 
 def find_gosu_binary(
-    start_dir: Optional[Path] = None, explicit_path: Optional[str] = None
+    start_dir: Optional[Path] = None, explicit_path: Optional[str] = None, target_platform: Optional[str] = None
 ) -> Optional[Path]:
     """Find gosu binary using fallback strategy.
 
     Search order:
     1. explicit_path if provided
-    2. Default gosu search
+    2. Default gosu search with platform consideration
+
+    Args:
+        start_dir: Starting directory for search
+        explicit_path: Explicit path to gosu binary
+        target_platform: Target container platform (e.g., "linux/amd64")
 
     Returns:
         Path to gosu binary if found, None otherwise
@@ -183,7 +200,7 @@ def find_gosu_binary(
             logging.warning(f"Explicit gosu path not found: {explicit_gosu}")
             return None
 
-    return find_default_gosu_path(start_dir)
+    return find_default_gosu_path(start_dir, target_platform)
 
 
 def get_default_config_dict() -> Dict[str, Any]:
@@ -192,9 +209,6 @@ def get_default_config_dict() -> Dict[str, Any]:
 
     user_info = pwd.getpwuid(os.getuid())
     group_info = grp.getgrgid(os.getgid())
-
-    # Find default gosu path from current directory (can be None)
-    default_gosu_path = find_default_gosu_path()
 
     return {
         # User identity (defaults to current user)
@@ -205,7 +219,7 @@ def get_default_config_dict() -> Dict[str, Any]:
         "user_home": user_info.pw_dir,
         # Required paths
         "working_dir": str(Path(os.getcwd())),
-        "gosu_path": str(default_gosu_path) if default_gosu_path else None,
+        "gosu_path": None,  # Will be resolved later with platform consideration
         # Mount points
         "working_dir_mount": "/repo",
         "gosu_mount": "/gosu",
@@ -470,6 +484,7 @@ class ContainerConfig:
     sudo: Optional[bool] = None
     network: Optional[str] = None
     tty: Optional[bool] = None
+    platform: Optional[str] = None
 
     def get_container_name(self) -> str:
         """Generate container name based on working directory."""
@@ -478,6 +493,26 @@ class ContainerConfig:
         # Replace / with - to make valid container name
         dir_id = str(self.working_dir).replace("/", "-")
         return f"ctenv-{dir_id}"
+
+    def resolve_missing_paths(self) -> "ContainerConfig":
+        """Return a new ContainerConfig with missing paths resolved.
+        
+        Resolves paths that depend on other config values:
+        - gosu_path: resolved based on platform
+        """
+        import dataclasses
+        
+        # Create a copy to modify
+        resolved_data = dataclasses.asdict(self)
+        
+        # Resolve gosu_path if not set
+        if self.gosu_path is None:
+            resolved_gosu = find_gosu_binary(target_platform=self.platform)
+            if resolved_gosu is None:
+                raise FileNotFoundError("No gosu binary found. Run 'ctenv setup' to download gosu binaries.")
+            resolved_data['gosu_path'] = resolved_gosu
+            
+        return ContainerConfig.from_dict(resolved_data)
 
     def resolve_templates(
         self, variables: Optional[Dict[str, str]] = None
@@ -771,9 +806,13 @@ class ContainerRunner:
             "run",
             "--rm",
             "--init",
-            "--platform=linux/amd64",
-            f"--name={config.get_container_name()}",
         ]
+        
+        # Add platform flag only if specified
+        if config.platform:
+            args.append(f"--platform={config.platform}")
+            
+        args.append(f"--name={config.get_container_name()}")
 
         # Parse volume options
         processed_volumes, chown_paths = ContainerRunner.parse_volumes(config.volumes)
@@ -1019,13 +1058,25 @@ def cmd_run(args):
             "sudo": args.sudo,
             "network": args.network,
             "gosu_path": args.gosu_path,
+            "platform": args.platform,
             "post_start_commands": args.post_start_commands,
         }
         config = ctenv_config.resolve_container_config(
             context=context, cli_overrides=cli_overrides
         )
+        
+        # Validate platform if specified
+        if config.platform and not validate_platform(config.platform):
+            print(f"Error: Unsupported platform '{config.platform}'. Supported platforms: linux/amd64, linux/arm64", file=sys.stderr)
+            sys.exit(1)
+        
+        # Resolve any missing paths (like gosu_path)
+        config = config.resolve_missing_paths()
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
     if verbose:
@@ -1041,6 +1092,7 @@ def cmd_run(args):
         logging.debug(f"  Network: {config.network or 'none'}")
         logging.debug(f"  Sudo: {config.sudo}")
         logging.debug(f"  TTY: {config.tty}")
+        logging.debug(f"  Platform: {config.platform or 'default'}")
         logging.debug(f"  Gosu binary: {config.gosu_path}")
 
     if not quiet:
@@ -1084,16 +1136,21 @@ def cmd_config_show(args):
             # Show context name
             print(f"Context '{context}':")
 
-            # Get the resolved container config for this context
-            resolved_config = ctenv_config.resolve_container_config(context=context)
+            try:
+                # Get the resolved container config for this context
+                resolved_config = ctenv_config.resolve_container_config(context=context)
+                resolved_config = resolved_config.resolve_missing_paths()
+            except FileNotFoundError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
 
             # Show key configuration values
             print(f"  image: {resolved_config.image}")
             print(f"  command: {resolved_config.command}")
             print(f"  network: {resolved_config.network}")
             print(f"  sudo: {resolved_config.sudo}")
-            if resolved_config.env_vars:
-                print(f"  env: {list(resolved_config.env_vars)}")
+            if resolved_config.env:
+                print(f"  env: {list(resolved_config.env)}")
             if resolved_config.volumes:
                 print(f"  volumes: {list(resolved_config.volumes)}")
             if resolved_config.post_start_commands:
@@ -1121,8 +1178,8 @@ def cmd_config_show(args):
                 print(f"  command: {defaults_config.command}")
                 print(f"  network: {defaults_config.network}")
                 print(f"  sudo: {defaults_config.sudo}")
-                if defaults_config.env_vars:
-                    print(f"  env: {list(defaults_config.env_vars)}")
+                if defaults_config.env:
+                    print(f"  env: {list(defaults_config.env)}")
                 if defaults_config.volumes:
                     print(f"  volumes: {list(defaults_config.volumes)}")
 
@@ -1317,6 +1374,10 @@ Note: Use '--' to separate commands from context/options.""",
     run_parser.add_argument(
         "--gosu-path",
         help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
+    )
+    run_parser.add_argument(
+        "--platform",
+        help="Container platform (e.g., linux/amd64, linux/arm64)",
     )
     run_parser.add_argument(
         "--post-start-cmd",

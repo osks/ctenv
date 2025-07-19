@@ -35,7 +35,8 @@ def test_docker_command_examples():
         assert "run" in args
         assert "--rm" in args
         assert "--init" in args
-        assert "--platform=linux/amd64" in args
+        # Platform flag should only be present if explicitly specified
+        assert "--platform=linux/amd64" not in args
         assert f"--name={config.get_container_name()}" in args
         assert "--volume=/workspace:/repo:z,rw" in args
         assert "--volume=/test/gosu:/gosu:z,ro" in args
@@ -51,6 +52,48 @@ def test_docker_command_examples():
     finally:
         # No cleanup needed for test script path
         pass
+
+
+@pytest.mark.unit
+def test_platform_support():
+    """Test platform support in Docker commands."""
+    config_with_platform = ContainerConfig(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup", 
+        group_id=1000,
+        user_home="/home/testuser",
+        working_dir=Path("/workspace"),
+        image="ubuntu:latest",
+        command="bash",
+        gosu_path=Path("/test/gosu"),
+        platform="linux/arm64",
+    )
+    
+    test_script_path = "/tmp/test_entrypoint.sh"
+    args = ContainerRunner.build_run_args(config_with_platform, test_script_path)
+    
+    # Should include platform flag when specified
+    assert "--platform=linux/arm64" in args
+    
+    # Test without platform
+    config_no_platform = ContainerConfig(
+        user_name="testuser",
+        user_id=1000,
+        group_name="testgroup",
+        group_id=1000, 
+        user_home="/home/testuser",
+        working_dir=Path("/workspace"),
+        image="ubuntu:latest",
+        command="bash",
+        gosu_path=Path("/test/gosu"),
+    )
+    
+    args_no_platform = ContainerRunner.build_run_args(config_no_platform, test_script_path)
+    
+    # Should not include platform flag when not specified
+    platform_args = [arg for arg in args_no_platform if arg.startswith("--platform")]
+    assert len(platform_args) == 0
 
 
 @pytest.mark.unit
