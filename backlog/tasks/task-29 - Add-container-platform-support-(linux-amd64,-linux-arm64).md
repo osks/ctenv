@@ -1,7 +1,7 @@
 ---
 id: task-29
 title: 'Add container platform support (linux/amd64, linux/arm64)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-19'
 labels: [enhancement, docker, architecture]
