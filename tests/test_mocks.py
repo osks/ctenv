@@ -444,9 +444,9 @@ def test_volume_chown_option():
             script_content = build_entrypoint_script(config, chown_paths, verbose=False)
 
             # Should contain chown commands for cache and data, but not logs
-            assert 'chown -R "$USER_ID:$GROUP_ID" "/var/cache"' in script_content
-            assert 'chown -R "$USER_ID:$GROUP_ID" "/data"' in script_content
-            assert 'chown -R "$USER_ID:$GROUP_ID" "/logs"' not in script_content
+            assert 'chown -R "$USER_ID:$GROUP_ID" /var/cache' in script_content
+            assert 'chown -R "$USER_ID:$GROUP_ID" /data' in script_content
+            assert 'chown -R "$USER_ID:$GROUP_ID" /logs' not in script_content
 
         finally:
             # No cleanup needed for test script path
@@ -475,7 +475,7 @@ def test_post_start_commands():
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
-            post_start_cmds=(
+            post_start_commands=(
                 "source /bitbake-venv/bin/activate",
                 "mkdir -p /var/cache/custom",
                 "echo 'Setup complete'",

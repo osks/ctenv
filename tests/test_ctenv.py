@@ -253,12 +253,12 @@ def test_post_start_cmd_cli_option():
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
         config = ctenv_config.resolve_container_config(
-            cli_overrides={"post_start_cmds": ["npm install", "npm run build"]}
+            cli_overrides={"post_start_commands": ["npm install", "npm run build"]}
         )
 
     # Should contain the CLI post-start extra commands
-    assert "npm install" in config.post_start_cmds
-    assert "npm run build" in config.post_start_cmds
+    assert "npm install" in config.post_start_commands
+    assert "npm run build" in config.post_start_commands
 
 
 @pytest.mark.unit
@@ -269,7 +269,7 @@ def test_post_start_cmd_merging():
     # Create a temporary config file with post-start commands
     config_content = """
 [contexts.test]
-post_start_cmds = ["echo config-cmd"]
+post_start_commands = ["echo config-cmd"]
 """
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -284,16 +284,16 @@ post_start_cmds = ["echo config-cmd"]
         ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
         config = ctenv_config.resolve_container_config(
             context="test",
-            cli_overrides={"post_start_cmds": ["echo cli-cmd1", "echo cli-cmd2"]},
+            cli_overrides={"post_start_commands": ["echo cli-cmd1", "echo cli-cmd2"]},
         )
 
         # Should contain both config file and CLI commands
-        assert "echo config-cmd" in config.post_start_cmds
-        assert "echo cli-cmd1" in config.post_start_cmds
-        assert "echo cli-cmd2" in config.post_start_cmds
+        assert "echo config-cmd" in config.post_start_commands
+        assert "echo cli-cmd1" in config.post_start_commands
+        assert "echo cli-cmd2" in config.post_start_commands
 
         # Config file command should come first, then CLI commands
-        commands = list(config.post_start_cmds)
+        commands = list(config.post_start_commands)
         assert commands.index("echo config-cmd") < commands.index("echo cli-cmd1")
 
     finally:
@@ -313,7 +313,7 @@ def test_post_start_cmd_in_generated_script():
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
         config = ctenv_config.resolve_container_config(
-            cli_overrides={"post_start_cmds": ["npm install", "npm run test"]}
+            cli_overrides={"post_start_commands": ["npm install", "npm run test"]}
         )
 
     script = build_entrypoint_script(config, verbose=True)

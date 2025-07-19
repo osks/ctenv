@@ -1,7 +1,7 @@
 ---
 id: task-16
 title: Implement configuration file support with git-style discovery
-status: done
+status: Done
 assignee: []
 created_date: '2025-07-13'
 updated_date: '2025-07-14'
