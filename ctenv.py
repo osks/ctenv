@@ -21,6 +21,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import shlex
+import hashlib
 
 try:
     import tomllib
@@ -213,7 +215,7 @@ def get_default_config_dict() -> Dict[str, Any]:
         "container_name": None,
         "env": [],
         "volumes": [],
-        "post_start_cmds": [],
+        "post_start_commands": [],
         "ulimits": None,
         "sudo": False,
         "network": None,
@@ -463,7 +465,7 @@ class ContainerConfig:
     # Options (optional - None/empty means "not specified")
     env: Optional[List[str]] = None
     volumes: Optional[List[str]] = None
-    post_start_cmds: Optional[List[str]] = None
+    post_start_commands: Optional[List[str]] = None
     ulimits: Optional[Dict[str, Any]] = None
     sudo: Optional[bool] = None
     network: Optional[str] = None
@@ -513,9 +515,19 @@ class ContainerConfig:
 
         No fallback logic - expects a complete dict with all required fields.
         """
+        # Get all valid field names from the dataclass
+        import dataclasses
+        valid_fields = {f.name for f in dataclasses.fields(cls)}
+        
         kwargs = {}
+        unknown_keys = []
 
         for key, value in config_dict.items():
+            # Check if this is a known field
+            if key not in valid_fields:
+                unknown_keys.append(key)
+                continue
+                
             if value is None:
                 # Skip None values - let dataclass defaults handle them
                 continue
@@ -524,13 +536,19 @@ class ContainerConfig:
             if key in ("working_dir", "gosu_path") and isinstance(value, str):
                 kwargs[key] = Path(value) if value else None
             # Handle list fields
-            elif key in ("env", "volumes", "post_start_cmds") and isinstance(
+            elif key in ("env", "volumes", "post_start_commands") and isinstance(
                 value, (list, tuple)
             ):
                 kwargs[key] = list(value)
             # Everything else passes through
             else:
                 kwargs[key] = value
+
+        # Warn about unknown keys
+        if unknown_keys:
+            logging.warning(
+                f"Ignoring unknown configuration options: {', '.join(sorted(unknown_keys))}"
+            )
 
         return cls(**kwargs)
 
@@ -549,12 +567,16 @@ def build_entrypoint_script(
 log "Checking volumes for ownership fixes"
 """
         for path in chown_paths:
-            chown_commands += f'log "Checking chown volume: {path}"\n'
-            chown_commands += f'if [ -d "{path}" ]; then\n'
-            chown_commands += f'    log "Fixing ownership of volume: {path}"\n'
-            chown_commands += f'    chown -R "$USER_ID:$GROUP_ID" "{path}"\n'
+            # Safely quote the path to prevent injection
+            quoted_path = shlex.quote(path)
+            # For logging, escape quotes in the original path
+            escaped_path = path.replace('"', '\\"')
+            chown_commands += f'log "Checking chown volume: {escaped_path}"\n'
+            chown_commands += f'if [ -d {quoted_path} ]; then\n'
+            chown_commands += f'    log "Fixing ownership of volume: {escaped_path}"\n'
+            chown_commands += f'    chown -R "$USER_ID:$GROUP_ID" {quoted_path}\n'
             chown_commands += "else\n"
-            chown_commands += f'    log "Chown volume does not exist: {path}"\n'
+            chown_commands += f'    log "Chown volume does not exist: {escaped_path}"\n'
             chown_commands += "fi\n"
     else:
         chown_commands = """
@@ -564,17 +586,18 @@ log "No chown-enabled volumes configured"
 
     # Build post-start commands section
     post_start_commands = ""
-    if config.post_start_cmds:
+    if config.post_start_commands:
         post_start_commands = """
 # Execute post-start commands
 log "Executing post-start commands"
 """
-        for cmd in config.post_start_cmds:
-            # Escape quotes in the command
+        for cmd in config.post_start_commands:
+            # Escape the command for safe display in log
             escaped_cmd = cmd.replace('"', '\\"')
             post_start_commands += (
                 f'log "Executing post-start command: {escaped_cmd}"\n'
             )
+            # Execute command normally - users expect shell interpretation
             post_start_commands += f"{cmd}\n"
     else:
         post_start_commands = """
@@ -996,7 +1019,7 @@ def cmd_run(args):
             "sudo": args.sudo,
             "network": args.network,
             "gosu_path": args.gosu_path,
-            "post_start_cmds": args.post_start_cmds,
+            "post_start_commands": args.post_start_commands,
         }
         config = ctenv_config.resolve_container_config(
             context=context, cli_overrides=cli_overrides
@@ -1073,8 +1096,8 @@ def cmd_config_show(args):
                 print(f"  env: {list(resolved_config.env_vars)}")
             if resolved_config.volumes:
                 print(f"  volumes: {list(resolved_config.volumes)}")
-            if resolved_config.post_start_cmds:
-                print(f"  post_start_cmds: {list(resolved_config.post_start_cmds)}")
+            if resolved_config.post_start_commands:
+                print(f"  post_start_commands: {list(resolved_config.post_start_commands)}")
         else:
             # Show all configuration
             print("Configuration:")
@@ -1116,6 +1139,27 @@ def cmd_config_show(args):
         sys.exit(1)
 
 
+def calculate_sha256(file_path: Path) -> str:
+    """Calculate SHA256 checksum of a file."""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        # Read in chunks to handle large files efficiently
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    return sha256_hash.hexdigest()
+
+
+# Pinned gosu version for security and reproducibility
+GOSU_VERSION = "1.17"
+
+# SHA256 checksums for gosu 1.17 binaries
+# Source: https://github.com/tianon/gosu/releases/download/1.17/SHA256SUMS
+GOSU_CHECKSUMS = {
+    "gosu-amd64": "bbc4136d03ab138b1ad66fa4fc051bafc6cc7ffae632b069a53657279a450de3",
+    "gosu-arm64": "c3805a85d17f4454c23d7059bcb97e1ec1af272b90126e79ed002342de08389b",
+}
+
+
 def cmd_setup(args):
     """Download gosu binaries for all platforms."""
     force = args.force
@@ -1134,7 +1178,7 @@ def cmd_setup(args):
         ("gosu-arm64", "linux/arm64"),
     ]
 
-    print("Downloading gosu binaries for all platforms...")
+    print(f"Downloading gosu {GOSU_VERSION} binaries for all platforms...")
 
     success_count = 0
 
@@ -1148,18 +1192,35 @@ def cmd_setup(args):
             continue
 
         # Download the binary
-        url = f"https://github.com/tianon/gosu/releases/latest/download/{binary_name}"
+        url = f"https://github.com/tianon/gosu/releases/download/{GOSU_VERSION}/{binary_name}"
 
         try:
-            print(f"  Downloading {binary_name}...", end="")
+            print(f"  Downloading {binary_name}...", end="", flush=True)
             urllib.request.urlretrieve(url, binary_path)
+            
+            # Verify checksum
+            print(" verifying...", end="", flush=True)
+            expected_checksum = GOSU_CHECKSUMS.get(binary_name)
+            if expected_checksum:
+                actual_checksum = calculate_sha256(binary_path)
+                if actual_checksum != expected_checksum:
+                    binary_path.unlink()  # Remove the bad file
+                    print(f" ✗ Checksum verification failed!")
+                    print(f"    Expected: {expected_checksum}")
+                    print(f"    Got:      {actual_checksum}")
+                    continue
+            
             binary_path.chmod(0o755)
-            print(f" ✓ Downloaded {binary_name} ({platform_desc})")
+            print(f" ✓ Downloaded and verified ({platform_desc})")
             success_count += 1
         except urllib.error.URLError as e:
-            print(f" ✗ Failed to download {binary_name}: {e}")
+            print(f" ✗ Failed to download: {e}")
+            if binary_path.exists():
+                binary_path.unlink()
         except Exception as e:
-            print(f" ✗ Error downloading {binary_name}: {e}")
+            print(f" ✗ Error: {e}")
+            if binary_path.exists():
+                binary_path.unlink()
 
     print()
 
@@ -1181,6 +1242,7 @@ def create_parser():
         prog="ctenv",
         description="ctenv is a tool for running a program in a container as current user",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,  # Require full option names
     )
 
     parser.add_argument("--version", action="version", version=f"ctenv {__version__}")
@@ -1259,7 +1321,7 @@ Note: Use '--' to separate commands from context/options.""",
     run_parser.add_argument(
         "--post-start-cmd",
         action="append",
-        dest="post_start_cmds",
+        dest="post_start_commands",
         help="Add extra command to run after container starts (can be used multiple times)",
     )
 

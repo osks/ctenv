@@ -31,8 +31,6 @@ keeping a container running in the background.
 
 ## Installation
 
-Requirements: Python 3.11
-
 With `uv` you can just run `uv tool ctenv` to use it directly.
 
 Install this tool using `pip`:
@@ -61,15 +59,17 @@ Example config:
 [contexts.claude]
 image = "node:20"
 network = "bridge"
-entrypoint_commands = ["npm install -g @anthropic-ai/claude-code"]
+post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
 volumes = ["${env:HOME}/.claude.json:${env:HOME}/.claude.json", "${env:HOME}/.claude:${env:HOME}/.claude"]
 ```
 
 Note: Be aware that on macOS Claude Code seem to store the credentials
 in the keychain if you have a Claude account. The credentials therefor
-won't be available in the container. But if you go through /login in
-the container, it will write them to `~/.claude/.credentials.json`
-instead.
+won't be available in the container. However, if you go through /login
+in the container, it will write them to `~/.claude/.credentials.json`
+instead and continue to use them from there. Since the above mounts
+that directory, the credentials file will exist outside the container
+also.
 
 
 ### Use case: Build system container
@@ -102,7 +102,7 @@ env = [
 volumes = [
     "build-caches-user-${USER}:/var/cache/build-caches:rw,chown"
 ]
-entrypoint_commands = ["source /venv/bin/activate"]
+post_start_commands = ["source /venv/bin/activate"]
 ```
 
 

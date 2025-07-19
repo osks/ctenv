@@ -588,7 +588,7 @@ env = ["NODE_ENV=development"]
         args.sudo = None
         args.network = None
         args.gosu_path = str(gosu_path)
-        args.post_start_cmds = None
+        args.post_start_commands = None
 
         # Mock docker execution to capture the config
         captured_config = {}
@@ -654,7 +654,7 @@ def test_get_default_config_dict():
     assert defaults["working_dir"] == str(Path(os.getcwd()))
     assert defaults["env"] == []
     assert defaults["volumes"] == []
-    assert defaults["post_start_cmds"] == []
+    assert defaults["post_start_commands"] == []
     assert defaults["ulimits"] is None
     assert defaults["sudo"] is False
     assert defaults["network"] is None
