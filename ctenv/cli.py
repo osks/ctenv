@@ -2,8 +2,14 @@
 #
 # /// script
 # requires-python = ">=3.10"
-# dependencies = []
+# dependencies = [
+#   "tomli; python_version < '3.11'",
+# ]
 # ///
+
+"""
+ctenv - Run programs in containers as current user
+"""
 
 __version__ = "0.1"
 
@@ -27,9 +33,8 @@ import hashlib
 try:
     import tomllib
 except ImportError:
+    # For python < 3.11
     import tomli as tomllib
-import urllib.request
-import urllib.error
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
@@ -119,58 +124,36 @@ def get_platform_specific_gosu_name(target_platform: Optional[str] = None) -> st
 
 
 def find_default_gosu_path(start_dir: Optional[Path] = None, target_platform: Optional[str] = None) -> Optional[Path]:
-    """Find default gosu binary using fallback strategy.
-
-    Search order:
-    1. Platform-specific binary in .ctenv directories
-    2. Generic gosu in .ctenv directories
-    3. System PATH (shutil.which)
+    """Find default gosu binary - should always use bundled binary.
 
     Args:
-        start_dir: Starting directory for .ctenv search
+        start_dir: Unused (kept for API compatibility)
         target_platform: Target container platform (e.g., "linux/amd64")
 
     Returns:
-        Path to gosu binary if found, None otherwise
+        Path to bundled gosu binary, or None if package is corrupted
     """
     # Get platform-specific binary name
     platform_gosu = get_platform_specific_gosu_name(target_platform)
+    
+    # First, try to find bundled binary
+    try:
+        # With zip_safe=False, we can use direct paths to package files
+        import ctenv
+        package_dir = Path(ctenv.__file__).parent
+        bundled_gosu = package_dir / 'binaries' / platform_gosu
+        
+        if bundled_gosu.exists() and bundled_gosu.is_file():
+            logging.debug(f"Using bundled gosu: {bundled_gosu}")
+            return bundled_gosu
+    except (ImportError, AttributeError):
+        # Package not found, continue with other methods
+        pass
 
-    # Search for .ctenv/gosu using same discovery as config files
-    if start_dir is None:
-        start_dir = Path.cwd()
+    # No more .ctenv directory traversal - bundled binaries make this unnecessary
 
-    current = start_dir.resolve()
-
-    # Search upward for platform-specific gosu only
-    while True:
-        # Try platform-specific only in .ctenv directories
-        ctenv_platform_gosu = current / ".ctenv" / platform_gosu
-        if ctenv_platform_gosu.exists() and ctenv_platform_gosu.is_file():
-            logging.debug(f"Found platform-specific gosu: {ctenv_platform_gosu}")
-            return ctenv_platform_gosu
-
-        parent = current.parent
-        if parent == current:  # Reached filesystem root
-            break
-        current = parent
-
-    # Check global .ctenv/gosu (platform-specific only)
-    global_platform_gosu = Path.home() / ".ctenv" / platform_gosu
-    if global_platform_gosu.exists() and global_platform_gosu.is_file():
-        logging.debug(
-            f"Found platform-specific gosu in global .ctenv: {global_platform_gosu}"
-        )
-        return global_platform_gosu
-
-    # Fall back to system PATH
-    system_gosu = shutil.which("gosu")
-    if system_gosu:
-        gosu_path = Path(system_gosu)
-        logging.debug(f"Found gosu in system PATH: {gosu_path}")
-        return gosu_path
-
-    logging.debug("No gosu binary found in .ctenv directories or PATH")
+    # No fallback to system PATH - bundled binaries should always work
+    logging.debug("No gosu binary found")
     return None
 
 
@@ -509,7 +492,7 @@ class ContainerConfig:
         if self.gosu_path is None:
             resolved_gosu = find_gosu_binary(target_platform=self.platform)
             if resolved_gosu is None:
-                raise FileNotFoundError("No gosu binary found. Run 'ctenv setup' to download gosu binaries.")
+                raise FileNotFoundError("No gosu binary found. This suggests a corrupted package installation.")
             resolved_data['gosu_path'] = resolved_gosu
             
         return ContainerConfig.from_dict(resolved_data)
@@ -1217,81 +1200,6 @@ GOSU_CHECKSUMS = {
 }
 
 
-def cmd_setup(args):
-    """Download gosu binaries for all platforms."""
-    force = args.force
-
-    print("🔧 Setting up ctenv...")
-    print()
-
-    # Ensure .ctenv directory exists
-    ctenv_dir = Path.home() / ".ctenv"
-    ctenv_dir.mkdir(exist_ok=True)
-
-    # Platform binaries to download
-    # Note: Only Linux binaries are available since containers run Linux
-    binaries = [
-        ("gosu-amd64", "linux/amd64"),
-        ("gosu-arm64", "linux/arm64"),
-    ]
-
-    print(f"Downloading gosu {GOSU_VERSION} binaries for all platforms...")
-
-    success_count = 0
-
-    for binary_name, platform_desc in binaries:
-        binary_path = ctenv_dir / binary_name
-
-        # Skip if already exists and not forcing
-        if binary_path.exists() and not force:
-            print(f"✓ {binary_name} already exists ({platform_desc})")
-            success_count += 1
-            continue
-
-        # Download the binary
-        url = f"https://github.com/tianon/gosu/releases/download/{GOSU_VERSION}/{binary_name}"
-
-        try:
-            print(f"  Downloading {binary_name}...", end="", flush=True)
-            urllib.request.urlretrieve(url, binary_path)
-            
-            # Verify checksum
-            print(" verifying...", end="", flush=True)
-            expected_checksum = GOSU_CHECKSUMS.get(binary_name)
-            if expected_checksum:
-                actual_checksum = calculate_sha256(binary_path)
-                if actual_checksum != expected_checksum:
-                    binary_path.unlink()  # Remove the bad file
-                    print(f" ✗ Checksum verification failed!")
-                    print(f"    Expected: {expected_checksum}")
-                    print(f"    Got:      {actual_checksum}")
-                    continue
-            
-            binary_path.chmod(0o755)
-            print(f" ✓ Downloaded and verified ({platform_desc})")
-            success_count += 1
-        except urllib.error.URLError as e:
-            print(f" ✗ Failed to download: {e}")
-            if binary_path.exists():
-                binary_path.unlink()
-        except Exception as e:
-            print(f" ✗ Error: {e}")
-            if binary_path.exists():
-                binary_path.unlink()
-
-    print()
-
-    if success_count == len(binaries):
-        print("ctenv is ready to use! Try: ctenv run -- echo hello")
-    elif success_count > 0:
-        print(
-            f"Setup partially complete ({success_count}/{len(binaries)} binaries available)"
-        )
-        print("ctenv should work for most use cases.")
-    else:
-        print("Setup failed. Please check your internet connection and try again.")
-        sys.exit(1)
-
 
 def create_parser():
     """Create the main argument parser."""
@@ -1407,15 +1315,6 @@ Note: Use '--' to separate commands from context/options.""",
         help="Path to configuration file (can be used multiple times, order matters)",
     )
 
-    # setup command
-    setup_parser = subparsers.add_parser(
-        "setup", help="Download gosu binaries for all platforms"
-    )
-    setup_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Re-download gosu binaries even if they exist",
-    )
 
     return parser
 
@@ -1436,8 +1335,6 @@ def main():
             cmd_config_show(args)
         else:
             parser.parse_args(["config", "--help"])
-    elif args.subcommand == "setup":
-        cmd_setup(args)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,7 +1,7 @@
 ---
 id: task-30
 title: Bundle gosu binaries in Python package
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-19'
 labels: [enhancement, packaging, distribution, security]

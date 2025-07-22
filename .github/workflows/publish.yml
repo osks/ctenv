@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
     - uses: actions/checkout@v4
     - name: Install the latest version of uv
@@ -43,8 +43,16 @@ jobs:
     - name: Install dependencies
       run: |
         pip install setuptools wheel build
+    - name: Verify bundled binaries are present
+      run: |
+        ls -la ctenv/binaries/
+        echo "gosu-amd64 size: $(wc -c < ctenv/binaries/gosu-amd64)"
+        echo "gosu-arm64 size: $(wc -c < ctenv/binaries/gosu-arm64)"
     - name: Build
       run: |
         python -m build
+    - name: Verify wheel contents
+      run: |
+        python -m zipfile -l dist/*.whl | grep -E "(gosu-|LICENSE-gosu)"
     - name: Publish
       uses: pypa/gh-action-pypi-publish@release/v1

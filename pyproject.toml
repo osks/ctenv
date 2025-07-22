@@ -23,7 +23,7 @@ Issues = "https://github.com/osks/ctenv/issues"
 CI = "https://github.com/osks/ctenv/actions"
 
 [project.scripts]
-ctenv = "ctenv:cli"
+ctenv = "ctenv:main"
 
 [project.optional-dependencies]
 test = [
@@ -34,7 +34,11 @@ test = [
 ]
 
 [tool.setuptools]
-py-modules = ["ctenv"]
+packages = ["ctenv", "ctenv.binaries"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+ctenv = ["binaries/*", "LICENSE-gosu"]
 
 [tool.setuptools.dynamic]
 version = {attr = "ctenv.__version__"}
@@ -43,4 +47,7 @@ version = {attr = "ctenv.__version__"}
 test = [
     "tox>=4.27.0",
     "tox-uv>=1.26.1",
+]
+dev = [
+    "build>=1.2.2.post1",
 ]

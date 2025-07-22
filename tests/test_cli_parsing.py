@@ -3,12 +3,12 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from io import StringIO
-from ctenv import create_parser, cmd_run
+from ctenv.cli import create_parser, cmd_run
 
 
 def create_test_ctenv_config(contexts, defaults=None):
     """Helper to create CtenvConfig for testing."""
-    from ctenv import CtenvConfig, get_default_config_dict, merge_config
+    from ctenv.cli import CtenvConfig, get_default_config_dict, merge_config
 
     # Compute defaults (system defaults + file defaults if any)
     computed_defaults = get_default_config_dict()
@@ -26,8 +26,8 @@ class TestRunCommandParsing:
         """Set up test fixtures."""
         self.parser = create_parser()
 
-    @patch("ctenv.CtenvConfig.load")
-    @patch("ctenv.ContainerRunner.run_container")
+    @patch("ctenv.cli.CtenvConfig.load")
+    @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_no_arguments(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run (should use default bash command with default context)."""
         mock_ctenv_config = MagicMock()
@@ -48,8 +48,8 @@ class TestRunCommandParsing:
         assert call_kwargs["cli_overrides"]["command"] == "bash"
         assert call_kwargs["context"] is None
 
-    @patch("ctenv.CtenvConfig.load")
-    @patch("ctenv.ContainerRunner.run_container")
+    @patch("ctenv.cli.CtenvConfig.load")
+    @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_with_valid_context(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run dev (should use context with default command)."""
         mock_ctenv_config = MagicMock()
@@ -69,7 +69,7 @@ class TestRunCommandParsing:
         assert call_kwargs["cli_overrides"]["command"] == "bash"
         assert call_kwargs["context"] == "dev"
 
-    @patch("ctenv.CtenvConfig.load")
+    @patch("ctenv.cli.CtenvConfig.load")
     def test_run_with_invalid_context(self, mock_config_file_load):
         """Test: ctenv run invalid (should fail)."""
         mock_config_file = create_test_ctenv_config(
@@ -88,7 +88,7 @@ class TestRunCommandParsing:
             assert "Configuration error: Unknown context 'invalid'" in stderr_output
             assert "Available: ['dev']" in stderr_output
 
-    @patch("ctenv.CtenvConfig.load")
+    @patch("ctenv.cli.CtenvConfig.load")
     def test_run_with_command_only(self, mock_config_file_load):
         """Test: ctenv run echo test (command without explicit context)."""
         mock_config_file_load.return_value = create_test_ctenv_config(
@@ -103,8 +103,8 @@ class TestRunCommandParsing:
         assert args.context == "echo"  # First arg becomes context
         assert args.command == ["test"]  # Rest becomes command
 
-    @patch("ctenv.CtenvConfig.load")
-    @patch("ctenv.ContainerRunner.run_container")
+    @patch("ctenv.cli.CtenvConfig.load")
+    @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_with_context_and_command(
         self, mock_run_container, mock_config_file_load
     ):
@@ -126,8 +126,8 @@ class TestRunCommandParsing:
         assert call_kwargs["cli_overrides"]["command"] == "echo test"
         assert call_kwargs["context"] == "dev"
 
-    @patch("ctenv.CtenvConfig.load")
-    @patch("ctenv.ContainerRunner.run_container")
+    @patch("ctenv.cli.CtenvConfig.load")
+    @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_ambiguous_parsing_context_command(
         self, mock_run_container, mock_config_file_load
     ):
@@ -150,7 +150,7 @@ class TestRunCommandParsing:
         assert call_kwargs["cli_overrides"]["command"] == "echo test"
         assert call_kwargs["context"] == "dev"
 
-    @patch("ctenv.CtenvConfig.load")
+    @patch("ctenv.cli.CtenvConfig.load")
     def test_run_no_config_file_with_context(self, mock_config_file_load):
         """Test: ctenv run dev (only default context available - should fail)."""
         mock_config_file = create_test_ctenv_config(
@@ -168,8 +168,8 @@ class TestRunCommandParsing:
             stderr_output = mock_stderr.getvalue()
             assert "Configuration error: Unknown context 'dev'" in stderr_output
 
-    @patch("ctenv.CtenvConfig.load")
-    @patch("ctenv.ContainerRunner.run_container")
+    @patch("ctenv.cli.CtenvConfig.load")
+    @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_context_with_options(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run dev --image alpine (context with options)."""
         mock_ctenv_config = MagicMock()
@@ -201,7 +201,7 @@ class TestRunCommandEdgeCases:
         """Set up test fixtures."""
         self.parser = create_parser()
 
-    @patch("ctenv.CtenvConfig.load")
+    @patch("ctenv.cli.CtenvConfig.load")
     def test_run_command_that_looks_like_context(self, mock_config_file_load):
         """Test: ctenv run echo (echo looks like command but treated as context)."""
         mock_config_file_load.return_value = create_test_ctenv_config(
@@ -218,7 +218,7 @@ class TestRunCommandEdgeCases:
             stderr_output = mock_stderr.getvalue()
             assert "Configuration error: Unknown context 'echo'" in stderr_output
 
-    @patch("ctenv.CtenvConfig.load")
+    @patch("ctenv.cli.CtenvConfig.load")
     def test_load_config_error(self, mock_config_file_load):
         """Test handling of configuration loading errors."""
         mock_config_file_load.side_effect = Exception("Config error")

@@ -290,10 +290,3 @@ source .venv/bin/activate
 # Run tests
 uv run pytest tests/ -v
 ```
-
-## Requirements
-
-- **Python 3.11+**: Required for built-in TOML support
-- **uv**: Modern Python package manager (recommended)
-- **Docker or Podman**: Container runtime
-- **gosu**: Binary for privilege dropping
