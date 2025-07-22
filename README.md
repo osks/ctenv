@@ -10,7 +10,7 @@ ctenv runs commands in containers by dynamically creating a matching user (same 
 ## Why ctenv?
 
 - ctenv can run commands as your user in a container
-- Can use existing images and run as your user, by creating a matching user in the container at runtime
+- Can use existing images by creating a matching user in the container at runtime
 - Files created with your UID/GID
 - Provides similar functionality as Podman's `--userns=keep-id` but with Docker
 - Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U` functionality to Docker)
