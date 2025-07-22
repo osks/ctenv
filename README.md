@@ -9,44 +9,27 @@ ctenv runs commands in containers by dynamically creating a matching user (same 
 
 ## Why ctenv?
 
-Docker's `--user` flag only works if the user already exists in the container image. Podman's `--userns=keep-id` only works in rootless mode. Neither provides dynamic user creation for any image.
+- ctenv can run commands as your user in a container
+- Can use existing images and run as your user, by creating a matching user in the container at runtime
+- Files created with your UID/GID
+- Provides similar functionality as Podman's `--userns=keep-id` but with Docker
 
-**ctenv solves:**
-- Creates matching user in ANY container image at runtime
-- Files created with your UID/GID, not root
-- Consistent mount paths prevent build cache invalidation
-
-**You need ctenv when:**
-- Container creates files in mounted volumes
-- Build tools embed absolute paths
-- Working with images you can't modify
-
-## Common use cases
+### Use cases
 
 - **Build Systems**: Running containerized builds against local repositories
 - **Development Tools**: Using formatters, linters, or compilers from containers on your code
 - **Claude Code**: Running AI assistants in containers while maintaining file permissions
 - **CI/CD Testing**: Replicating CI environments locally with proper permissions
 
-ctenv is somewhat related to `devcontainers`, but has a much smaller
-scope. It can start a new container directly for a command, rather than
-keeping a container running in the background.
+ctenv is somewhat related to `devcontainers`, but has a smaller
+scope. It can start a new container directly for a command, rather
+than keeping a container running in the background.
 
-## Key Features
+### Key Features
 
 - **User Identity Preservation**: Automatically creates a matching user inside the container with your exact UID/GID and home directory path
 - **Permission Management**: Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U`/`:chown` functionality to Docker)
-- **Configurable Contexts**: Define reusable container configurations for different environments
-
-## Installation
-
-With `uv` you can just run `uv tool ctenv` to use it directly.
-
-Install this tool using `pip`:
-```bash
-pip install ctenv
-```
-
+- **Configurable**: Define reusable container configurations for different environments
 
 ## Design
 
@@ -58,8 +41,16 @@ runs.
 Implemented in a single Python file only depending on Python 3.11. Can
 be used by itself, or installed via `uv` or `pip` (etc).
 
+## Installation
 
-## Use cases
+With `uv` you can just run `uv tool ctenv` to use it directly.
+
+Install this tool using `pip`:
+```bash
+pip install ctenv
+```
+
+## Use case examples
 
 ### Use case: Claude Code
 
