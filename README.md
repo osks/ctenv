@@ -5,29 +5,38 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-ctenv is a tool for easily running commands in a container environment
-similar to the current user environment.
+ctenv runs commands in containers with your user identity - dynamically creating matching users in ANY container image without modification.
 
-Use cases:
+## Why ctenv?
 
-- Running a build system container against a local repository
+Docker's `--user` flag only works if the user already exists in the container image. Podman's `--userns=keep-id` only works in rootless mode. Neither provides dynamic user creation for any image.
 
-- Running Claude Code more contained
+**ctenv solves:**
+- Creates matching user in ANY container image at runtime
+- Files created with your UID/GID, not root
+- Consistent mount paths prevent build cache invalidation
+
+**You need ctenv when:**
+- Container creates files in mounted volumes
+- Build tools embed absolute paths
+- Working with images you can't modify
+
+## Common use cases
+
+- **Build Systems**: Running containerized builds against local repositories
+- **Development Tools**: Using formatters, linters, or compilers from containers on your code
+- **Claude Code**: Running AI assistants in containers while maintaining file permissions
+- **CI/CD Testing**: Replicating CI environments locally with proper permissions
 
 ctenv is somewhat related to `devcontainers`, but has a much smaller
 scope. It can start a new container directly for a command, rather than
 keeping a container running in the background.
 
-- Makes sure that the container has a user that has the same name,
-  same UID/GID and same path to HOME, so that permissions in mounted
-  volumes match.
+## Key Features
 
-- Optionally chown:s mounted volumes (similar to Podman's `:U`
-  option to volumes) so they match the UID/GID.
-
-- Configurable contexts for specifying how the container should be
-  created and what should be mounted, for easily starting different
-  containers.
+- **User Identity Preservation**: Automatically creates a matching user inside the container with your exact UID/GID and home directory path
+- **Permission Management**: Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U`/`:chown` functionality to Docker)
+- **Configurable Contexts**: Define reusable container configurations for different environments
 
 ## Installation
 
@@ -109,184 +118,50 @@ post_start_commands = ["source /venv/bin/activate"]
 ## Usage
 
 ```bash
-# Run an interactive bash session
-ctenv run
-
-# Run a specific command
-ctenv run -- ls -la
-
-# Use a custom container image
-ctenv run --image ubuntu:latest -- whoami
-
-# Run with Alpine Linux
-ctenv run --image alpine:latest -- sh
-
-# Enable verbose output for debugging
-ctenv --verbose run -- echo "Hello"
-
-# Suppress non-essential output
-ctenv --quiet run -- make build
-
-# Use ctenv with commands that produce output (stdout stays clean)
-ctenv run -- cat myfile.txt > output.txt  # Only file content goes to stdout
-ctenv run -- ls -la | grep ".txt"          # Only ls output goes to stdout
+# Basic usage
+ctenv run                        # Interactive bash session
+ctenv run -- ls -la              # Run a command
+ctenv run --image node:20 -- npm install
 
 # Use configuration contexts
 ctenv run dev                    # Use 'dev' context from config
-ctenv run test -- npm test       # Use 'test' context, run npm test
+ctenv run test -- npm test
+
+# Common options
+ctenv run --sudo -- apt update   # Run with sudo access
+ctenv run --network bridge       # Enable networking
+ctenv run --volume /data:/data   # Mount additional volumes
 ```
 
-### CLI Options
-
-**Global options:**
-- `--verbose`, `-v`: Enable verbose debug output with timestamps
-- `--quiet`, `-q`: Suppress non-essential output
-- `--version`: Show version information
-- `--help`: Show help message
-
-**Run command options:**
-- `ctenv run [CONTEXT]`: Use named configuration context
-- `--config`: Path to configuration file
-- `--image`: Container image to use (default: ubuntu:latest)
-- `--env`: Set environment variable (NAME=VALUE) or pass from host (NAME)
-- `--volume`: Mount additional volume (HOST:CONTAINER format)
-- `--sudo`: Add user to sudoers with NOPASSWD inside container
-- `--network`: Enable container networking (default: disabled for security)
-- `--dir`: Directory to mount as workdir (default: current directory)
-- `--dry-run`: Show Docker command without running container
-- `--entrypoint-cmd`: Add extra command to run before main command (can be used multiple times)
-
-**Configuration commands:**
-- `ctenv config show [CONTEXT]`: Show configuration or specific context
-- `ctenv config path`: Show path to configuration file being used
-- `ctenv contexts`: List available contexts
-
-For help, run:
-```bash
-ctenv --help
-ctenv run --help
-ctenv config --help
-```
+Run `ctenv --help` for all options.
 
 ## Configuration
 
-### Configuration Files
+ctenv uses TOML configuration files:
+- Project: `.ctenv/ctenv.toml` (searched upward from current directory)
+- Global: `~/.ctenv/ctenv.toml`
 
-ctenv supports TOML configuration files for project-specific and global settings. Configuration files are discovered using git-style directory traversal:
-
-1. Project config: `.ctenv/ctenv.toml` (searched upward from current directory)
-2. Global config: `~/.ctenv/ctenv.toml`
-
-### Configuration Format
-
-#### Project Configuration (`.ctenv/ctenv.toml`)
+Example `.ctenv/ctenv.toml`:
 ```toml
-# Default settings for this project
 [defaults]
 image = "node:18"
-network = "bridge"
 sudo = true
-env = ["NODE_ENV=development"]
 
-# Project-specific contexts
 [contexts.dev]
 image = "node:18"
 network = "bridge"
-sudo = true
 env = ["NODE_ENV=development", "DEBUG=*"]
-volumes = ["./node_modules:/app/node_modules"]
 
 [contexts.test]
 image = "node:18-alpine"
-network = "none"
-sudo = false
 env = ["NODE_ENV=test", "CI=true"]
-command = "npm test"
-
-[contexts.prod]
-image = "node:18-alpine"
-network = "none"
-sudo = false
-env = ["NODE_ENV=production"]
 ```
 
-#### Global Configuration (`~/.ctenv/ctenv.toml`)
-```toml
-# Global defaults across all projects
-[defaults]
-image = "ubuntu:latest"
-network = "none"
-sudo = false
-
-# Global contexts available everywhere
-[contexts.debug]
-network = "bridge"
-sudo = true
-env = ["DEBUG=1"]
-```
-
-### Configuration Precedence
-
-Configuration values are resolved in this order (highest to lowest priority):
-1. Command-line arguments
-2. Selected context from project config
-3. `[defaults]` section from project config
-4. Selected context from global config
-5. `[defaults]` section from global config
-6. Built-in defaults
-
-### Examples
+Configuration precedence: CLI args > project config > global config > defaults
 
 ```bash
-# Use project defaults
-ctenv run
-
-# Use 'dev' context
-ctenv run dev
-
-# Use 'test' context with command
-ctenv run test -- npm test
-
-# Override context settings
-ctenv run --image alpine:latest dev
-
-# Show configuration
-ctenv config show
-ctenv config show dev
-
-# List available contexts
-ctenv contexts
+ctenv contexts              # List available contexts
+ctenv config show dev       # Show context configuration
+ctenv run dev -- npm start  # Use 'dev' context
 ```
 
-## Development
-
-### Quick Start
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd ctenv
-
-# Setup development environment (requires uv)
-make dev
-
-# Run tests
-make test
-```
-
-### Manual Setup
-
-If you prefer manual setup or don't have `make`:
-
-```bash
-# Install uv if you haven't already
-pip install uv
-
-# Create virtual environment and install dependencies
-uv venv
-uv pip install -e '.[test]'
-source .venv/bin/activate
-
-# Run tests
-uv run pytest tests/ -v
-```
