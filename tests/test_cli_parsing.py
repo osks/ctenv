@@ -192,6 +192,34 @@ class TestRunCommandParsing:
         )  # CLI option override
         assert call_kwargs["context"] == "dev"
 
+    @patch("ctenv.cli.CtenvConfig.load")
+    @patch("ctenv.cli.ContainerRunner.run_container")
+    def test_run_with_run_args(self, mock_run_container, mock_config_file_load):
+        """Test: ctenv run --run-arg='--cap-add=NET_ADMIN' --run-arg='--memory=2g' (run args option)."""
+        mock_ctenv_config = MagicMock()
+        mock_config_file_load.return_value = mock_ctenv_config
+
+        mock_container_config = MagicMock()
+        mock_container_config.platform = None  # Avoid platform validation error
+        mock_ctenv_config.resolve_container_config.return_value = mock_container_config
+        mock_run_container.return_value = MagicMock(returncode=0)
+
+        args = self.parser.parse_args([
+            "run", 
+            "dev",
+            "--run-arg=--cap-add=NET_ADMIN", 
+            "--run-arg=--memory=2g"
+        ])
+
+        with patch("sys.exit"):
+            cmd_run(args)
+
+        mock_ctenv_config.resolve_container_config.assert_called_once()
+        call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
+        assert call_kwargs["cli_overrides"]["run_args"] == ["--cap-add=NET_ADMIN", "--memory=2g"]
+        assert call_kwargs["cli_overrides"]["command"] == "bash"  # Default command
+        assert call_kwargs["context"] == "dev"
+
 
 @pytest.mark.unit
 class TestRunCommandEdgeCases:
