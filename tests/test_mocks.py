@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv import ContainerRunner, ContainerConfig, build_entrypoint_script
+from ctenv.cli import ContainerRunner, ContainerConfig, build_entrypoint_script
 
 
 @pytest.mark.unit
@@ -595,7 +595,7 @@ def test_ulimits_configuration():
 @pytest.mark.unit
 def test_platform_specific_gosu_discovery():
     """Test that platform-specific gosu binaries are found correctly."""
-    from ctenv import get_platform_specific_gosu_name, find_gosu_binary
+    from ctenv.cli import get_platform_specific_gosu_name, find_gosu_binary
     from unittest.mock import patch
 
     # Test platform name generation

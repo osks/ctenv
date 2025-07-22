@@ -18,13 +18,6 @@ jobs:
       with:
         enable-cache: true
         cache-dependency-glob: "pyproject.toml"
-    - name: Download gosu binary
-      run: |
-        # Download gosu binary for testing
-        GOSU_VERSION="1.17"
-        wget -O gosu "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-amd64"
-        chmod +x gosu
-        echo "Downloaded gosu ${GOSU_VERSION}"
     - name: Install dependencies
       run: |
         make dev

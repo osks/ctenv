@@ -7,7 +7,7 @@ from unittest.mock import patch
 from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv import create_parser, ContainerConfig, build_entrypoint_script
+from ctenv.cli import create_parser, ContainerConfig, build_entrypoint_script
 
 
 @pytest.mark.unit
@@ -28,7 +28,7 @@ def test_config_user_detection():
 
     # Use explicit image to avoid config file interference
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv import CtenvConfig
+        from ctenv.cli import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -70,7 +70,7 @@ def test_container_name_generation():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv import CtenvConfig
+        from ctenv.cli import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -191,8 +191,8 @@ def test_run_command_dry_run_mode():
     args = parser.parse_args(["run", "--dry-run"])
 
     with patch("sys.stdout", new_callable=StringIO):
-        with patch("ctenv.cmd_run") as mock_cmd_run:
-            from ctenv import cmd_run
+        with patch("ctenv.cli.cmd_run") as mock_cmd_run:
+            from ctenv.cli import cmd_run
 
             cmd_run(args)
             mock_cmd_run.assert_called_once_with(args)
@@ -248,7 +248,7 @@ def test_post_start_cmd_cli_option():
 
     # Test that CLI post-start extra commands are included in the config
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv import CtenvConfig
+        from ctenv.cli import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -278,7 +278,7 @@ post_start_commands = ["echo config-cmd"]
 
     try:
         # Test that both config file and CLI commands are included
-        from ctenv import CtenvConfig
+        from ctenv.cli import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
@@ -308,7 +308,7 @@ def test_post_start_cmd_in_generated_script():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv import CtenvConfig
+        from ctenv.cli import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
