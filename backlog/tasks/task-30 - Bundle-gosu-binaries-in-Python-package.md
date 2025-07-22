@@ -50,31 +50,49 @@ Bundle gosu binaries directly in the Python package instead of downloading them 
 
 ## Critical Questions to Resolve
 
-1. **Security model preference**: Accept larger attack surface for better UX?
-2. **Package size tolerance**: Is 9MB acceptable for the target audience?
-3. **Platform strategy**: Universal wheel with all binaries vs platform-specific wheels?
-4. **Fallback behavior**: Should we keep download capability as backup?
-5. **Update mechanism**: How to handle gosu security updates without new ctenv releases?
+1. **Security model preference**: Accept larger attack surface for better UX? ✅ **Yes - acceptable compromise**
+2. **Package size tolerance**: Is 9MB acceptable for the target audience? ✅ **Yes - package size is fine**
+3. **Platform strategy**: Universal wheel with all binaries vs platform-specific wheels? ✅ **Universal wheel**
+4. **Fallback behavior**: Should we keep download capability as backup? ✅ **Keep --gosu-path CLI arg to override bundled binaries**
+5. **Update mechanism**: How to handle gosu security updates without new ctenv releases? ✅ **New ctenv releases (gosu updates are rare)**
 
 ## Implementation Approach
 
-### Option A: Universal Wheel
+### Package Structure Migration
+Move from single-file to proper package structure:
 ```
 ctenv/
-├── binaries/
-│   ├── gosu-amd64
-│   └── gosu-arm64
-└── ctenv.py  # Updated to find bundled binaries
+├── __init__.py       # Package init with version
+├── __main__.py       # Enables `python -m ctenv`
+├── cli.py            # Main logic (formerly ctenv.py)
+└── binaries/
+    ├── gosu-amd64
+    └── gosu-arm64
 ```
 
-### Option B: Platform-Specific Wheels
-- Separate wheels for each platform
-- Smaller individual downloads
-- More complex build/release process
+### Universal Wheel Approach
+- Single wheel containing all platform binaries
+- Runtime platform detection to select correct binary
+- `pyproject.toml` changes:
+  ```toml
+  [tool.setuptools]
+  packages = ["ctenv"]  # Change from py-modules
+  include-package-data = true
+  
+  [tool.setuptools.package-data]
+  ctenv = ["binaries/*"]
+  ```
 
-### Option C: Hybrid Approach
-- Bundle binaries but keep download fallback
-- Best of both worlds but more complexity
+### Benefits of Package Structure
+- Enables `python -m ctenv` execution
+- Clean separation of binaries from code
+- Maintains both `ctenv` command and module interface
+- Future extensibility for additional modules
+
+### Override Mechanism
+- Keep `--gosu-path` CLI argument to override bundled binaries
+- Allows use without bundled binaries (e.g., for custom builds or testing)
+- Priority: CLI arg > bundled binary > error
 
 ## Success Metrics
 
