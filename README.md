@@ -5,7 +5,7 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-ctenv runs commands in containers with your user identity - dynamically creating matching users in ANY container image without modification.
+ctenv runs commands in containers by dynamically creating a matching user (same UID/GID) in existing images at runtime, ensuring files in mounted directories get your permissions.
 
 ## Why ctenv?
 
