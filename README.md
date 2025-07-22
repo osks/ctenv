@@ -34,7 +34,7 @@ then drops permissions using `gosu` before running the command. It
 does this by generating an entrypoint bash script that it mounts and
 runs.
 
-Implemented as a Python package requiring Python 3.11+. Can be installed via `uv` or `pip`.
+Implemented as a Python package requiring Python 3.9+. Can be installed via `uv` or `pip`.
 
 ## Installation
 
