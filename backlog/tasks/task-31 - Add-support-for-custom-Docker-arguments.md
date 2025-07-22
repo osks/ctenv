@@ -1,7 +1,7 @@
 ---
 id: task-31
 title: Add support for custom Docker arguments
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-19'
 labels: []
@@ -33,7 +33,7 @@ ctenv run --run-arg="--memory=2g" --run-arg="--cpus=2" -- my-command
 # Security options
 ctenv run --run-arg="--security-opt=seccomp=unconfined" dev -- build-script
 
-# Capabilities  
+# Capabilities
 ctenv run --run-arg="--cap-add=SYS_PTRACE" debug -- gdb my-program
 ```
 

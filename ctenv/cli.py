@@ -468,6 +468,7 @@ class ContainerConfig:
     network: Optional[str] = None
     tty: Optional[bool] = None
     platform: Optional[str] = None
+    run_args: Optional[List[str]] = None
 
     def get_container_name(self) -> str:
         """Generate container name based on working directory."""
@@ -554,7 +555,7 @@ class ContainerConfig:
             if key in ("working_dir", "gosu_path") and isinstance(value, str):
                 kwargs[key] = Path(value) if value else None
             # Handle list fields
-            elif key in ("env", "volumes", "post_start_commands") and isinstance(
+            elif key in ("env", "volumes", "post_start_commands", "run_args") and isinstance(
                 value, (list, tuple)
             ):
                 kwargs[key] = list(value)
@@ -882,6 +883,13 @@ class ContainerRunner:
         else:
             logging.debug("TTY mode: disabled")
 
+        # Custom run arguments
+        if config.run_args:
+            logging.debug("Custom run arguments:")
+            for run_arg in config.run_args:
+                args.append(run_arg)
+                logging.debug(f"  {run_arg}")
+
         # Set entrypoint to our script
         args.extend(["--entrypoint", "/entrypoint.sh"])
 
@@ -1043,6 +1051,7 @@ def cmd_run(args):
             "gosu_path": args.gosu_path,
             "platform": args.platform,
             "post_start_commands": args.post_start_commands,
+            "run_args": args.run_args,
         }
         config = ctenv_config.resolve_container_config(
             context=context, cli_overrides=cli_overrides
@@ -1286,6 +1295,12 @@ Note: Use '--' to separate commands from context/options.""",
     run_parser.add_argument(
         "--platform",
         help="Container platform (e.g., linux/amd64, linux/arm64)",
+    )
+    run_parser.add_argument(
+        "--run-arg",
+        action="append",
+        dest="run_args",
+        help="Add custom argument to container run command (can be used multiple times)",
     )
     run_parser.add_argument(
         "--post-start-cmd",

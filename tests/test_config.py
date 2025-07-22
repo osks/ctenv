@@ -40,6 +40,30 @@ env = ["DEBUG=1", "NODE_ENV=development"]
 
 
 @pytest.mark.unit
+def test_load_config_file_with_run_args():
+    """Test loading TOML config file with run_args."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        config_file = tmpdir / "ctenv.toml"
+
+        config_content = """
+[defaults]
+image = "ubuntu:latest"
+run_args = ["--memory=1g", "--cpus=1"]
+
+[contexts.debug]
+image = "ubuntu:latest"
+run_args = ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
+"""
+        config_file.write_text(config_content)
+
+        config_data = _load_config_file(config_file)
+
+        assert config_data["defaults"]["run_args"] == ["--memory=1g", "--cpus=1"]
+        assert config_data["contexts"]["debug"]["run_args"] == ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
+
+
+@pytest.mark.unit
 def test_load_config_file_invalid_toml():
     """Test error handling for invalid TOML."""
     with tempfile.TemporaryDirectory() as tmpdir:
