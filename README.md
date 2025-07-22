@@ -13,6 +13,8 @@ ctenv runs commands in containers by dynamically creating a matching user (same 
 - Can use existing images and run as your user, by creating a matching user in the container at runtime
 - Files created with your UID/GID
 - Provides similar functionality as Podman's `--userns=keep-id` but with Docker
+- Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U` functionality to Docker)
+- Configurable contexts for reusable container setups
 
 ### Use cases
 
@@ -25,12 +27,6 @@ ctenv is somewhat related to `devcontainers`, but has a smaller
 scope. It can start a new container directly for a command, rather
 than keeping a container running in the background.
 
-### Key Features
-
-- **User Identity Preservation**: Automatically creates a matching user inside the container with your exact UID/GID and home directory path
-- **Permission Management**: Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U`/`:chown` functionality to Docker)
-- **Configurable**: Define reusable container configurations for different environments
-
 ## Design
 
 ctenv starts the container as root to have permissions for chown, and
@@ -38,8 +34,7 @@ then drops permissions using `gosu` before running the command. It
 does this by generating an entrypoint bash script that it mounts and
 runs.
 
-Implemented in a single Python file only depending on Python 3.11. Can
-be used by itself, or installed via `uv` or `pip` (etc).
+Implemented as a Python package requiring Python 3.11+. Can be installed via `uv` or `pip`.
 
 ## Installation
 
