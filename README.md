@@ -60,20 +60,18 @@ the same user as yourself in the container, so permissions match.
 
 Run Claude Code in a container using ctenv:
 
-```
+```shell
 ctenv run --image "node:20" --post-start-command "npm install -g @anthropic-ai/claude-code"
 ```
 
 To not have to login everytime and to keep history, we can mount Claude Code's files:
 
-```
+```shell
 ctenv run --image "node:20" \
           --post-start-command "npm install -g @anthropic-ai/claude-code" \
-          --volume "~/.claude.json:~/.claude.json" \
-          --volume "~/.claude:~/.claude"
+          --volume ~/.claude.json \
+          --volume ~/.claude
 ```
-
-
 
 Note: On macOS Claude Code seem to store credentials in the keychain
 if you have a Claude account. The credentials therefor won't be
@@ -84,9 +82,21 @@ there. Since the above mounts that directory, be aware that the
 credentials file will then exist outside the container in a file now,
 instead of the keychain.
 
+For convenience you can configure a container in `.ctenv.toml`:
+
+```toml
+[contexts.claude]
+image = "node:20"
+post_start_commands = [
+    "npm install -g @anthropic-ai/claude-code"
+]
+volumes = ["~/.claude.json", "~/.claude"]
+```
+
+and then you can start it with just: `ctenv run claude`
 
 
-Example config:
+If you want to limit which networks claude can access:
 ```toml
 [contexts.claude]
 image = "node:20"

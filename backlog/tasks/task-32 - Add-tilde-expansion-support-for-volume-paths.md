@@ -1,7 +1,7 @@
 ---
 id: task-32
 title: Add volume path expansion and smart defaulting
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-23'
 labels: []

@@ -40,6 +40,20 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
 
 
+def preprocess_tilde_expansion(text: str) -> str:
+    """Convert ~/ at start of paths to ${env:HOME}/ for template processing."""
+    if not text:
+        return text
+    
+    # Only expand ~/ at the beginning of the string or after : (for volume specs)
+    # Pattern matches:
+    # - ~/ at start: "~/.docker" -> "${env:HOME}/.docker"
+    # - ~/ after colon: "/host:~/.docker" -> "/host:${env:HOME}/.docker"
+    # - ~/ after double colon: "/host::~/.docker" -> "/host::${env:HOME}/.docker"
+    pattern = r'(^|:)~/'
+    return re.sub(pattern, r'\1${env:HOME}/', text)
+
+
 def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
     """Substitute ${var} and ${var|filter} patterns in text."""
     pattern = r"\$\{([^}|]+)(?:\|([^}]+))?\}"
@@ -71,10 +85,12 @@ def substitute_in_context(
     result = {}
     for key, value in context_data.items():
         if isinstance(value, str):
-            result[key] = substitute_template_variables(value, variables)
+            # Apply tilde preprocessing first, then template expansion
+            processed_value = preprocess_tilde_expansion(value)
+            result[key] = substitute_template_variables(processed_value, variables)
         elif isinstance(value, list):
             result[key] = [
-                substitute_template_variables(item, variables)
+                substitute_template_variables(preprocess_tilde_expansion(item), variables)
                 if isinstance(item, str)
                 else item
                 for item in value
@@ -516,10 +532,12 @@ class ContainerConfig:
         # Apply templates to appropriate fields
         for key, value in config_dict.items():
             if isinstance(value, str):
-                config_dict[key] = substitute_template_variables(value, variables)
+                # Apply tilde preprocessing first, then template expansion
+                processed_value = preprocess_tilde_expansion(value)
+                config_dict[key] = substitute_template_variables(processed_value, variables)
             elif isinstance(value, (list, tuple)) and value:
                 config_dict[key] = [
-                    substitute_template_variables(item, variables)
+                    substitute_template_variables(preprocess_tilde_expansion(item), variables)
                     if isinstance(item, str)
                     else item
                     for item in value
@@ -738,6 +756,11 @@ class ContainerRunner:
         volumes: Optional[Tuple[str, ...]],
     ) -> Tuple[List[str], List[str]]:
         """Parse volume strings and extract chown paths.
+        
+        Supports multiple formats:
+        - HOST:CONTAINER[:options] - Standard format
+        - HOST - Smart defaulting: HOST:HOST
+        - HOST::options - Empty target with options: HOST:HOST:options
 
         Returns:
             tuple of (processed_volumes, chown_paths)
@@ -749,27 +772,37 @@ class ContainerRunner:
             return processed_volumes, chown_paths
 
         for volume in volumes:
-            if ":" not in volume:
-                raise ValueError(
-                    f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
-                )
+            # Handle different volume formats
+            if "::" in volume:
+                # Format: HOST::options -> HOST:HOST:options
+                parts = volume.split("::", 1)
+                if len(parts) != 2:
+                    raise ValueError(f"Invalid volume format: {volume}")
+                
+                host_path = parts[0]
+                container_path = host_path  # Smart defaulting
+                options_str = parts[1]
+            elif ":" in volume:
+                # Standard format: HOST:CONTAINER[:options]
+                parts = volume.split(":")
+                if len(parts) < 2:
+                    raise ValueError(
+                        f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
+                    )
+                
+                host_path = parts[0]
+                container_path = parts[1]
+                options_str = ":".join(parts[2:]) if len(parts) > 2 else ""
+            else:
+                # Single path format: HOST -> HOST:HOST
+                host_path = volume
+                container_path = host_path  # Smart defaulting
+                options_str = ""
 
-            # Parse volume string: HOST:CONTAINER[:options]
-            parts = volume.split(":")
-            if len(parts) < 2:
-                raise ValueError(
-                    f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
-                )
-
-            host_path = parts[0]
-            container_path = parts[1]
-
-            # Parse options (everything after second colon)
+            # Parse options
             options = []
-
-            if len(parts) > 2:
-                # Split comma-separated options
-                option_parts = parts[2].split(",")
+            if options_str:
+                option_parts = options_str.split(",")
                 for opt in option_parts:
                     opt = opt.strip()
                     if opt == "chown":
@@ -1046,6 +1079,23 @@ def cmd_run(args):
 
     # context can be None to use [defaults] section
 
+    # Process CLI volumes with tilde expansion and template processing
+    processed_volumes = None
+    if args.volumes:
+        processed_volumes = []
+        # Create variables for template expansion (same as resolve_templates)
+        template_variables = {
+            "USER": getpass.getuser(),
+            "image": args.image or "ubuntu:latest",  # Use provided image or default
+        }
+        
+        for volume in args.volumes:
+            # Apply tilde preprocessing
+            volume_with_tilde = preprocess_tilde_expansion(volume)
+            # Apply template expansion
+            volume_expanded = substitute_template_variables(volume_with_tilde, template_variables)
+            processed_volumes.append(volume_expanded)
+
     # Create config from loaded CtenvConfig and CLI options
     try:
         cli_overrides = {
@@ -1053,7 +1103,7 @@ def cmd_run(args):
             "command": " ".join(command),
             "working_dir": str(Path(args.working_dir).resolve()) if args.working_dir else None,
             "env": args.env,
-            "volumes": args.volumes,
+            "volumes": processed_volumes,
             "sudo": args.sudo,
             "network": args.network,
             "gosu_path": str(Path(args.gosu_path).resolve()) if args.gosu_path else None,
