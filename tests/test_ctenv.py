@@ -268,7 +268,7 @@ def test_post_start_cmd_merging():
 
     # Create a temporary config file with post-start commands
     config_content = """
-[contexts.test]
+[containers.test]
 post_start_commands = ["echo config-cmd"]
 """
 
@@ -283,7 +283,7 @@ post_start_commands = ["echo config-cmd"]
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
         config = ctenv_config.resolve_container_config(
-            context="test",
+            container="test",
             cli_overrides={"post_start_commands": ["echo cli-cmd1", "echo cli-cmd2"]},
         )
 
@@ -459,7 +459,7 @@ def test_cli_volume_template_expansion():
                         args.verbose = False
                         args.quiet = False
                         args.config = None
-                        args.context = None
+                        args.container = None
                         # Command is not used in this test since we pass it separately to cmd_run
                         args.volumes = ["~/.docker", "${env:HOME}/.cache::ro"]
                         args.image = "ubuntu"
@@ -512,7 +512,7 @@ def test_config_file_tilde_expansion():
     import os
 
     config_content = """
-[contexts.test]
+[containers.test]
 volumes = ["~/.docker", "~/config:/container/config"]
 """
 
@@ -528,7 +528,7 @@ volumes = ["~/.docker", "~/config:/container/config"]
             from pathlib import Path
 
             ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
-            config = ctenv_config.resolve_container_config(context="test")
+            config = ctenv_config.resolve_container_config(container="test")
             resolved_config = config.resolve_templates()
 
             # Check that tilde expansion occurred in config volumes

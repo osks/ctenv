@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from ctenv.cli import (
     _load_config_file,
     substitute_template_variables,
-    substitute_in_context,
+    substitute_in_container,
 )
 
 
@@ -25,7 +25,7 @@ network = "bridge"
 sudo = true
 env = ["DEBUG=1"]
 
-[contexts.dev]
+[containers.dev]
 image = "node:18"
 env = ["DEBUG=1", "NODE_ENV=development"]
 """
@@ -35,8 +35,8 @@ env = ["DEBUG=1", "NODE_ENV=development"]
 
         assert config_data["defaults"]["image"] == "ubuntu:latest"
         assert config_data["defaults"]["sudo"] is True
-        assert config_data["contexts"]["dev"]["image"] == "node:18"
-        assert "NODE_ENV=development" in config_data["contexts"]["dev"]["env"]
+        assert config_data["containers"]["dev"]["image"] == "node:18"
+        assert "NODE_ENV=development" in config_data["containers"]["dev"]["env"]
 
 
 @pytest.mark.unit
@@ -51,7 +51,7 @@ def test_load_config_file_with_run_args():
 image = "ubuntu:latest"
 run_args = ["--memory=1g", "--cpus=1"]
 
-[contexts.debug]
+[containers.debug]
 image = "ubuntu:latest"
 run_args = ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
 """
@@ -60,7 +60,7 @@ run_args = ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
         config_data = _load_config_file(config_file)
 
         assert config_data["defaults"]["run_args"] == ["--memory=1g", "--cpus=1"]
-        assert config_data["contexts"]["debug"]["run_args"] == [
+        assert config_data["containers"]["debug"]["run_args"] == [
             "--cap-add=SYS_PTRACE",
             "--security-opt=seccomp=unconfined",
         ]
@@ -80,11 +80,11 @@ def test_load_config_file_invalid_toml():
 
 @pytest.mark.unit
 def test_resolve_config_values_defaults():
-    """Test resolving config values with default context (no config file defaults)."""
+    """Test resolving config values with default container (no config file defaults)."""
     # Create a CtenvConfig with the test data
     from ctenv.cli import CtenvConfig
 
-    def create_test_config(contexts, defaults):
+    def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
         from ctenv.cli import get_default_config_dict, merge_config
 
@@ -93,16 +93,16 @@ def test_resolve_config_values_defaults():
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
 
-        return CtenvConfig(defaults=computed_defaults, contexts=contexts)
+        return CtenvConfig(defaults=computed_defaults, containers=containers)
 
     ctenv_config = create_test_config(
-        contexts={
+        containers={
             "default": {"image": "ubuntu:latest", "network": "bridge", "sudo": True}
         },
         defaults={},
     )
 
-    resolved = ctenv_config.resolve_container_config(context="default")
+    resolved = ctenv_config.resolve_container_config(container="default")
 
     assert resolved.image == "ubuntu:latest"
     assert resolved.network == "bridge"
@@ -110,11 +110,11 @@ def test_resolve_config_values_defaults():
 
 
 @pytest.mark.unit
-def test_resolve_config_values_context():
-    """Test resolving config values with context (no config file defaults)."""
+def test_resolve_config_values_container():
+    """Test resolving config values with container (no config file defaults)."""
     from ctenv.cli import CtenvConfig
 
-    def create_test_config(contexts, defaults):
+    def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
         from ctenv.cli import get_default_config_dict, merge_config
 
@@ -123,10 +123,10 @@ def test_resolve_config_values_context():
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
 
-        return CtenvConfig(defaults=computed_defaults, contexts=contexts)
+        return CtenvConfig(defaults=computed_defaults, containers=containers)
 
     ctenv_config = create_test_config(
-        contexts={
+        containers={
             "dev": {
                 "image": "node:18",
                 "network": "bridge",
@@ -137,7 +137,7 @@ def test_resolve_config_values_context():
         defaults={},
     )
 
-    resolved = ctenv_config.resolve_container_config(context="dev")
+    resolved = ctenv_config.resolve_container_config(container="dev")
 
     assert resolved.image == "node:18"
     assert resolved.network == "bridge"
@@ -146,11 +146,11 @@ def test_resolve_config_values_context():
 
 
 @pytest.mark.unit
-def test_resolve_config_values_unknown_context():
-    """Test error for unknown context."""
+def test_resolve_config_values_unknown_container():
+    """Test error for unknown container."""
     from ctenv.cli import CtenvConfig
 
-    def create_test_config(contexts, defaults):
+    def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
         from ctenv.cli import get_default_config_dict, merge_config
 
@@ -159,26 +159,26 @@ def test_resolve_config_values_unknown_context():
         if defaults:
             computed_defaults = merge_config(computed_defaults, defaults)
 
-        return CtenvConfig(defaults=computed_defaults, contexts=contexts)
+        return CtenvConfig(defaults=computed_defaults, containers=containers)
 
     ctenv_config = create_test_config(
-        contexts={"dev": {"image": "node:18"}}, defaults={}
+        containers={"dev": {"image": "node:18"}}, defaults={}
     )
 
-    with pytest.raises(ValueError, match="Unknown context 'unknown'"):
-        ctenv_config.resolve_container_config(context="unknown")
+    with pytest.raises(ValueError, match="Unknown container 'unknown'"):
+        ctenv_config.resolve_container_config(container="unknown")
 
 
 @pytest.mark.unit
 def test_config_create_with_file():
-    """Test Config creation with config file (contexts only, no defaults section)."""
+    """Test Config creation with config file (containers only, no defaults section)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
-        # Create config file with context-specific settings
+        # Create config file with container-specific settings
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-[contexts.default]
+[containers.default]
 image = "alpine:latest"
 network = "bridge"
 sudo = true
@@ -195,7 +195,7 @@ sudo = true
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
-            context="default",  # Explicitly specify the context
+            container="default",  # Explicitly specify the container
             cli_overrides={
                 "image": "ubuntu:22.04",  # Override image via CLI
             },
@@ -203,25 +203,25 @@ sudo = true
 
         # CLI should override config file
         assert config.image == "ubuntu:22.04"
-        # Config file values should be used for non-overridden options (from default context)
-        assert config.sudo is True  # From default context in config file
-        assert config.network == "bridge"  # From default context in config file
+        # Config file values should be used for non-overridden options (from default container)
+        assert config.sudo is True  # From default container in config file
+        assert config.network == "bridge"  # From default container in config file
 
 
 @pytest.mark.unit
-def test_config_create_with_context():
-    """Test Config creation with context."""
+def test_config_create_with_container():
+    """Test Config creation with container."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
-        # Create config file with context
+        # Create config file with container
         config_file = tmpdir / "ctenv.toml"
         config_content = """
 [defaults]
 image = "ubuntu:latest"
 network = "none"
 
-[contexts.test]
+[containers.test]
 image = "alpine:latest"
 network = "bridge"
 env = ["CI=true"]
@@ -236,9 +236,9 @@ env = ["CI=true"]
         from ctenv.cli import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(context="test")
+        config = ctenv_config.resolve_container_config(container="test")
 
-        # Should use context values
+        # Should use container values
         assert config.image == "alpine:latest"
         assert config.network == "bridge"
         assert config.env == ["CI=true"]
@@ -257,7 +257,7 @@ def test_empty_config_structure():
         ctenv_config = CtenvConfig.load(
             start_dir=tmpdir
         )  # No config files in empty dir
-        assert len(ctenv_config.contexts) == 0  # No contexts should be present
+        assert len(ctenv_config.containers) == 0  # No containers should be present
         # Check that defaults still work (contains system defaults)
         assert ctenv_config.defaults["image"] == "ubuntu:latest"  # System default
 
@@ -267,20 +267,20 @@ def test_empty_config_structure():
 
 
 @pytest.mark.unit
-def test_default_context_merging():
-    """Test that user-defined default context merges with builtin."""
+def test_default_container_merging():
+    """Test that user-defined default container merges with builtin."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
-        # Create config file with custom default context
+        # Create config file with custom default container
         config_file = tmpdir / "ctenv.toml"
         config_content = """
 [defaults]
 sudo = false
 
-[contexts.default]
+[containers.default]
 sudo = true
 network = "bridge"
 """
@@ -294,17 +294,17 @@ network = "bridge"
         from ctenv.cli import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(context="default")
+        config = ctenv_config.resolve_container_config(container="default")
 
         # Should merge builtin default with user default
         assert config.image == "ubuntu:latest"  # From builtin default
-        assert config.sudo is True  # From user default context (overrides defaults)
-        assert config.network == "bridge"  # From user default context
+        assert config.sudo is True  # From user default container (overrides defaults)
+        assert config.network == "bridge"  # From user default container
 
 
 @pytest.mark.unit
 def test_config_precedence():
-    """Test configuration precedence: CLI > context > defaults."""
+    """Test configuration precedence: CLI > container > defaults."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -316,7 +316,7 @@ image = "ubuntu:latest"
 network = "none"
 sudo = false
 
-[contexts.dev]
+[containers.dev]
 image = "node:18"
 network = "bridge"
 """
@@ -331,7 +331,7 @@ network = "bridge"
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
-            context="dev",
+            container="dev",
             cli_overrides={
                 "image": "alpine:latest",  # CLI override
             },
@@ -395,21 +395,21 @@ def test_substitute_template_variables_unknown_filter():
 
 
 @pytest.mark.unit
-def test_substitute_in_context():
-    """Test context-wide variable substitution."""
+def test_substitute_in_container():
+    """Test container-wide variable substitution."""
     import os
 
     os.environ["TEST_ENV"] = "test_value"
 
     variables = {"USER": "alice", "image": "docker.io/app:v1"}
-    context_data = {
+    container_data = {
         "image": "docker.io/app:v1",
         "volumes": ["cache-${USER}:/cache"],
         "env": ["USER=${USER}", "CACHE=${image|slug}", "TEST=${env:TEST_ENV}"],
         "sudo": True,  # Non-string values should be preserved
     }
 
-    result = substitute_in_context(context_data, variables)
+    result = substitute_in_container(container_data, variables)
 
     assert result["image"] == "docker.io/app:v1"
     assert result["volumes"] == ["cache-alice:/cache"]
@@ -429,7 +429,7 @@ def test_volumes_from_config_file():
         # Create config file with volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-[contexts.dev]
+[containers.dev]
 image = "node:18"
 volumes = ["./node_modules:/app/node_modules", "./src:/app/src:ro"]
 network = "bridge"
@@ -442,11 +442,11 @@ env = ["NODE_ENV=development", "DEBUG=true"]
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        # Create config from dev context
+        # Create config from dev container
         from ctenv.cli import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(context="dev")
+        config = ctenv_config.resolve_container_config(container="dev")
 
         # Check that volumes are loaded correctly
         assert config.volumes == [
@@ -467,7 +467,7 @@ def test_volumes_cli_merge():
         # Create config file with volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-[contexts.dev]
+[containers.dev]
 image = "node:18" 
 volumes = ["./node_modules:/app/node_modules"]
 env = ["NODE_ENV=development"]
@@ -484,7 +484,7 @@ env = ["NODE_ENV=development"]
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
-            context="dev",
+            container="dev",
             cli_overrides={
                 "volumes": ["./data:/data", "./cache:/cache"],
                 "env": ["DEBUG=true", "LOG_LEVEL=info"],
@@ -515,7 +515,7 @@ def test_volumes_cli_only():
         # Create config file without volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-[contexts.test]
+[containers.test]
 image = "alpine:latest"
 """
         config_file.write_text(config_content)
@@ -530,7 +530,7 @@ image = "alpine:latest"
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
-            context="test",
+            container="test",
             cli_overrides={"volumes": ["./data:/data"], "env": ["TEST=true"]},
         )
 
@@ -541,8 +541,8 @@ image = "alpine:latest"
 
 
 @pytest.mark.unit
-def test_config_file_resolve_context_with_templating():
-    """Test template variable substitution in context resolution."""
+def test_config_file_resolve_container_with_templating():
+    """Test template variable substitution in container resolution."""
     import tempfile
     import getpass
 
@@ -551,7 +551,7 @@ def test_config_file_resolve_context_with_templating():
 
         # Create config with templating
         config_content = """
-[contexts.test]
+[containers.test]
 image = "example.com/app:v1"
 volumes = ["cache-${USER}:/cache"]
 env = ["CACHE_DIR=/cache/${image|slug}"]
@@ -563,7 +563,7 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         from ctenv.cli import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(context="test")
+        config = ctenv_config.resolve_container_config(container="test")
 
         # The resolved config should have templates applied automatically
         resolved_volumes = config.resolve_templates().volumes
@@ -587,7 +587,7 @@ def test_config_file_volumes_through_cli_parsing():
         # Create config file with volumes
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-[contexts.dev]
+[containers.dev]
 image = "node:18"
 volumes = ["./node_modules:/app/node_modules", "./data:/data"]
 env = ["NODE_ENV=development"]
@@ -601,7 +601,7 @@ env = ["NODE_ENV=development"]
 
         # Mock argparse args as if no CLI volumes/env were provided
         args = Mock()
-        args.context = "dev"
+        args.container = "dev"
         args.config = [str(config_file)]  # Note: cmd_run uses args.config as a list now
         args.volumes = None  # No CLI volumes provided
         args.env = None  # No CLI env provided
@@ -703,7 +703,7 @@ def test_working_dir_config():
         # Create config file with working_dir
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-[contexts.test]
+[containers.test]
 image = "alpine:latest"
 working_dir = "/custom/path"
 """
@@ -718,12 +718,12 @@ working_dir = "/custom/path"
         from ctenv.cli import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(context="test")
+        config = ctenv_config.resolve_container_config(container="test")
         assert config.working_dir == Path("/custom/path")
 
         # Test CLI override
         config_cli = ctenv_config.resolve_container_config(
-            context="test", cli_overrides={"working_dir": "/cli/override"}
+            container="test", cli_overrides={"working_dir": "/cli/override"}
         )
         assert config_cli.working_dir == Path("/cli/override")
 
@@ -749,7 +749,7 @@ def test_gosu_path_config():
         # Create config file with gosu_path
         config_file = tmpdir / "ctenv.toml"
         config_content = f"""
-[contexts.test]
+[containers.test]
 image = "alpine:latest"
 gosu_path = "{fake_gosu}"
 """
@@ -765,7 +765,7 @@ gosu_path = "{fake_gosu}"
         from ctenv.cli import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(context="test")
+        config = ctenv_config.resolve_container_config(container="test")
         assert config.gosu_path == fake_gosu
 
         # Test CLI override
@@ -774,7 +774,7 @@ gosu_path = "{fake_gosu}"
         cli_gosu.chmod(0o755)
 
         config_cli = ctenv_config.resolve_container_config(
-            context="test", cli_overrides={"gosu_path": str(cli_gosu)}
+            container="test", cli_overrides={"gosu_path": str(cli_gosu)}
         )
         assert config_cli.gosu_path == cli_gosu
 

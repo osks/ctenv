@@ -89,10 +89,10 @@ another_unknown = 123
 
 
 @pytest.mark.unit
-def test_unknown_config_options_in_context(caplog):
-    """Test that unknown options in contexts are handled gracefully."""
+def test_unknown_config_options_in_container(caplog):
+    """Test that unknown options in containers are handled gracefully."""
     config_content = """
-[contexts.mycontext]
+[containers.mycontainer]
 image = "ubuntu:20.04"
 command = "bash"
 invalid_field = "should be ignored"
@@ -106,7 +106,7 @@ deprecated_option = true
     try:
         with caplog.at_level(logging.WARNING):
             ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
-            config = ctenv_config.resolve_container_config(context="mycontext")
+            config = ctenv_config.resolve_container_config(container="mycontainer")
 
         # Should use valid options
         assert config.image == "ubuntu:20.04"
