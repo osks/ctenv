@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 import logging
 
-from ctenv.cli import CtenvConfig, ContainerConfig
+from ctenv.ctenv import CtenvConfig, ContainerConfig
 
 
 @pytest.mark.unit

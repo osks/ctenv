@@ -7,7 +7,7 @@ from unittest.mock import patch
 from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.cli import create_parser, ContainerConfig, build_entrypoint_script
+from ctenv.ctenv import create_parser, ContainerConfig, build_entrypoint_script
 
 
 @pytest.mark.unit
@@ -28,7 +28,7 @@ def test_config_user_detection():
 
     # Use explicit image to avoid config file interference
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -70,7 +70,7 @@ def test_container_name_generation():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -191,8 +191,8 @@ def test_run_command_dry_run_mode():
     args = parser.parse_args(["run", "--dry-run"])
 
     with patch("sys.stdout", new_callable=StringIO):
-        with patch("ctenv.cli.cmd_run") as mock_cmd_run:
-            from ctenv.cli import cmd_run
+        with patch("ctenv.ctenv.cmd_run") as mock_cmd_run:
+            from ctenv.ctenv import cmd_run
 
             cmd_run(args)
             mock_cmd_run.assert_called_once_with(args)
@@ -248,7 +248,7 @@ def test_post_start_cmd_cli_option():
 
     # Test that CLI post-start extra commands are included in the config
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -278,7 +278,7 @@ post_start_commands = ["echo config-cmd"]
 
     try:
         # Test that both config file and CLI commands are included
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
@@ -308,7 +308,7 @@ def test_post_start_cmd_in_generated_script():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
@@ -328,7 +328,7 @@ def test_post_start_cmd_in_generated_script():
 @pytest.mark.unit
 def test_tilde_preprocessing():
     """Test tilde preprocessing function."""
-    from ctenv.cli import preprocess_tilde_expansion
+    from ctenv.ctenv import preprocess_tilde_expansion
 
     # Test basic tilde expansion
     assert preprocess_tilde_expansion("~/.docker") == "${env:HOME}/.docker"
@@ -355,7 +355,7 @@ def test_tilde_preprocessing():
 @pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
-    from ctenv.cli import ContainerRunner
+    from ctenv.ctenv import ContainerRunner
 
     # Test single path format
     volumes, chown_paths = ContainerRunner.parse_volumes(("~/.docker",))
@@ -371,7 +371,7 @@ def test_volume_parsing_smart_defaulting():
 @pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
-    from ctenv.cli import ContainerRunner
+    from ctenv.ctenv import ContainerRunner
 
     # Test empty target with options
     volumes, chown_paths = ContainerRunner.parse_volumes(("~/.docker::ro",))
@@ -392,7 +392,7 @@ def test_volume_parsing_empty_target_syntax():
 @pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
-    from ctenv.cli import ContainerRunner
+    from ctenv.ctenv import ContainerRunner
 
     # Test standard format still works
     volumes, chown_paths = ContainerRunner.parse_volumes(("/host:/container:ro",))
@@ -416,7 +416,7 @@ def test_template_expansion_with_tilde():
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.cli import (
+            from ctenv.ctenv import (
                 preprocess_tilde_expansion,
                 substitute_template_variables,
             )
@@ -444,10 +444,10 @@ def test_cli_volume_template_expansion():
 
         with patch.dict(os.environ, {"HOME": test_home}):
             # Mock the necessary functions to test just the volume processing
-            with patch("ctenv.cli.CtenvConfig") as mock_config_class:
-                with patch("ctenv.cli.ContainerConfig"):
-                    with patch("ctenv.cli.ContainerRunner") as mock_runner:
-                        from ctenv.cli import cmd_run
+            with patch("ctenv.ctenv.CtenvConfig") as mock_config_class:
+                with patch("ctenv.ctenv.ContainerConfig"):
+                    with patch("ctenv.ctenv.ContainerRunner") as mock_runner:
+                        from ctenv.ctenv import cmd_run
 
                         # Set up mocks
                         mock_config = MagicMock()
@@ -524,7 +524,7 @@ volumes = ["~/.docker", "~/config:/container/config"]
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.cli import CtenvConfig
+            from ctenv.ctenv import CtenvConfig
             from pathlib import Path
 
             ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])

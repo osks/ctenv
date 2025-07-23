@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 import tempfile
 
-from ctenv.cli import build_entrypoint_script, ContainerConfig, ContainerRunner
+from ctenv.ctenv import build_entrypoint_script, ContainerConfig, ContainerRunner
 
 
 @pytest.mark.unit
