@@ -16,7 +16,7 @@ Refactor the ctenv implementation to work as both:
 - Users must specify gosu binary paths manually via:
   - `--gosu-path` command line argument
   - Configuration file setting
-- Provide clear error messages when gosu binary is not found
+- Provide error message when gosu binary is not found
 
 ### Package Mode
 - When installed via pip/uv, the package should bundle gosu binaries
@@ -119,15 +119,17 @@ from .ctenv import __version__  # Import version from ctenv.py
 
 ## Technical Challenges to Resolve
 
-### 1. Import Detection
+### 1. Package vs Single-file Detection
 - Detect if running as installed package vs single file
-- Use `__package__` or check for `ctenv.binaries` module availability
+- Check if running from within package structure
 - Example approach:
 ```python
 def is_installed_package():
     try:
-        import ctenv.binaries
-        return True
+        # If we can import from package structure, we're installed
+        import importlib.util
+        spec = importlib.util.find_spec('ctenv.binaries')
+        return spec is not None
     except ImportError:
         return False
 ```
@@ -138,15 +140,14 @@ def is_installed_package():
 - Fallback chain for robustness
 
 ### 3. Version Management
-- Single file: Embed version constant
-- Package: Read from __init__.py or use importlib.metadata
-- Keep versions synchronized
+- Single file: Embed version constant in `ctenv.py`
+- Package: Import version from copied `ctenv.py` (already handled by build strategy)
+- No synchronization needed - single source of truth
 
 ### 4. Testing Strategy
 - Test single-file execution
 - Test package installation
 - Test binary discovery in both modes
-- Ensure backward compatibility
 
 ## Benefits
 1. **Simplicity**: Users can grab single file for quick use
@@ -155,11 +156,13 @@ def is_installed_package():
 4. **Distribution**: Easy to vendor or embed in other projects
 
 ## Migration Path
-1. Create and test single-file version
-2. Update package to use single-file as source
-3. Test both execution modes thoroughly
-4. Update documentation for both usage patterns
-5. Consider deprecation notice for current multi-file structure
+1. Create single-file `ctenv.py` from `ctenv/cli.py`
+2. Create `build_scripts.py` with custom build logic
+3. Update `pyproject.toml` with new build configuration
+4. Update `ctenv/__init__.py` to import from copied file
+5. Test both execution modes thoroughly
+6. Update documentation for both usage patterns
+7. Remove old `ctenv/cli.py` once migration is complete
 
 ## Success Criteria
 - [ ] Single ctenv.py file works standalone
@@ -167,14 +170,14 @@ def is_installed_package():
 - [ ] Binary discovery works correctly in both modes
 - [ ] All existing functionality preserved
 - [ ] Clear documentation for both usage modes
-- [ ] Backward compatibility maintained
 - [ ] Tests pass for both execution methods
 
 ## Notes
-- Consider using `__file__` and path manipulation carefully
+- Binary discovery logic needs to handle both execution contexts
 - Ensure LICENSE files are properly included in package
 - Document the tradeoff between convenience and functionality
-- Consider providing a download script for gosu binaries in single-file mode
+- Update CLAUDE.md to reflect new single-file approach
+- **Backward compatibility not required** - project hasn't been released yet
 
 ## Assignee
 Unassigned
