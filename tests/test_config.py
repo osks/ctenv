@@ -602,7 +602,7 @@ env = ["NODE_ENV=development"]
         args.config = [str(config_file)]  # Note: cmd_run uses args.config as a list now
         args.volumes = None  # No CLI volumes provided
         args.env = None  # No CLI env provided
-        args.command = ["echo", "test"]
+        # Command is not used in this test since we pass it separately to cmd_run
         args.verbose = False
         args.quiet = False
         args.dry_run = True  # Don't actually run container
@@ -636,7 +636,7 @@ env = ["NODE_ENV=development"]
             ),
             patch("sys.exit") as mock_exit,
         ):
-            cmd_run(args)
+            cmd_run(args, "echo test")
 
         # Verify config file volumes were preserved (not overridden by empty CLI list)
         assert captured_config["volumes"] == [
