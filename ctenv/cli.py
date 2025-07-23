@@ -881,9 +881,8 @@ class ContainerRunner:
                 args.extend([f"--network={config.network}"])
             logging.debug(f"Network mode: {config.network}")
         else:
-            # Default: no networking for security
-            args.extend(["--network=none"])
-            logging.debug("Network mode: none (default)")
+            # Default: use Docker's default networking (no --network flag)
+            logging.debug("Network mode: default (Docker default)")
 
         # TTY flags if running interactively
         if config.tty:
@@ -1090,7 +1089,7 @@ def cmd_run(args):
         logging.debug(f"  Container name: {config.get_container_name()}")
         logging.debug(f"  Environment variables: {config.env}")
         logging.debug(f"  Volumes: {config.volumes}")
-        logging.debug(f"  Network: {config.network or 'none'}")
+        logging.debug(f"  Network: {config.network or 'default (Docker default)'}")
         logging.debug(f"  Sudo: {config.sudo}")
         logging.debug(f"  TTY: {config.tty}")
         logging.debug(f"  Platform: {config.platform or 'default'}")
@@ -1251,7 +1250,7 @@ Examples:
     ctenv run -- ls -la               # Use defaults, run ls -la
     ctenv run --image alpine dev      # Override image, use dev context
     ctenv run --dry-run dev           # Show Docker command without running
-    ctenv run --post-start-cmd "npm install" --post-start-cmd "npm run build" # Run extra commands after container starts
+    ctenv run --post-start-command "npm install" --post-start-command "npm run build" # Run extra commands after container starts
 
 Note: Use '--' to separate commands from context/options.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
