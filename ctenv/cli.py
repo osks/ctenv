@@ -573,7 +573,7 @@ class ContainerConfig:
 
 
 def build_entrypoint_script(
-    config: ContainerConfig, chown_paths: List[str] = None, verbose: bool = False
+    config: ContainerConfig, chown_paths: List[str] = None, verbose: bool = False, quiet: bool = False
 ) -> str:
     """Generate bash script for container entrypoint."""
     chown_paths = chown_paths or []
@@ -583,24 +583,24 @@ def build_entrypoint_script(
     if chown_paths:
         chown_commands = """
 # Fix ownership of chown-enabled volumes
-log "Checking volumes for ownership fixes"
+log_debug "Checking volumes for ownership fixes"
 """
         for path in chown_paths:
             # Safely quote the path to prevent injection
             quoted_path = shlex.quote(path)
             # For logging, escape quotes in the original path
             escaped_path = path.replace('"', '\\"')
-            chown_commands += f'log "Checking chown volume: {escaped_path}"\n'
+            chown_commands += f'log_debug "Checking chown volume: {escaped_path}"\n'
             chown_commands += f'if [ -d {quoted_path} ]; then\n'
-            chown_commands += f'    log "Fixing ownership of volume: {escaped_path}"\n'
+            chown_commands += f'    log_debug "Fixing ownership of volume: {escaped_path}"\n'
             chown_commands += f'    chown -R "$USER_ID:$GROUP_ID" {quoted_path}\n'
             chown_commands += "else\n"
-            chown_commands += f'    log "Chown volume does not exist: {escaped_path}"\n'
+            chown_commands += f'    log_debug "Chown volume does not exist: {escaped_path}"\n'
             chown_commands += "fi\n"
     else:
         chown_commands = """
 # No volumes require ownership fixes
-log "No chown-enabled volumes configured"
+log_debug "No chown-enabled volumes configured"
 """
 
     # Build post-start commands section
@@ -608,31 +608,40 @@ log "No chown-enabled volumes configured"
     if config.post_start_commands:
         post_start_commands = """
 # Execute post-start commands
-log "Executing post-start commands"
+log_debug "Executing post-start commands"
 """
         for cmd in config.post_start_commands:
             # Escape the command for safe display in log
             escaped_cmd = cmd.replace('"', '\\"')
             post_start_commands += (
-                f'log "Executing post-start command: {escaped_cmd}"\n'
+                f'log_debug "Executing post-start command: {escaped_cmd}"\n'
             )
             # Execute command normally - users expect shell interpretation
             post_start_commands += f"{cmd}\n"
     else:
         post_start_commands = """
 # No post-start commands configured
-log "No post-start commands to execute"
+log_debug "No post-start commands to execute"
 """
 
     script = f"""#!/bin/bash
 set -e
 
-# Verbose logging setup
+# Logging setup
 VERBOSE={1 if verbose else 0}
+QUIET={1 if quiet else 0}
 
-log() {{
+# Debug messages - only shown with --verbose
+log_debug() {{
     if [ "$VERBOSE" = "1" ]; then
-        echo "$*" >&2
+        echo "[ctenv] $*" >&2
+    fi
+}}
+
+# Info messages - shown unless --quiet
+log_info() {{
+    if [ "$QUIET" != "1" ]; then
+        echo "[ctenv] $*" >&2
     fi
 }}
 
@@ -644,45 +653,45 @@ GROUP_ID="{config.group_id}"
 USER_HOME="{config.user_home}"
 ADD_SUDO={1 if config.sudo else 0}
 
-log "Starting ctenv container setup"
-log "User: $USER_NAME (UID: $USER_ID)"
-log "Group: $GROUP_NAME (GID: $GROUP_ID)"
-log "Home: $USER_HOME"
+log_debug "Starting ctenv container setup"
+log_debug "User: $USER_NAME (UID: $USER_ID)"
+log_debug "Group: $GROUP_NAME (GID: $GROUP_ID)"
+log_debug "Home: $USER_HOME"
 
 # Create group if needed
-log "Checking if group $GROUP_ID exists"
+log_debug "Checking if group $GROUP_ID exists"
 if getent group "$GROUP_ID" >/dev/null 2>&1; then
     GROUP_NAME=$(getent group "$GROUP_ID" | cut -d: -f1)
-    log "Using existing group: $GROUP_NAME"
+    log_debug "Using existing group: $GROUP_NAME"
 else
-    log "Creating group: $GROUP_NAME (GID: $GROUP_ID)"
+    log_debug "Creating group: $GROUP_NAME (GID: $GROUP_ID)"
     groupadd -g "$GROUP_ID" "$GROUP_NAME"
 fi
 
 # Create user if needed
-log "Checking if user $USER_NAME exists"
+log_debug "Checking if user $USER_NAME exists"
 if ! getent passwd "$USER_NAME" >/dev/null 2>&1; then
-    log "Creating user: $USER_NAME (UID: $USER_ID)"
+    log_debug "Creating user: $USER_NAME (UID: $USER_ID)"
     useradd --no-create-home --home-dir "$USER_HOME" \\
         --shell /bin/bash -u "$USER_ID" -g "$GROUP_ID" \\
         -o -c "" "$USER_NAME"
 else
-    log "User $USER_NAME already exists"
+    log_debug "User $USER_NAME already exists"
 fi
 
 # Setup home directory
 export HOME="$USER_HOME"
-log "Setting up home directory: $HOME"
+log_debug "Setting up home directory: $HOME"
 if [ ! -d "$HOME" ]; then
-    log "Creating home directory: $HOME"
+    log_debug "Creating home directory: $HOME"
     mkdir -p "$HOME"
     chown "$USER_ID:$GROUP_ID" "$HOME"
 else
-    log "Home directory already exists"
+    log_debug "Home directory already exists"
 fi
 
 # Set ownership of home directory (non-recursive)
-log "Setting ownership of home directory"
+log_debug "Setting ownership of home directory"
 chown "$USER_NAME" "$HOME"
 
 {chown_commands}
@@ -690,32 +699,32 @@ chown "$USER_NAME" "$HOME"
 
 # Setup sudo if requested
 if [ "$ADD_SUDO" = "1" ]; then
-    log "Setting up sudo access for $USER_NAME"
+    log_debug "Setting up sudo access for $USER_NAME"
     # Install sudo and configure passwordless access
     if command -v apt-get >/dev/null 2>&1; then
-        log "Installing sudo using apt-get"
+        log_info "Installing sudo..."
         apt-get update -qq && apt-get install -y -qq sudo
     elif command -v yum >/dev/null 2>&1; then
-        log "Installing sudo using yum"
+        log_info "Installing sudo..."
         yum install -y -q sudo
     elif command -v apk >/dev/null 2>&1; then
-        log "Installing sudo using apk"
+        log_info "Installing sudo..."
         apk add --no-cache sudo
     fi
 
     # Add user to sudoers
-    log "Adding $USER_NAME to sudoers"
+    log_debug "Adding $USER_NAME to sudoers"
     echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 else
-    log "Sudo not requested"
+    log_debug "Sudo not requested"
 fi
 
 # Set environment
-log "Setting up shell environment"
+log_debug "Setting up shell environment"
 export PS1="[ctenv] $ "
 
 # Execute command as user
-log "Starting command as $USER_NAME: {config.command}"
+log_info "Starting command as $USER_NAME: {config.command}"
 exec {config.gosu_mount} "$USER_NAME" {config.command}
 """
     return script
@@ -901,7 +910,7 @@ class ContainerRunner:
 
     @staticmethod
     def run_container(
-        config: ContainerConfig, verbose: bool = False, dry_run: bool = False
+        config: ContainerConfig, verbose: bool = False, dry_run: bool = False, quiet: bool = False
     ) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
         logging.debug("Starting container execution")
@@ -934,7 +943,7 @@ class ContainerRunner:
         _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
 
         # Generate entrypoint script content
-        script_content = build_entrypoint_script(config, chown_paths, verbose)
+        script_content = build_entrypoint_script(config, chown_paths, verbose, quiet)
 
         if dry_run:
             # Dry-run mode: don't create any files, use placeholder path
@@ -1043,12 +1052,12 @@ def cmd_run(args):
         cli_overrides = {
             "image": args.image,
             "command": " ".join(command),
-            "working_dir": args.working_dir,
+            "working_dir": str(Path(args.working_dir).resolve()) if args.working_dir else None,
             "env": args.env,
             "volumes": args.volumes,
             "sudo": args.sudo,
             "network": args.network,
-            "gosu_path": args.gosu_path,
+            "gosu_path": str(Path(args.gosu_path).resolve()) if args.gosu_path else None,
             "platform": args.platform,
             "post_start_commands": args.post_start_commands,
             "run_args": args.run_args,
@@ -1095,7 +1104,7 @@ def cmd_run(args):
         # Resolve templates just before running the container
         resolved_config = config.resolve_templates()
         result = ContainerRunner.run_container(
-            resolved_config, verbose, dry_run=args.dry_run
+            resolved_config, verbose, dry_run=args.dry_run, quiet=quiet
         )
         sys.exit(result.returncode)
     except FileNotFoundError as e:
