@@ -30,58 +30,62 @@ class TestRunCommandParsing:
     @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_no_arguments(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run (should use default bash command with default context)."""
+        from ctenv.cli import main
         mock_ctenv_config = MagicMock()
+        # Mock the defaults to return the expected default command
+        mock_ctenv_config.defaults = {"command": "bash"}
         mock_config_file_load.return_value = mock_ctenv_config
 
         mock_container_config = MagicMock()
         mock_ctenv_config.resolve_container_config.return_value = mock_container_config
         mock_run_container.return_value = MagicMock(returncode=0)
 
-        args = self.parser.parse_args(["run"])
-
+        # Test the new main() function - no command means interactive bash
         with patch("sys.exit"):
-            cmd_run(args)
+            main(["run"])
 
-        # Should call resolve_container_config with bash command and None context
+        # Should call resolve_container_config with None command (default will be used) and None context
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["command"] == "bash"
+        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
         assert call_kwargs["context"] is None
 
     @patch("ctenv.cli.CtenvConfig.load")
     @patch("ctenv.cli.ContainerRunner.run_container")
     def test_run_with_valid_context(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run dev (should use context with default command)."""
+        from ctenv.cli import main
         mock_ctenv_config = MagicMock()
+        # Mock the defaults to return the expected default command
+        mock_ctenv_config.defaults = {"command": "bash"}
         mock_config_file_load.return_value = mock_ctenv_config
 
         mock_container_config = MagicMock()
         mock_ctenv_config.resolve_container_config.return_value = mock_container_config
         mock_run_container.return_value = MagicMock(returncode=0)
 
-        args = self.parser.parse_args(["run", "dev"])
-
+        # Test the new main() function with context but no command
         with patch("sys.exit"):
-            cmd_run(args)
+            main(["run", "dev"])
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["command"] == "bash"
+        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
         assert call_kwargs["context"] == "dev"
 
     @patch("ctenv.cli.CtenvConfig.load")
     def test_run_with_invalid_context(self, mock_config_file_load):
         """Test: ctenv run invalid (should fail)."""
+        from ctenv.cli import main
         mock_config_file = create_test_ctenv_config(
             contexts={"dev": {"image": "ubuntu"}}
         )
         mock_config_file_load.return_value = mock_config_file
 
-        args = self.parser.parse_args(["run", "invalid"])
-
+        # Test the new main() function with invalid context
         with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
             with pytest.raises(SystemExit) as exc_info:
-                cmd_run(args)
+                main(["run", "invalid"])
 
             assert exc_info.value.code == 1
             stderr_output = mock_stderr.getvalue()
@@ -90,18 +94,23 @@ class TestRunCommandParsing:
 
     @patch("ctenv.cli.CtenvConfig.load")
     def test_run_with_command_only(self, mock_config_file_load):
-        """Test: ctenv run echo test (command without explicit context)."""
+        """Test: ctenv run -- echo test (command without explicit context)."""
+        from ctenv.cli import main
         mock_config_file_load.return_value = create_test_ctenv_config(
             contexts={"default": {"image": "ubuntu:latest"}}
         )
 
-        # With argparse, no context means first arg is treated as context
-        # To specify command only, we need to use default context explicitly
-        args = self.parser.parse_args(["run", "echo", "test"])
-
-        # argparse treats first positional as context, rest as command
-        assert args.context == "echo"  # First arg becomes context
-        assert args.command == ["test"]  # Rest becomes command
+        # Test the new main() function that handles '--' separator
+        # This simulates: ctenv run -- echo test
+        with patch("ctenv.cli.cmd_run") as mock_cmd_run:
+            with patch("sys.exit"):
+                main(["run", "--", "echo", "test"])
+        
+        # Verify cmd_run was called with correct args and command
+        mock_cmd_run.assert_called_once()
+        args, command = mock_cmd_run.call_args[0]
+        assert args.context is None  # No context specified
+        assert command == "echo test"  # Command after -- as string
 
     @patch("ctenv.cli.CtenvConfig.load")
     @patch("ctenv.cli.ContainerRunner.run_container")
@@ -109,6 +118,7 @@ class TestRunCommandParsing:
         self, mock_run_container, mock_config_file_load
     ):
         """Test: ctenv run dev -- echo test (should use context with command)."""
+        from ctenv.cli import main
         mock_ctenv_config = MagicMock()
         mock_config_file_load.return_value = mock_ctenv_config
 
@@ -116,10 +126,10 @@ class TestRunCommandParsing:
         mock_ctenv_config.resolve_container_config.return_value = mock_container_config
         mock_run_container.return_value = MagicMock(returncode=0)
 
-        args = self.parser.parse_args(["run", "dev", "--", "echo", "test"])
-
+        # Test the new main() function that handles '--' separator
+        # This simulates: ctenv run dev -- echo test
         with patch("sys.exit"):
-            cmd_run(args)
+            main(["run", "dev", "--", "echo", "test"])
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
@@ -131,7 +141,8 @@ class TestRunCommandParsing:
     def test_run_ambiguous_parsing_context_command(
         self, mock_run_container, mock_config_file_load
     ):
-        """Test: ctenv run dev echo test (context + command works)."""
+        """Test: ctenv run dev -- echo test (context + command with separator)."""
+        from ctenv.cli import main
         mock_ctenv_config = MagicMock()
         mock_config_file_load.return_value = mock_ctenv_config
 
@@ -139,14 +150,14 @@ class TestRunCommandParsing:
         mock_ctenv_config.resolve_container_config.return_value = mock_container_config
         mock_run_container.return_value = MagicMock(returncode=0)
 
-        args = self.parser.parse_args(["run", "dev", "echo", "test"])
-
+        # The new approach requires '--' separator to avoid ambiguity
+        # This simulates: ctenv run dev -- echo test
         with patch("sys.exit"):
-            cmd_run(args)
+            main(["run", "dev", "--", "echo", "test"])
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        # With argparse, this should parse correctly
+        # With the new approach, parsing is unambiguous
         assert call_kwargs["cli_overrides"]["command"] == "echo test"
         assert call_kwargs["context"] == "dev"
 
@@ -162,7 +173,7 @@ class TestRunCommandParsing:
 
         with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
             with pytest.raises(SystemExit) as exc_info:
-                cmd_run(args)
+                cmd_run(args, None)
 
             assert exc_info.value.code == 1
             stderr_output = mock_stderr.getvalue()
@@ -173,6 +184,8 @@ class TestRunCommandParsing:
     def test_run_context_with_options(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run dev --image alpine (context with options)."""
         mock_ctenv_config = MagicMock()
+        # Mock the defaults to return the expected default command
+        mock_ctenv_config.defaults = {"command": "bash"}
         mock_config_file_load.return_value = mock_ctenv_config
 
         mock_container_config = MagicMock()
@@ -182,11 +195,11 @@ class TestRunCommandParsing:
         args = self.parser.parse_args(["run", "dev", "--image", "alpine:latest"])
 
         with patch("sys.exit"):
-            cmd_run(args)
+            cmd_run(args, None)
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["command"] == "bash"  # Default command
+        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
         assert (
             call_kwargs["cli_overrides"]["image"] == "alpine:latest"
         )  # CLI option override
@@ -197,6 +210,8 @@ class TestRunCommandParsing:
     def test_run_with_run_args(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run --run-arg='--cap-add=NET_ADMIN' --run-arg='--memory=2g' (run args option)."""
         mock_ctenv_config = MagicMock()
+        # Mock the defaults to return the expected default command
+        mock_ctenv_config.defaults = {"command": "bash"}
         mock_config_file_load.return_value = mock_ctenv_config
 
         mock_container_config = MagicMock()
@@ -212,12 +227,12 @@ class TestRunCommandParsing:
         ])
 
         with patch("sys.exit"):
-            cmd_run(args)
+            cmd_run(args, None)
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
         assert call_kwargs["cli_overrides"]["run_args"] == ["--cap-add=NET_ADMIN", "--memory=2g"]
-        assert call_kwargs["cli_overrides"]["command"] == "bash"  # Default command
+        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
         assert call_kwargs["context"] == "dev"
 
 
@@ -240,7 +255,7 @@ class TestRunCommandEdgeCases:
 
         with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
             with pytest.raises(SystemExit) as exc_info:
-                cmd_run(args)
+                cmd_run(args, None)
 
             assert exc_info.value.code == 1
             stderr_output = mock_stderr.getvalue()
@@ -255,7 +270,7 @@ class TestRunCommandEdgeCases:
 
         with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
             with pytest.raises(SystemExit) as exc_info:
-                cmd_run(args)
+                cmd_run(args, None)
 
             assert exc_info.value.code == 1
             stderr_output = mock_stderr.getvalue()

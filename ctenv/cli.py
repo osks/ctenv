@@ -903,15 +903,7 @@ class ContainerRunner:
 
         # Network configuration
         if config.network:
-            if config.network == "none":
-                args.extend(["--network=none"])
-            elif config.network == "host":
-                args.extend(["--network=host"])
-            elif config.network == "bridge":
-                args.extend(["--network=bridge"])
-            else:
-                # Custom network name
-                args.extend([f"--network={config.network}"])
+            args.extend([f"--network={config.network}"])
             logging.debug(f"Network mode: {config.network}")
         else:
             # Default: use Docker's default networking (no --network flag)
@@ -1052,7 +1044,7 @@ def setup_logging(verbose, quiet):
         logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 
 
-def cmd_run(args):
+def cmd_run(args, command):
     """Run command in container."""
     verbose = args.verbose
     quiet = args.quiet
@@ -1065,17 +1057,8 @@ def cmd_run(args):
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Parse context and command from args
+    # Parse context from args
     context = args.context
-    command_args = args.command
-
-    # Simple parsing logic
-    if command_args:
-        # Command specified
-        command = command_args
-    else:
-        # No command, default to bash
-        command = ["bash"]
 
     # context can be None to use [defaults] section
 
@@ -1100,7 +1083,7 @@ def cmd_run(args):
     try:
         cli_overrides = {
             "image": args.image,
-            "command": " ".join(command),
+            "command": command,
             "working_dir": str(Path(args.working_dir).resolve()) if args.working_dir else None,
             "env": args.env,
             "volumes": processed_volumes,
@@ -1309,7 +1292,6 @@ Note: Use '--' to separate commands from context/options.""",
     run_parser.add_argument(
         "context", nargs="?", help="Context to use (default: 'default')"
     )
-    run_parser.add_argument("command", nargs="*", help="Command to run")
     run_parser.add_argument("--image", help="Container image to use")
     run_parser.add_argument(
         "--dry-run",
@@ -1392,17 +1374,32 @@ Note: Use '--' to separate commands from context/options.""",
     return parser
 
 
-def main():
+def main(argv=None):
     """Main entry point."""
+    # Always use sys.argv[1:] when called without arguments
+    if argv is None:
+        argv = sys.argv[1:]
+    
+    # Split at '--' if present to separate ctenv args from command args
+    if '--' in argv:
+        separator_index = argv.index('--')
+        ctenv_args = argv[:separator_index]
+        command_args = argv[separator_index + 1:]
+        command = ' '.join(command_args)
+    else:
+        ctenv_args = argv
+        command = None
+    
+    # Parse only ctenv arguments
     parser = create_parser()
-    args = parser.parse_args()
-
+    args = parser.parse_args(ctenv_args)
+    
     # Setup logging
     setup_logging(args.verbose, args.quiet)
 
     # Route to appropriate command handler
     if args.subcommand == "run":
-        cmd_run(args)
+        cmd_run(args, command)
     elif args.subcommand == "config":
         if args.config_command == "show":
             cmd_config_show(args)

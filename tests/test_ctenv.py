@@ -453,7 +453,7 @@ def test_cli_volume_template_expansion():
                         args.quiet = False
                         args.config = None
                         args.context = None
-                        args.command = ["bash"]
+                        # Command is not used in this test since we pass it separately to cmd_run
                         args.volumes = ["~/.docker", "${env:HOME}/.cache::ro"]
                         args.image = "ubuntu"
                         args.working_dir = None
@@ -478,7 +478,7 @@ def test_cli_volume_template_expansion():
                         mock_runner.run_container.return_value = mock_result
                         
                         try:
-                            cmd_run(args)
+                            cmd_run(args, "bash")
                         except SystemExit:
                             pass  # Expected for dry-run
                         
