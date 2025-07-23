@@ -23,9 +23,11 @@ ctenv runs commands in containers by dynamically creating a matching user (same 
 - **Claude Code**: Running AI assistants in containers while maintaining file permissions
 - **CI/CD Testing**: Replicating CI environments locally with proper permissions
 
-ctenv is somewhat related to `devcontainers`, but has a smaller
-scope. It can start a new container directly for a command, rather
-than keeping a container running in the background.
+ctenv is somewhat related to [Development
+Containers](https://containers.dev/) (`devcontainers`), but has a
+smaller scope. One thing ctenv can do but doesn't seem supported by
+devcontainers, is starting a new container directly for a command,
+rather than keeping a container running in the background.
 
 ## Design
 
@@ -45,49 +47,85 @@ Install this tool using `pip`:
 pip install ctenv
 ```
 
-## Use case examples
+## Examples
 
-### Use case: Claude Code
+### Claude Code
+
+To limit what Claude Code can do, it's nice to be able to run it in a container.
+Anthropic has [example on how to run Claude Code in Development Containers](https://docs.anthropic.com/en/docs/claude-code/devcontainer)
+and here is the code for how it's set up: https://github.com/anthropics/claude-code/tree/main/.devcontainer
+
+We can use ctenv to mount the code into the container and setup
+the same user as yourself in the container, so permissions match.
+
+Run Claude Code in a container using ctenv:
+
+```
+ctenv run --image "node:20" --post-start-command "npm install -g @anthropic-ai/claude-code"
+```
+
+To not have to login everytime and to keep history, we can mount Claude Code's files:
+
+```
+ctenv run --image "node:20" \
+          --post-start-command "npm install -g @anthropic-ai/claude-code" \
+          --volume "~/.claude.json:~/.claude.json" \
+          --volume "~/.claude:~/.claude"
+```
+
+
+
+Note: On macOS Claude Code seem to store credentials in the keychain
+if you have a Claude account. The credentials therefor won't be
+available in the container. However, if you login in Claude Code in
+the container, it will write credentials to
+`~/.claude/.credentials.json` instead and continue to use them from
+there. Since the above mounts that directory, be aware that the
+credentials file will then exist outside the container in a file now,
+instead of the keychain.
+
+
 
 Example config:
 ```toml
 [contexts.claude]
 image = "node:20"
 network = "bridge"
-post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
+run_args = ["--cap-add=NET_ADMIN"]
+post_start_commands = [
+    "apt update && apt install -y iptables",
+    "iptables -A OUTPUT -d 192.168.0.0/24 -j DROP",
+    "npm install -g @anthropic-ai/claude-code"
+]
 volumes = ["${env:HOME}/.claude.json:${env:HOME}/.claude.json", "${env:HOME}/.claude:${env:HOME}/.claude"]
 ```
 
-Note: Be aware that on macOS Claude Code seem to store the credentials
-in the keychain if you have a Claude account. The credentials therefor
-won't be available in the container. However, if you go through /login
-in the container, it will write them to `~/.claude/.credentials.json`
-instead and continue to use them from there. Since the above mounts
-that directory, the credentials file will exist outside the container
-also.
 
 
-### Use case: Build system container
+### Build system
 
-The build system it was originally written for contained the build
-environment in a container image. An internal script similar to ctenv
-was used to run the build. ctenv could then be used to start a shell
-or run other commands in the same environment as the build system.
+The build system ctenv was originally written for had the build
+environment in a container image. A custom script was used to run the
+build and handle permissions in the container, similar to what ctenv
+does. The custom script didn't make it easy to run anything else than
+the build in that environment, and was tied to that repository. An
+internal version of ctenv was developed, allowing developers to run
+other commands in the same environment as the build system.
 
-That build system also used a volume for storing a cache and the
-cached files contained hard-coded paths, so it was important that the
+The build system also used a volume for storing a cache and the cached
+files contained hard-coded paths, so it was important that the
 environment in the container was as similar as possible to the regular
 user environment outside the container. For sharing the cache between
 different clones of the repository, the repository needed to be
 mounted at a fixed path. The caching is also the reason for matching
 the path to HOME (which is otherwise different on for example macOS vs
-typical Linux distributions).
+typical Linux distributions), making it possible to run the build also
+on macOS.
 
-The ctenv config could look something like this, to show which
-features that were used:
+The ctenv config for this case look something like this:
 
 ```toml
-[contexts.build-system]
+[contexts.build]
 image = "registry.company.internal/build-system:v1"
 env = [
     "BB_NUMBER_THREADS",
@@ -115,7 +153,7 @@ ctenv run test -- npm test
 
 # Common options
 ctenv run --sudo -- apt update   # Run with sudo access
-ctenv run --network bridge       # Enable networking
+ctenv run --network bridge       # Specify network
 ctenv run --volume /data:/data   # Mount additional volumes
 ```
 
