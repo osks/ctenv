@@ -131,7 +131,7 @@ def find_default_gosu_path(start_dir: Optional[Path] = None, target_platform: Op
         target_platform: Target container platform (e.g., "linux/amd64")
 
     Returns:
-        Path to bundled gosu binary, or None if package is corrupted
+        Path to bundled gosu binary, or None if not found
     """
     # Get platform-specific binary name
     platform_gosu = get_platform_specific_gosu_name(target_platform)
@@ -493,7 +493,7 @@ class ContainerConfig:
         if self.gosu_path is None:
             resolved_gosu = find_gosu_binary(target_platform=self.platform)
             if resolved_gosu is None:
-                raise FileNotFoundError("No gosu binary found. This suggests a corrupted package installation.")
+                raise FileNotFoundError("No gosu binary found.")
             resolved_data['gosu_path'] = resolved_gosu
             
         return ContainerConfig.from_dict(resolved_data)
