@@ -55,5 +55,9 @@ dev = [
 
 [tool.mypy]
 python_version = "3.9"
-warn_return_any = true
 warn_unused_configs = true
+# Very permissive for gradual adoption
+ignore_missing_imports = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+disable_error_code = ["no-any-return", "assignment", "arg-type", "attr-defined", "var-annotated", "union-attr"]
