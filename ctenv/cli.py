@@ -1312,7 +1312,7 @@ Note: Use '--' to separate commands from context/options.""",
         help="Add custom argument to container run command (can be used multiple times)",
     )
     run_parser.add_argument(
-        "--post-start-cmd",
+        "--post-start-command",
         action="append",
         dest="post_start_commands",
         help="Add extra command to run after container starts (can be used multiple times)",
