@@ -31,7 +31,7 @@ def test_post_start_commands_shell_functionality():
             ],
         )
 
-        script = build_entrypoint_script(config)
+        script = build_entrypoint_script(config, verbose=False, quiet=False)
 
         # Commands should execute normally with shell interpretation
         assert "echo 'hello'; touch /tmp/injected; echo 'done'" in script
@@ -67,7 +67,7 @@ def test_volume_chown_path_injection_prevention():
             '/tmp > /tmp/redirect',  # Redirect injection
         ]
 
-        script = build_entrypoint_script(config, malicious_paths)
+        script = build_entrypoint_script(config, malicious_paths, verbose=False, quiet=False)
 
         # Paths should be safely quoted to prevent command injection
         assert "chown -R \"$USER_ID:$GROUP_ID\" '/tmp\"; touch /tmp/pwned; echo \"done'" in script
@@ -105,7 +105,7 @@ def test_complex_shell_scenarios():
             ],
         )
 
-        script = build_entrypoint_script(config)
+        script = build_entrypoint_script(config, verbose=False, quiet=False)
 
         # All commands should execute normally with shell interpretation
         assert 'echo "$(echo' in script
@@ -133,7 +133,7 @@ def test_safe_commands_work_normally():
             ],
         )
 
-        script = build_entrypoint_script(config)
+        script = build_entrypoint_script(config, verbose=False, quiet=False)
 
         # Commands should be present (unquoted for normal execution)
         assert "npm install" in script

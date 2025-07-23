@@ -279,8 +279,8 @@ def test_sudo_entrypoint_script():
         sudo=False,
     )
 
-    script_with_sudo = build_entrypoint_script(config_with_sudo)
-    script_without_sudo = build_entrypoint_script(config_without_sudo)
+    script_with_sudo = build_entrypoint_script(config_with_sudo, verbose=False, quiet=False)
+    script_without_sudo = build_entrypoint_script(config_without_sudo, verbose=False, quiet=False)
 
     # Test sudo setup is properly configured with ADD_SUDO variable
     assert "ADD_SUDO=1" in script_with_sudo
@@ -484,7 +484,7 @@ def test_volume_chown_option():
 
             # Generate entrypoint script content to check for chown commands
             _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
-            script_content = build_entrypoint_script(config, chown_paths, verbose=False)
+            script_content = build_entrypoint_script(config, chown_paths, verbose=False, quiet=False)
 
             # Should contain chown commands for cache and data, but not logs
             assert 'chown -R "$USER_ID:$GROUP_ID" /var/cache' in script_content
@@ -526,7 +526,7 @@ def test_post_start_commands():
         )
 
         # Generate entrypoint script content directly
-        script_content = build_entrypoint_script(config)
+        script_content = build_entrypoint_script(config, verbose=False, quiet=False)
 
         # Should contain post-start commands section
         assert "# Execute post-start commands" in script_content

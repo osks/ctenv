@@ -107,7 +107,7 @@ def test_entrypoint_script_generation():
         command="bash",
     )
 
-    script = build_entrypoint_script(config)
+    script = build_entrypoint_script(config, verbose=False, quiet=False)
 
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
@@ -154,7 +154,7 @@ def test_entrypoint_script_examples():
     print(f"{'=' * 50}")
 
     for scenario in scenarios:
-        script = build_entrypoint_script(scenario["config"])
+        script = build_entrypoint_script(scenario["config"], verbose=False, quiet=False)
 
         print(f"\n{scenario['name']}:")
         print(
@@ -316,10 +316,10 @@ def test_post_start_cmd_in_generated_script():
             cli_overrides={"post_start_commands": ["npm install", "npm run test"]}
         )
 
-    script = build_entrypoint_script(config, verbose=True)
+    script = build_entrypoint_script(config, verbose=True, quiet=False)
 
     # Should contain the post-start commands in the script
     assert "npm install" in script
     assert "npm run test" in script
-    assert 'log "Executing post-start command: npm install"' in script
-    assert 'log "Executing post-start command: npm run test"' in script
+    assert 'log_debug "Executing post-start command: npm install"' in script
+    assert 'log_debug "Executing post-start command: npm run test"' in script
