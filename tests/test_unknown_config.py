@@ -34,7 +34,7 @@ def test_unknown_config_options_in_from_dict(caplog):
     # Should create config successfully
     assert config.user_name == "testuser"
     assert config.image == "ubuntu:latest"
-    
+
     # Should not have unknown attributes
     assert not hasattr(config, "entrypoint_commands")
     assert not hasattr(config, "unknown_option")
@@ -84,6 +84,7 @@ another_unknown = 123
 
     finally:
         import os
+
         os.unlink(config_file)
 
 
@@ -119,6 +120,7 @@ deprecated_option = true
 
     finally:
         import os
+
         os.unlink(config_file)
 
 

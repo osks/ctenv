@@ -34,17 +34,24 @@ test-all: dev
 .PHONY: lint
 lint: dev
 	@echo "Checking code style..."
-	@uv run ruff check ctenv.py tests/
+	@uv run ruff check ctenv/ tests/
+	@echo "Running type checking..."
+	@uv run mypy ctenv/ tests/
 
 .PHONY: lint-fix
 lint-fix: dev
 	@echo "Fixing code style..."
-	@uv run ruff check --fix ctenv.py tests/
+	@uv run ruff check --fix ctenv/ tests/
+
+.PHONY: typecheck
+typecheck: dev
+	@echo "Running type checking..."
+	@uv run mypy ctenv/ tests/
 
 .PHONY: format
 format: dev
 	@echo "Formatting code..."
-	@uv run ruff format ctenv.py tests/
+	@uv run ruff format ctenv/ tests/
 
 .PHONY: clean
 clean:

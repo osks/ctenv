@@ -10,7 +10,8 @@ def test_basic_container_execution(test_images, temp_workspace):
     result = subprocess.run(
         [
             "python",
-            "-m", "ctenv",
+            "-m",
+            "ctenv",
             "run",
             "test",
             "--",
@@ -31,7 +32,8 @@ def test_working_directory_is_repo(test_images, temp_workspace):
     result = subprocess.run(
         [
             "python",
-            "-m", "ctenv",
+            "-m",
+            "ctenv",
             "run",
             "test",
             "--",
@@ -55,7 +57,8 @@ def test_file_permission_preservation(test_images, temp_workspace):
     result = subprocess.run(
         [
             "python",
-            "-m", "ctenv",
+            "-m",
+            "ctenv",
             "run",
             "test",
             "--",
@@ -96,7 +99,8 @@ def test_environment_variables_passed(test_images, temp_workspace):
     result = subprocess.run(
         [
             "python",
-            "-m", "ctenv",
+            "-m",
+            "ctenv",
             "run",
             "test",
             "--",
@@ -118,7 +122,8 @@ def test_error_handling_invalid_image(temp_workspace):
     result = subprocess.run(
         [
             "python",
-            "-m", "ctenv",
+            "-m",
+            "ctenv",
             "run",
             "--image",
             "nonexistent:image",
@@ -150,7 +155,8 @@ def test_volume_mounting(test_images, temp_workspace):
     result = subprocess.run(
         [
             "python",
-            "-m", "ctenv",
+            "-m",
+            "ctenv",
             "run",
             "test",
             "--",

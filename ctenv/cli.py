@@ -44,14 +44,14 @@ def preprocess_tilde_expansion(text: str) -> str:
     """Convert ~/ at start of paths to ${env:HOME}/ for template processing."""
     if not text:
         return text
-    
+
     # Only expand ~/ at the beginning of the string or after : (for volume specs)
     # Pattern matches:
     # - ~/ at start: "~/.docker" -> "${env:HOME}/.docker"
     # - ~/ after colon: "/host:~/.docker" -> "/host:${env:HOME}/.docker"
     # - ~/ after double colon: "/host::~/.docker" -> "/host::${env:HOME}/.docker"
-    pattern = r'(^|:)~/'
-    return re.sub(pattern, r'\1${env:HOME}/', text)
+    pattern = r"(^|:)~/"
+    return re.sub(pattern, r"\1${env:HOME}/", text)
 
 
 def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
@@ -90,7 +90,9 @@ def substitute_in_context(
             result[key] = substitute_template_variables(processed_value, variables)
         elif isinstance(value, list):
             result[key] = [
-                substitute_template_variables(preprocess_tilde_expansion(item), variables)
+                substitute_template_variables(
+                    preprocess_tilde_expansion(item), variables
+                )
                 if isinstance(item, str)
                 else item
                 for item in value
@@ -139,7 +141,9 @@ def get_platform_specific_gosu_name(target_platform: Optional[str] = None) -> st
     return f"gosu-{arch}"
 
 
-def find_default_gosu_path(start_dir: Optional[Path] = None, target_platform: Optional[str] = None) -> Optional[Path]:
+def find_default_gosu_path(
+    start_dir: Optional[Path] = None, target_platform: Optional[str] = None
+) -> Optional[Path]:
     """Find default gosu binary - should always use bundled binary.
 
     Args:
@@ -151,14 +155,15 @@ def find_default_gosu_path(start_dir: Optional[Path] = None, target_platform: Op
     """
     # Get platform-specific binary name
     platform_gosu = get_platform_specific_gosu_name(target_platform)
-    
+
     # First, try to find bundled binary
     try:
         # With zip_safe=False, we can use direct paths to package files
         import ctenv
+
         package_dir = Path(ctenv.__file__).parent
-        bundled_gosu = package_dir / 'binaries' / platform_gosu
-        
+        bundled_gosu = package_dir / "binaries" / platform_gosu
+
         if bundled_gosu.exists() and bundled_gosu.is_file():
             logging.debug(f"Using bundled gosu: {bundled_gosu}")
             return bundled_gosu
@@ -174,7 +179,9 @@ def find_default_gosu_path(start_dir: Optional[Path] = None, target_platform: Op
 
 
 def find_gosu_binary(
-    start_dir: Optional[Path] = None, explicit_path: Optional[str] = None, target_platform: Optional[str] = None
+    start_dir: Optional[Path] = None,
+    explicit_path: Optional[str] = None,
+    target_platform: Optional[str] = None,
 ) -> Optional[Path]:
     """Find gosu binary using fallback strategy.
 
@@ -496,22 +503,22 @@ class ContainerConfig:
 
     def resolve_missing_paths(self) -> "ContainerConfig":
         """Return a new ContainerConfig with missing paths resolved.
-        
+
         Resolves paths that depend on other config values:
         - gosu_path: resolved based on platform
         """
         import dataclasses
-        
+
         # Create a copy to modify
         resolved_data = dataclasses.asdict(self)
-        
+
         # Resolve gosu_path if not set
         if self.gosu_path is None:
             resolved_gosu = find_gosu_binary(target_platform=self.platform)
             if resolved_gosu is None:
                 raise FileNotFoundError("No gosu binary found.")
-            resolved_data['gosu_path'] = resolved_gosu
-            
+            resolved_data["gosu_path"] = resolved_gosu
+
         return ContainerConfig.from_dict(resolved_data)
 
     def resolve_templates(
@@ -534,10 +541,14 @@ class ContainerConfig:
             if isinstance(value, str):
                 # Apply tilde preprocessing first, then template expansion
                 processed_value = preprocess_tilde_expansion(value)
-                config_dict[key] = substitute_template_variables(processed_value, variables)
+                config_dict[key] = substitute_template_variables(
+                    processed_value, variables
+                )
             elif isinstance(value, (list, tuple)) and value:
                 config_dict[key] = [
-                    substitute_template_variables(preprocess_tilde_expansion(item), variables)
+                    substitute_template_variables(
+                        preprocess_tilde_expansion(item), variables
+                    )
                     if isinstance(item, str)
                     else item
                     for item in value
@@ -554,8 +565,9 @@ class ContainerConfig:
         """
         # Get all valid field names from the dataclass
         import dataclasses
+
         valid_fields = {f.name for f in dataclasses.fields(cls)}
-        
+
         kwargs = {}
         unknown_keys = []
 
@@ -564,7 +576,7 @@ class ContainerConfig:
             if key not in valid_fields:
                 unknown_keys.append(key)
                 continue
-                
+
             if value is None:
                 # Skip None values - let dataclass defaults handle them
                 continue
@@ -573,9 +585,12 @@ class ContainerConfig:
             if key in ("working_dir", "gosu_path") and isinstance(value, str):
                 kwargs[key] = Path(value) if value else None
             # Handle list fields
-            elif key in ("env", "volumes", "post_start_commands", "run_args") and isinstance(
-                value, (list, tuple)
-            ):
+            elif key in (
+                "env",
+                "volumes",
+                "post_start_commands",
+                "run_args",
+            ) and isinstance(value, (list, tuple)):
                 kwargs[key] = list(value)
             # Everything else passes through
             else:
@@ -591,7 +606,10 @@ class ContainerConfig:
 
 
 def build_entrypoint_script(
-    config: ContainerConfig, chown_paths: List[str] = None, verbose: bool = False, quiet: bool = False
+    config: ContainerConfig,
+    chown_paths: List[str] = None,
+    verbose: bool = False,
+    quiet: bool = False,
 ) -> str:
     """Generate bash script for container entrypoint."""
     chown_paths = chown_paths or []
@@ -609,11 +627,15 @@ log_debug "Checking volumes for ownership fixes"
             # For logging, escape quotes in the original path
             escaped_path = path.replace('"', '\\"')
             chown_commands += f'log_debug "Checking chown volume: {escaped_path}"\n'
-            chown_commands += f'if [ -d {quoted_path} ]; then\n'
-            chown_commands += f'    log_debug "Fixing ownership of volume: {escaped_path}"\n'
+            chown_commands += f"if [ -d {quoted_path} ]; then\n"
+            chown_commands += (
+                f'    log_debug "Fixing ownership of volume: {escaped_path}"\n'
+            )
             chown_commands += f'    chown -R "$USER_ID:$GROUP_ID" {quoted_path}\n'
             chown_commands += "else\n"
-            chown_commands += f'    log_debug "Chown volume does not exist: {escaped_path}"\n'
+            chown_commands += (
+                f'    log_debug "Chown volume does not exist: {escaped_path}"\n'
+            )
             chown_commands += "fi\n"
     else:
         chown_commands = """
@@ -756,7 +778,7 @@ class ContainerRunner:
         volumes: Optional[Tuple[str, ...]],
     ) -> Tuple[List[str], List[str]]:
         """Parse volume strings and extract chown paths.
-        
+
         Supports multiple formats:
         - HOST:CONTAINER[:options] - Standard format
         - HOST - Smart defaulting: HOST:HOST
@@ -778,7 +800,7 @@ class ContainerRunner:
                 parts = volume.split("::", 1)
                 if len(parts) != 2:
                     raise ValueError(f"Invalid volume format: {volume}")
-                
+
                 host_path = parts[0]
                 container_path = host_path  # Smart defaulting
                 options_str = parts[1]
@@ -789,7 +811,7 @@ class ContainerRunner:
                     raise ValueError(
                         f"Invalid volume format: {volume}. Use HOST:CONTAINER format."
                     )
-                
+
                 host_path = parts[0]
                 container_path = parts[1]
                 options_str = ":".join(parts[2:]) if len(parts) > 2 else ""
@@ -833,11 +855,11 @@ class ContainerRunner:
             "--rm",
             "--init",
         ]
-        
+
         # Add platform flag only if specified
         if config.platform:
             args.append(f"--platform={config.platform}")
-            
+
         args.append(f"--name={config.get_container_name()}")
 
         # Parse volume options
@@ -934,7 +956,10 @@ class ContainerRunner:
 
     @staticmethod
     def run_container(
-        config: ContainerConfig, verbose: bool = False, dry_run: bool = False, quiet: bool = False
+        config: ContainerConfig,
+        verbose: bool = False,
+        dry_run: bool = False,
+        quiet: bool = False,
     ) -> subprocess.CompletedProcess:
         """Execute Docker container with the given configuration."""
         logging.debug("Starting container execution")
@@ -1071,12 +1096,14 @@ def cmd_run(args, command):
             "USER": getpass.getuser(),
             "image": args.image or "ubuntu:latest",  # Use provided image or default
         }
-        
+
         for volume in args.volumes:
             # Apply tilde preprocessing
             volume_with_tilde = preprocess_tilde_expansion(volume)
             # Apply template expansion
-            volume_expanded = substitute_template_variables(volume_with_tilde, template_variables)
+            volume_expanded = substitute_template_variables(
+                volume_with_tilde, template_variables
+            )
             processed_volumes.append(volume_expanded)
 
     # Create config from loaded CtenvConfig and CLI options
@@ -1084,12 +1111,16 @@ def cmd_run(args, command):
         cli_overrides = {
             "image": args.image,
             "command": command,
-            "working_dir": str(Path(args.working_dir).resolve()) if args.working_dir else None,
+            "working_dir": str(Path(args.working_dir).resolve())
+            if args.working_dir
+            else None,
             "env": args.env,
             "volumes": processed_volumes,
             "sudo": args.sudo,
             "network": args.network,
-            "gosu_path": str(Path(args.gosu_path).resolve()) if args.gosu_path else None,
+            "gosu_path": str(Path(args.gosu_path).resolve())
+            if args.gosu_path
+            else None,
             "platform": args.platform,
             "post_start_commands": args.post_start_commands,
             "run_args": args.run_args,
@@ -1097,12 +1128,15 @@ def cmd_run(args, command):
         config = ctenv_config.resolve_container_config(
             context=context, cli_overrides=cli_overrides
         )
-        
+
         # Validate platform if specified
         if config.platform and not validate_platform(config.platform):
-            print(f"Error: Unsupported platform '{config.platform}'. Supported platforms: linux/amd64, linux/arm64", file=sys.stderr)
+            print(
+                f"Error: Unsupported platform '{config.platform}'. Supported platforms: linux/amd64, linux/arm64",
+                file=sys.stderr,
+            )
             sys.exit(1)
-        
+
         # Resolve any missing paths (like gosu_path)
         config = config.resolve_missing_paths()
     except ValueError as e:
@@ -1187,7 +1221,9 @@ def cmd_config_show(args):
             if resolved_config.volumes:
                 print(f"  volumes: {list(resolved_config.volumes)}")
             if resolved_config.post_start_commands:
-                print(f"  post_start_commands: {list(resolved_config.post_start_commands)}")
+                print(
+                    f"  post_start_commands: {list(resolved_config.post_start_commands)}"
+                )
         else:
             # Show all configuration
             print("Configuration:")
@@ -1248,7 +1284,6 @@ GOSU_CHECKSUMS = {
     "gosu-amd64": "bbc4136d03ab138b1ad66fa4fc051bafc6cc7ffae632b069a53657279a450de3",
     "gosu-arm64": "c3805a85d17f4454c23d7059bcb97e1ec1af272b90126e79ed002342de08389b",
 }
-
 
 
 def create_parser():
@@ -1370,7 +1405,6 @@ Note: Use '--' to separate commands from context/options.""",
         help="Path to configuration file (can be used multiple times, order matters)",
     )
 
-
     return parser
 
 
@@ -1379,21 +1413,21 @@ def main(argv=None):
     # Always use sys.argv[1:] when called without arguments
     if argv is None:
         argv = sys.argv[1:]
-    
+
     # Split at '--' if present to separate ctenv args from command args
-    if '--' in argv:
-        separator_index = argv.index('--')
+    if "--" in argv:
+        separator_index = argv.index("--")
         ctenv_args = argv[:separator_index]
-        command_args = argv[separator_index + 1:]
-        command = ' '.join(command_args)
+        command_args = argv[separator_index + 1 :]
+        command = " ".join(command_args)
     else:
         ctenv_args = argv
         command = None
-    
+
     # Parse only ctenv arguments
     parser = create_parser()
     args = parser.parse_args(ctenv_args)
-    
+
     # Setup logging
     setup_logging(args.verbose, args.quiet)
 

@@ -329,56 +329,60 @@ def test_post_start_cmd_in_generated_script():
 def test_tilde_preprocessing():
     """Test tilde preprocessing function."""
     from ctenv.cli import preprocess_tilde_expansion
-    
+
     # Test basic tilde expansion
     assert preprocess_tilde_expansion("~/.docker") == "${env:HOME}/.docker"
     assert preprocess_tilde_expansion("~/config/file") == "${env:HOME}/config/file"
-    
+
     # Test tilde after colon (volume format)
     assert preprocess_tilde_expansion("/host:~/.config") == "/host:${env:HOME}/.config"
-    assert preprocess_tilde_expansion("/host::~/.config") == "/host::${env:HOME}/.config"
-    
+    assert (
+        preprocess_tilde_expansion("/host::~/.config") == "/host::${env:HOME}/.config"
+    )
+
     # Test cases that should NOT be expanded
     assert preprocess_tilde_expansion("~") == "~"  # No trailing slash
     assert preprocess_tilde_expansion("file~name") == "file~name"  # Not at path start
-    assert preprocess_tilde_expansion("/path/~file") == "/path/~file"  # Not at path start
-    
+    assert (
+        preprocess_tilde_expansion("/path/~file") == "/path/~file"
+    )  # Not at path start
+
     # Test empty/None input
     assert preprocess_tilde_expansion("") == ""
-    assert preprocess_tilde_expansion(None) == None
+    assert preprocess_tilde_expansion(None) is None
 
 
 @pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
     from ctenv.cli import ContainerRunner
-    
+
     # Test single path format
     volumes, chown_paths = ContainerRunner.parse_volumes(("~/.docker",))
     assert volumes == ["~/.docker:~/.docker"]
     assert chown_paths == []
-    
+
     # Test multiple single paths
     volumes, chown_paths = ContainerRunner.parse_volumes(("/host/path", "~/config"))
     assert volumes == ["/host/path:/host/path", "~/config:~/config"]
     assert chown_paths == []
 
 
-@pytest.mark.unit  
+@pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
     from ctenv.cli import ContainerRunner
-    
+
     # Test empty target with options
     volumes, chown_paths = ContainerRunner.parse_volumes(("~/.docker::ro",))
     assert volumes == ["~/.docker:~/.docker:ro"]
     assert chown_paths == []
-    
+
     # Test empty target with chown option
     volumes, chown_paths = ContainerRunner.parse_volumes(("~/data::chown,rw",))
     assert volumes == ["~/data:~/data:rw"]
     assert chown_paths == ["~/data"]
-    
+
     # Test empty target with multiple options
     volumes, chown_paths = ContainerRunner.parse_volumes(("/path::ro,chown,z",))
     assert volumes == ["/path:/path:ro,z"]
@@ -389,12 +393,12 @@ def test_volume_parsing_empty_target_syntax():
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
     from ctenv.cli import ContainerRunner
-    
+
     # Test standard format still works
     volumes, chown_paths = ContainerRunner.parse_volumes(("/host:/container:ro",))
     assert volumes == ["/host:/container:ro"]
     assert chown_paths == []
-    
+
     # Test chown option still works
     volumes, chown_paths = ContainerRunner.parse_volumes(("/host:/container:chown",))
     assert volumes == ["/host:/container"]
@@ -406,22 +410,25 @@ def test_template_expansion_with_tilde():
     """Test template expansion with tilde preprocessing."""
     import tempfile
     import os
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
+
+    with tempfile.TemporaryDirectory():
         # Set up test environment
         test_home = "/home/testuser"
-        
+
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.cli import preprocess_tilde_expansion, substitute_template_variables
-            
+            from ctenv.cli import (
+                preprocess_tilde_expansion,
+                substitute_template_variables,
+            )
+
             # Test tilde expansion with template system
             variables = {"USER": "testuser", "image": "ubuntu"}
-            
+
             # Preprocess tilde then apply templates
             volume = "~/.docker:/container"
             preprocessed = preprocess_tilde_expansion(volume)
             expanded = substitute_template_variables(preprocessed, variables)
-            
+
             assert expanded == f"{test_home}/.docker:/container"
 
 
@@ -431,22 +438,22 @@ def test_cli_volume_template_expansion():
     import tempfile
     import os
     from unittest.mock import patch, MagicMock
-    
-    with tempfile.TemporaryDirectory() as tmpdir:
+
+    with tempfile.TemporaryDirectory():
         test_home = "/home/testuser"
-        
+
         with patch.dict(os.environ, {"HOME": test_home}):
             # Mock the necessary functions to test just the volume processing
             with patch("ctenv.cli.CtenvConfig") as mock_config_class:
-                with patch("ctenv.cli.ContainerConfig") as mock_container_config:
+                with patch("ctenv.cli.ContainerConfig"):
                     with patch("ctenv.cli.ContainerRunner") as mock_runner:
                         from ctenv.cli import cmd_run
-                        
+
                         # Set up mocks
                         mock_config = MagicMock()
                         mock_config_class.load.return_value = mock_config
                         mock_config.resolve_container_config.return_value = MagicMock()
-                        
+
                         # Create mock args
                         args = MagicMock()
                         args.verbose = False
@@ -465,28 +472,32 @@ def test_cli_volume_template_expansion():
                         args.post_start_commands = None
                         args.run_args = None
                         args.dry_run = True
-                        
+
                         # Mock the resolve_missing_paths and resolve_templates
                         resolved_config = MagicMock()
-                        resolved_config.resolve_missing_paths.return_value = resolved_config
+                        resolved_config.resolve_missing_paths.return_value = (
+                            resolved_config
+                        )
                         resolved_config.resolve_templates.return_value = resolved_config
-                        mock_config.resolve_container_config.return_value = resolved_config
-                        
+                        mock_config.resolve_container_config.return_value = (
+                            resolved_config
+                        )
+
                         # Mock the runner to avoid actual execution
                         mock_result = MagicMock()
                         mock_result.returncode = 0
                         mock_runner.run_container.return_value = mock_result
-                        
+
                         try:
                             cmd_run(args, "bash")
                         except SystemExit:
                             pass  # Expected for dry-run
-                        
+
                         # Verify that processed volumes were passed to config
                         call_args = mock_config.resolve_container_config.call_args
-                        cli_overrides = call_args[1]['cli_overrides']
-                        processed_volumes = cli_overrides['volumes']
-                        
+                        cli_overrides = call_args[1]["cli_overrides"]
+                        processed_volumes = cli_overrides["volumes"]
+
                         # Check that tilde and template expansion occurred
                         assert processed_volumes is not None
                         assert len(processed_volumes) == 2
@@ -499,32 +510,32 @@ def test_config_file_tilde_expansion():
     """Test tilde expansion in config files."""
     import tempfile
     import os
-    
+
     config_content = """
 [contexts.test]
 volumes = ["~/.docker", "~/config:/container/config"]
 """
-    
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write(config_content)
         config_file = f.name
-    
+
     try:
         test_home = "/home/testuser"
-        
+
         with patch.dict(os.environ, {"HOME": test_home}):
             from ctenv.cli import CtenvConfig
             from pathlib import Path
-            
+
             ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
             config = ctenv_config.resolve_container_config(context="test")
             resolved_config = config.resolve_templates()
-            
+
             # Check that tilde expansion occurred in config volumes
             assert resolved_config.volumes is not None
             volumes = list(resolved_config.volumes)
             assert f"{test_home}/.docker" in volumes
             assert f"{test_home}/config:/container/config" in volumes
-            
+
     finally:
         os.unlink(config_file)

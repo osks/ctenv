@@ -31,6 +31,7 @@ test = [
     "pytest-mock", 
     "pytest-cov",
     "ruff",
+    "mypy",
 ]
 
 [tool.setuptools]
@@ -51,3 +52,8 @@ test = [
 dev = [
     "build>=1.2.2.post1",
 ]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
