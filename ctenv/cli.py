@@ -78,12 +78,12 @@ def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
     return re.sub(pattern, replace_match, text)
 
 
-def substitute_in_context(
-    context_data: Dict[str, Any], variables: Dict[str, str]
+def substitute_in_container(
+    container_data: Dict[str, Any], variables: Dict[str, str]
 ) -> Dict[str, Any]:
-    """Apply variable substitution to all string values in context."""
+    """Apply variable substitution to all string values in container."""
     result = {}
-    for key, value in context_data.items():
+    for key, value in container_data.items():
         if isinstance(value, str):
             # Apply tilde preprocessing first, then template expansion
             processed_value = preprocess_tilde_expansion(value)
@@ -258,9 +258,9 @@ def _load_config_file(config_path: Path) -> Dict[str, Any]:
 
 @dataclass
 class ConfigFile:
-    """Represents a single configuration file with contexts and defaults."""
+    """Represents a single configuration file with containers and defaults."""
 
-    contexts: Dict[str, Dict[str, Any]]
+    containers: Dict[str, Dict[str, Any]]
     defaults: Optional[Dict[str, Any]]
     path: Optional[Path]  # None for built-in defaults
 
@@ -268,7 +268,7 @@ class ConfigFile:
     def builtin(cls) -> "ConfigFile":
         """Create a ConfigFile with built-in defaults."""
         return cls(
-            contexts={},
+            containers={},
             defaults=None,
             path=None,
         )
@@ -280,12 +280,12 @@ class ConfigFile:
             raise ValueError(f"Config file not found: {config_path}")
 
         config_data = _load_config_file(config_path)
-        raw_contexts = config_data.get("contexts", {})
+        raw_containers = config_data.get("containers", {})
         raw_defaults = config_data.get("defaults")  # None if not present
 
         logging.debug(f"Loaded config from {config_path}")
         return cls(
-            contexts=raw_contexts,
+            containers=raw_containers,
             defaults=raw_defaults,
             path=config_path,
         )
@@ -336,7 +336,7 @@ def load_project_config(start_dir: Optional[Path] = None) -> Optional[ConfigFile
 class CtenvConfig:
     """Represents the computed ctenv configuration.
 
-    Contains pre-computed defaults and contexts from all config sources.
+    Contains pre-computed defaults and containers from all config sources.
     Config sources are processed in priority order during load():
     - Explicit config files (if provided via --config)
     - Project config (./.ctenv/ctenv.toml found via upward search)
@@ -345,27 +345,27 @@ class CtenvConfig:
     """
 
     defaults: Dict[str, Any]  # Computed defaults (system + first file defaults found)
-    contexts: Dict[
+    containers: Dict[
         str, Dict[str, Any]
-    ]  # All contexts from all files (higher priority wins)
+    ]  # All containers from all files (higher priority wins)
 
-    def find_context(self, context_name: str) -> Optional[Dict[str, Any]]:
-        """Find context by name.
+    def find_container(self, container_name: str) -> Optional[Dict[str, Any]]:
+        """Find container by name.
 
-        Returns the context dict if found, or None if not found.
+        Returns the container dict if found, or None if not found.
         """
-        return self.contexts.get(context_name)
+        return self.containers.get(container_name)
 
     def resolve_container_config(
         self,
-        context: Optional[str] = None,
+        container: Optional[str] = None,
         cli_overrides: Optional[Dict[str, Any]] = None,
     ) -> "ContainerConfig":
-        """Resolve a complete ContainerConfig for the given context with CLI overrides.
+        """Resolve a complete ContainerConfig for the given container with CLI overrides.
 
         Priority order:
         1. Precomputed defaults
-        2. Context config (if specified)
+        2. Container config (if specified)
         3. CLI overrides (highest priority)
 
         All merging is done with raw dicts, ContainerConfig is created only at the end.
@@ -376,16 +376,16 @@ class CtenvConfig:
         # Start with precomputed defaults
         result_dict = self.defaults.copy()
 
-        # Layer 2: Context config (if specified)
-        if context is not None:
-            context_config = self.find_context(context)
-            if context_config is None:
-                available = sorted(self.contexts.keys())
-                raise ValueError(f"Unknown context '{context}'. Available: {available}")
+        # Layer 2: Container config (if specified)
+        if container is not None:
+            container_config = self.find_container(container)
+            if container_config is None:
+                available = sorted(self.containers.keys())
+                raise ValueError(f"Unknown container '{container}'. Available: {available}")
 
-            result_dict = merge_config(result_dict, context_config)
+            result_dict = merge_config(result_dict, container_config)
         else:
-            logging.debug("No context specified")
+            logging.debug("No container specified")
 
         # Layer 3: CLI overrides
         if cli_overrides:
@@ -444,13 +444,13 @@ class CtenvConfig:
                 defaults = merge_config(defaults, config_file.defaults)
                 break  # Stop after first [defaults] section found
 
-        # Compute contexts (merge all contexts, higher priority wins)
-        contexts = {}
+        # Compute containers (merge all containers, higher priority wins)
+        containers = {}
         # Process in reverse order so higher priority overrides
         for config_file in reversed(config_files):
-            contexts.update(config_file.contexts)
+            containers.update(config_file.containers)
 
-        return cls(defaults=defaults, contexts=contexts)
+        return cls(defaults=defaults, containers=containers)
 
 
 @dataclass
@@ -1082,10 +1082,10 @@ def cmd_run(args, command):
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Parse context from args
-    context = args.context
+    # Parse container from args
+    container = args.container
 
-    # context can be None to use [defaults] section
+    # container can be None to use [defaults] section
 
     # Process CLI volumes with tilde expansion and template processing
     processed_volumes = None
@@ -1126,7 +1126,7 @@ def cmd_run(args, command):
             "run_args": args.run_args,
         }
         config = ctenv_config.resolve_container_config(
-            context=context, cli_overrides=cli_overrides
+            container=container, cli_overrides=cli_overrides
         )
 
         # Validate platform if specified
@@ -1182,30 +1182,30 @@ def cmd_run(args, command):
 
 
 def cmd_config_show(args):
-    """Show configuration or context details."""
-    context = args.context
+    """Show configuration or container details."""
+    container = args.container
 
     try:
         # Load configuration early
         explicit_configs = [Path(c) for c in args.config] if args.config else None
         ctenv_config = CtenvConfig.load(explicit_config_files=explicit_configs)
 
-        if context:
-            # Show specific context
-            if context not in ctenv_config.contexts:
-                available = list(ctenv_config.contexts.keys())
+        if container:
+            # Show specific container
+            if container not in ctenv_config.containers:
+                available = list(ctenv_config.containers.keys())
                 print(
-                    f"Context '{context}' not found. Available: {available}",
+                    f"Container '{container}' not found. Available: {available}",
                     file=sys.stderr,
                 )
                 sys.exit(1)
 
-            # Show context name
-            print(f"Context '{context}':")
+            # Show container name
+            print(f"Container '{container}':")
 
             try:
-                # Get the resolved container config for this context
-                resolved_config = ctenv_config.resolve_container_config(context=context)
+                # Get the resolved container config for this container
+                resolved_config = ctenv_config.resolve_container_config(container=container)
                 resolved_config = resolved_config.resolve_missing_paths()
             except FileNotFoundError as e:
                 print(f"Error: {e}", file=sys.stderr)
@@ -1231,7 +1231,7 @@ def cmd_config_show(args):
             # Show which config files are being used
             source_files = ctenv_config.source_files
             if len(source_files) == 0:
-                print("\nUsing builtin contexts only")
+                print("\nUsing builtin containers only")
             elif len(source_files) == 1:
                 print(f"\nUsing config file: {source_files[0]}")
             else:
@@ -1252,13 +1252,13 @@ def cmd_config_show(args):
                 if defaults_config.volumes:
                     print(f"  volumes: {list(defaults_config.volumes)}")
 
-            # Show contexts
-            if ctenv_config.contexts:
-                print("\nContexts:")
-                for ctx_name in sorted(ctenv_config.contexts.keys()):
-                    print(f"  {ctx_name}")
+            # Show containers
+            if ctenv_config.containers:
+                print("\nContainers:")
+                for cnt_name in sorted(ctenv_config.containers.keys()):
+                    print(f"  {cnt_name}")
             else:
-                print("\nNo contexts defined")
+                print("\nNo containers defined")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1313,19 +1313,19 @@ def create_parser():
 
 Examples:
     ctenv run                          # Interactive bash with defaults
-    ctenv run dev                      # Use 'dev' context with default command
-    ctenv run dev -- npm test         # Use 'dev' context, run npm test
+    ctenv run dev                      # Use 'dev' container with default command
+    ctenv run dev -- npm test         # Use 'dev' container, run npm test
     ctenv run -- ls -la               # Use defaults, run ls -la
-    ctenv run --image alpine dev      # Override image, use dev context
+    ctenv run --image alpine dev      # Override image, use dev container
     ctenv run --dry-run dev           # Show Docker command without running
     ctenv run --post-start-command "npm install" --post-start-command "npm run build" # Run extra commands after container starts
 
-Note: Use '--' to separate commands from context/options.""",
+Note: Use '--' to separate commands from container/options.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     run_parser.add_argument(
-        "context", nargs="?", help="Context to use (default: 'default')"
+        "container", nargs="?", help="Container to use (default: 'default')"
     )
     run_parser.add_argument("--image", help="Container image to use")
     run_parser.add_argument(
@@ -1394,10 +1394,10 @@ Note: Use '--' to separate commands from context/options.""",
 
     # config show
     config_show_parser = config_subparsers.add_parser(
-        "show", help="Show configuration or context details"
+        "show", help="Show configuration or container details"
     )
     config_show_parser.add_argument(
-        "context", nargs="?", help="Context to show (default: show all)"
+        "container", nargs="?", help="Container to show (default: show all)"
     )
     config_show_parser.add_argument(
         "--config",

@@ -14,7 +14,7 @@ ctenv runs commands in containers by dynamically creating a matching user (same 
 - Files created with your UID/GID
 - Provides similar functionality as Podman's `--userns=keep-id` but with Docker
 - Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U` functionality to Docker)
-- Configurable contexts for reusable container setups
+- Configurable containers for reusable container setups
 
 ### Use cases
 
@@ -85,7 +85,7 @@ instead of the keychain.
 For convenience you can configure a container in `.ctenv.toml`:
 
 ```toml
-[contexts.claude]
+[containers.claude]
 image = "node:20"
 post_start_commands = [
     "npm install -g @anthropic-ai/claude-code"
@@ -98,7 +98,7 @@ and then you can start it with just: `ctenv run claude`
 
 If you want to limit which networks claude can access:
 ```toml
-[contexts.claude]
+[containers.claude]
 image = "node:20"
 network = "bridge"
 run_args = ["--cap-add=NET_ADMIN"]
@@ -135,7 +135,7 @@ on macOS.
 The ctenv config for this case look something like this:
 
 ```toml
-[contexts.build]
+[containers.build]
 image = "registry.company.internal/build-system:v1"
 env = [
     "BB_NUMBER_THREADS",
@@ -157,8 +157,8 @@ ctenv run                        # Interactive bash session
 ctenv run -- ls -la              # Run a command
 ctenv run --image node:20 -- npm install
 
-# Use configuration contexts
-ctenv run dev                    # Use 'dev' context from config
+# Use configuration containers
+ctenv run dev                    # Use 'dev' container from config
 ctenv run test -- npm test
 
 # Common options
@@ -182,12 +182,12 @@ image = "node:18"
 network = "none"
 sudo = true
 
-[contexts.dev]
+[containers.dev]
 image = "node:18"
 network = "bridge"
 env = ["NODE_ENV=development", "DEBUG=*"]
 
-[contexts.test]
+[containers.test]
 image = "node:18-alpine"
 env = ["NODE_ENV=test", "CI=true"]
 ```
@@ -195,8 +195,8 @@ env = ["NODE_ENV=test", "CI=true"]
 Configuration precedence: CLI args > project config > global config > defaults
 
 ```bash
-ctenv contexts              # List available contexts
-ctenv config show dev       # Show context configuration
-ctenv run dev -- npm start  # Use 'dev' context
+ctenv containers            # List available containers
+ctenv config show dev       # Show container configuration
+ctenv run dev -- npm start  # Use 'dev' container
 ```
 

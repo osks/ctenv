@@ -1,9 +1,10 @@
 ---
 id: task-34
 title: Rename 'context' to 'container' throughout codebase for clarity
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-23'
+updated_date: '2025-07-23'
 labels: []
 dependencies: []
 ---
