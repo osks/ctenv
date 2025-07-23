@@ -60,7 +60,7 @@ def test_platform_support():
     config_with_platform = ContainerConfig(
         user_name="testuser",
         user_id=1000,
-        group_name="testgroup", 
+        group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
         working_dir=Path("/workspace"),
@@ -69,28 +69,30 @@ def test_platform_support():
         gosu_path=Path("/test/gosu"),
         platform="linux/arm64",
     )
-    
+
     test_script_path = "/tmp/test_entrypoint.sh"
     args = ContainerRunner.build_run_args(config_with_platform, test_script_path)
-    
+
     # Should include platform flag when specified
     assert "--platform=linux/arm64" in args
-    
+
     # Test without platform
     config_no_platform = ContainerConfig(
         user_name="testuser",
         user_id=1000,
         group_name="testgroup",
-        group_id=1000, 
+        group_id=1000,
         user_home="/home/testuser",
         working_dir=Path("/workspace"),
         image="ubuntu:latest",
         command="bash",
         gosu_path=Path("/test/gosu"),
     )
-    
-    args_no_platform = ContainerRunner.build_run_args(config_no_platform, test_script_path)
-    
+
+    args_no_platform = ContainerRunner.build_run_args(
+        config_no_platform, test_script_path
+    )
+
     # Should not include platform flag when not specified
     platform_args = [arg for arg in args_no_platform if arg.startswith("--platform")]
     assert len(platform_args) == 0
@@ -279,8 +281,12 @@ def test_sudo_entrypoint_script():
         sudo=False,
     )
 
-    script_with_sudo = build_entrypoint_script(config_with_sudo, verbose=False, quiet=False)
-    script_without_sudo = build_entrypoint_script(config_without_sudo, verbose=False, quiet=False)
+    script_with_sudo = build_entrypoint_script(
+        config_with_sudo, verbose=False, quiet=False
+    )
+    script_without_sudo = build_entrypoint_script(
+        config_without_sudo, verbose=False, quiet=False
+    )
 
     # Test sudo setup is properly configured with ADD_SUDO variable
     assert "ADD_SUDO=1" in script_with_sudo
@@ -484,7 +490,9 @@ def test_volume_chown_option():
 
             # Generate entrypoint script content to check for chown commands
             _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
-            script_content = build_entrypoint_script(config, chown_paths, verbose=False, quiet=False)
+            script_content = build_entrypoint_script(
+                config, chown_paths, verbose=False, quiet=False
+            )
 
             # Should contain chown commands for cache and data, but not logs
             assert 'chown -R "$USER_ID:$GROUP_ID" /var/cache' in script_content

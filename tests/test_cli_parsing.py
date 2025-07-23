@@ -31,6 +31,7 @@ class TestRunCommandParsing:
     def test_run_no_arguments(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run (should use default bash command with default context)."""
         from ctenv.cli import main
+
         mock_ctenv_config = MagicMock()
         # Mock the defaults to return the expected default command
         mock_ctenv_config.defaults = {"command": "bash"}
@@ -47,7 +48,9 @@ class TestRunCommandParsing:
         # Should call resolve_container_config with None command (default will be used) and None context
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
+        assert (
+            call_kwargs["cli_overrides"]["command"] is None
+        )  # No command specified, default will be used
         assert call_kwargs["context"] is None
 
     @patch("ctenv.cli.CtenvConfig.load")
@@ -55,6 +58,7 @@ class TestRunCommandParsing:
     def test_run_with_valid_context(self, mock_run_container, mock_config_file_load):
         """Test: ctenv run dev (should use context with default command)."""
         from ctenv.cli import main
+
         mock_ctenv_config = MagicMock()
         # Mock the defaults to return the expected default command
         mock_ctenv_config.defaults = {"command": "bash"}
@@ -70,13 +74,16 @@ class TestRunCommandParsing:
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
+        assert (
+            call_kwargs["cli_overrides"]["command"] is None
+        )  # No command specified, default will be used
         assert call_kwargs["context"] == "dev"
 
     @patch("ctenv.cli.CtenvConfig.load")
     def test_run_with_invalid_context(self, mock_config_file_load):
         """Test: ctenv run invalid (should fail)."""
         from ctenv.cli import main
+
         mock_config_file = create_test_ctenv_config(
             contexts={"dev": {"image": "ubuntu"}}
         )
@@ -96,6 +103,7 @@ class TestRunCommandParsing:
     def test_run_with_command_only(self, mock_config_file_load):
         """Test: ctenv run -- echo test (command without explicit context)."""
         from ctenv.cli import main
+
         mock_config_file_load.return_value = create_test_ctenv_config(
             contexts={"default": {"image": "ubuntu:latest"}}
         )
@@ -105,7 +113,7 @@ class TestRunCommandParsing:
         with patch("ctenv.cli.cmd_run") as mock_cmd_run:
             with patch("sys.exit"):
                 main(["run", "--", "echo", "test"])
-        
+
         # Verify cmd_run was called with correct args and command
         mock_cmd_run.assert_called_once()
         args, command = mock_cmd_run.call_args[0]
@@ -119,6 +127,7 @@ class TestRunCommandParsing:
     ):
         """Test: ctenv run dev -- echo test (should use context with command)."""
         from ctenv.cli import main
+
         mock_ctenv_config = MagicMock()
         mock_config_file_load.return_value = mock_ctenv_config
 
@@ -143,6 +152,7 @@ class TestRunCommandParsing:
     ):
         """Test: ctenv run dev -- echo test (context + command with separator)."""
         from ctenv.cli import main
+
         mock_ctenv_config = MagicMock()
         mock_config_file_load.return_value = mock_ctenv_config
 
@@ -199,7 +209,9 @@ class TestRunCommandParsing:
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
+        assert (
+            call_kwargs["cli_overrides"]["command"] is None
+        )  # No command specified, default will be used
         assert (
             call_kwargs["cli_overrides"]["image"] == "alpine:latest"
         )  # CLI option override
@@ -219,20 +231,22 @@ class TestRunCommandParsing:
         mock_ctenv_config.resolve_container_config.return_value = mock_container_config
         mock_run_container.return_value = MagicMock(returncode=0)
 
-        args = self.parser.parse_args([
-            "run", 
-            "dev",
-            "--run-arg=--cap-add=NET_ADMIN", 
-            "--run-arg=--memory=2g"
-        ])
+        args = self.parser.parse_args(
+            ["run", "dev", "--run-arg=--cap-add=NET_ADMIN", "--run-arg=--memory=2g"]
+        )
 
         with patch("sys.exit"):
             cmd_run(args, None)
 
         mock_ctenv_config.resolve_container_config.assert_called_once()
         call_kwargs = mock_ctenv_config.resolve_container_config.call_args[1]
-        assert call_kwargs["cli_overrides"]["run_args"] == ["--cap-add=NET_ADMIN", "--memory=2g"]
-        assert call_kwargs["cli_overrides"]["command"] is None  # No command specified, default will be used
+        assert call_kwargs["cli_overrides"]["run_args"] == [
+            "--cap-add=NET_ADMIN",
+            "--memory=2g",
+        ]
+        assert (
+            call_kwargs["cli_overrides"]["command"] is None
+        )  # No command specified, default will be used
         assert call_kwargs["context"] == "dev"
 
 

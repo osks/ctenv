@@ -60,7 +60,10 @@ run_args = ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
         config_data = _load_config_file(config_file)
 
         assert config_data["defaults"]["run_args"] == ["--memory=1g", "--cpus=1"]
-        assert config_data["contexts"]["debug"]["run_args"] == ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
+        assert config_data["contexts"]["debug"]["run_args"] == [
+            "--cap-add=SYS_PTRACE",
+            "--security-opt=seccomp=unconfined",
+        ]
 
 
 @pytest.mark.unit
@@ -632,9 +635,10 @@ env = ["NODE_ENV=development"]
 
         with (
             patch(
-                "ctenv.cli.ContainerRunner.run_container", side_effect=mock_run_container
+                "ctenv.cli.ContainerRunner.run_container",
+                side_effect=mock_run_container,
             ),
-            patch("sys.exit") as mock_exit,
+            patch("sys.exit"),
         ):
             cmd_run(args, "echo test")
 

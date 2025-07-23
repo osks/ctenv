@@ -7,7 +7,7 @@ import tempfile
 from ctenv.cli import build_entrypoint_script, ContainerConfig, ContainerRunner
 
 
-@pytest.mark.unit  
+@pytest.mark.unit
 def test_post_start_commands_shell_functionality():
     """Test that post_start_commands support full shell functionality."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -60,48 +60,53 @@ def test_volume_chown_path_injection_prevention():
         # Malicious paths with injection attempts
         malicious_paths = [
             '/tmp"; touch /tmp/pwned; echo "done',  # Quote injection
-            '/tmp$(whoami)',  # Command substitution
-            '/tmp && touch /tmp/injected',  # AND operator
-            '/tmp; touch /tmp/injected2',  # Semicolon injection
-            '/tmp | tee /tmp/output',  # Pipe injection
-            '/tmp > /tmp/redirect',  # Redirect injection
+            "/tmp$(whoami)",  # Command substitution
+            "/tmp && touch /tmp/injected",  # AND operator
+            "/tmp; touch /tmp/injected2",  # Semicolon injection
+            "/tmp | tee /tmp/output",  # Pipe injection
+            "/tmp > /tmp/redirect",  # Redirect injection
         ]
 
-        script = build_entrypoint_script(config, malicious_paths, verbose=False, quiet=False)
+        script = build_entrypoint_script(
+            config, malicious_paths, verbose=False, quiet=False
+        )
 
         # Paths should be safely quoted to prevent command injection
-        assert "chown -R \"$USER_ID:$GROUP_ID\" '/tmp\"; touch /tmp/pwned; echo \"done'" in script
+        assert (
+            'chown -R "$USER_ID:$GROUP_ID" \'/tmp"; touch /tmp/pwned; echo "done\''
+            in script
+        )
         assert "chown -R \"$USER_ID:$GROUP_ID\" '/tmp$(whoami)'" in script
         assert "chown -R \"$USER_ID:$GROUP_ID\" '/tmp && touch /tmp/injected'" in script
-        
+
         # Malicious commands should not execute
-        assert 'touch /tmp/pwned\n' not in script
-        assert 'touch /tmp/injected\n' not in script
+        assert "touch /tmp/pwned\n" not in script
+        assert "touch /tmp/injected\n" not in script
 
 
-@pytest.mark.unit 
+@pytest.mark.unit
 def test_complex_shell_scenarios():
     """Test complex shell scenarios work correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = ContainerConfig(
             user_name="testuser",
             user_id=1000,
-            group_name="testgroup", 
+            group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
             working_dir=Path(tmpdir),
             command="bash",
             post_start_commands=[
                 # Nested quotes and substitutions
-                'echo "$(echo \'$(whoami)\')"',
+                "echo \"$(echo '$(whoami)')\"",
                 # Backticks (old-style command substitution)
-                'echo `date`',
+                "echo `date`",
                 # Multiple redirects
-                'echo test > /tmp/out 2>&1',
+                "echo test > /tmp/out 2>&1",
                 # Background execution attempt
-                'sleep 60 &',
+                "sleep 60 &",
                 # Null byte injection attempt (though Python strings can't contain null bytes)
-                'echo test\x00malicious',
+                "echo test\x00malicious",
             ],
         )
 
@@ -109,8 +114,8 @@ def test_complex_shell_scenarios():
 
         # All commands should execute normally with shell interpretation
         assert 'echo "$(echo' in script
-        assert 'echo `date`' in script  
-        assert 'sleep 60 &' in script
+        assert "echo `date`" in script
+        assert "sleep 60 &" in script
 
 
 @pytest.mark.unit
@@ -137,7 +142,7 @@ def test_safe_commands_work_normally():
 
         # Commands should be present (unquoted for normal execution)
         assert "npm install" in script
-        assert "npm test" in script  
+        assert "npm test" in script
         assert "python setup.py install" in script
         assert "/usr/local/bin/my-app --config /etc/app.conf" in script
 
@@ -148,9 +153,12 @@ def test_parse_volumes_with_malicious_paths():
     # Test various malicious volume specifications
     test_cases = [
         # (volume_spec, should_raise)
-        ('/host:/container"; rm -rf /', False),  # Should parse but path will be escaped later
+        (
+            '/host:/container"; rm -rf /',
+            False,
+        ),  # Should parse but path will be escaped later
         ('/host:/container:rw,chown"; rm -rf /', False),  # Should parse
-        ('/host:/container:ro', False),  # Normal case
+        ("/host:/container:ro", False),  # Normal case
     ]
 
     for volume_spec, should_raise in test_cases:

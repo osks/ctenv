@@ -21,6 +21,9 @@ jobs:
     - name: Install dependencies
       run: |
         make dev
+    - name: Run linting
+      run: |
+        make lint
     - name: Run tests
       run: |
         make test
