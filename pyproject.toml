@@ -41,6 +41,7 @@ include-package-data = true
 [tool.setuptools.package-data]
 ctenv = ["binaries/*", "LICENSE-gosu"]
 
+
 [tool.setuptools.dynamic]
 version = {attr = "ctenv.__version__"}
 

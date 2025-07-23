@@ -4,7 +4,7 @@ import pytest
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.cli import (
+from ctenv.ctenv import (
     _load_config_file,
     substitute_template_variables,
     substitute_in_container,
@@ -82,11 +82,11 @@ def test_load_config_file_invalid_toml():
 def test_resolve_config_values_defaults():
     """Test resolving config values with default container (no config file defaults)."""
     # Create a CtenvConfig with the test data
-    from ctenv.cli import CtenvConfig
+    from ctenv.ctenv import CtenvConfig
 
     def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
-        from ctenv.cli import get_default_config_dict, merge_config
+        from ctenv.ctenv import get_default_config_dict, merge_config
 
         # Compute defaults (system defaults + file defaults if any)
         computed_defaults = get_default_config_dict()
@@ -112,11 +112,11 @@ def test_resolve_config_values_defaults():
 @pytest.mark.unit
 def test_resolve_config_values_container():
     """Test resolving config values with container (no config file defaults)."""
-    from ctenv.cli import CtenvConfig
+    from ctenv.ctenv import CtenvConfig
 
     def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
-        from ctenv.cli import get_default_config_dict, merge_config
+        from ctenv.ctenv import get_default_config_dict, merge_config
 
         # Compute defaults (system defaults + file defaults if any)
         computed_defaults = get_default_config_dict()
@@ -148,11 +148,11 @@ def test_resolve_config_values_container():
 @pytest.mark.unit
 def test_resolve_config_values_unknown_container():
     """Test error for unknown container."""
-    from ctenv.cli import CtenvConfig
+    from ctenv.ctenv import CtenvConfig
 
     def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
-        from ctenv.cli import get_default_config_dict, merge_config
+        from ctenv.ctenv import get_default_config_dict, merge_config
 
         # Compute defaults (system defaults + file defaults if any)
         computed_defaults = get_default_config_dict()
@@ -191,7 +191,7 @@ sudo = true
         gosu_path.chmod(0o755)
 
         # Load config and resolve
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
@@ -233,7 +233,7 @@ env = ["CI=true"]
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="test")
@@ -252,7 +252,7 @@ def test_empty_config_structure():
     # Test that CtenvConfig.load works with no config files
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(
             start_dir=tmpdir
@@ -291,7 +291,7 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="default")
@@ -327,7 +327,7 @@ network = "bridge"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
@@ -443,7 +443,7 @@ env = ["NODE_ENV=development", "DEBUG=true"]
         gosu_path.chmod(0o755)
 
         # Create config from dev container
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="dev")
@@ -480,7 +480,7 @@ env = ["NODE_ENV=development"]
         gosu_path.chmod(0o755)
 
         # Create config with CLI additions
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
@@ -526,7 +526,7 @@ image = "alpine:latest"
         gosu_path.chmod(0o755)
 
         # Create config with only CLI volumes
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(
@@ -560,7 +560,7 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         config_file.write_text(config_content)
 
         # Load and resolve config
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="test")
@@ -579,7 +579,7 @@ def test_config_file_volumes_through_cli_parsing():
     """Test that config file volumes work through actual CLI parsing (regression test for empty list override bug)."""
     import tempfile
     from unittest.mock import patch, Mock
-    from ctenv.cli import cmd_run
+    from ctenv.ctenv import cmd_run
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -635,7 +635,7 @@ env = ["NODE_ENV=development"]
 
         with (
             patch(
-                "ctenv.cli.ContainerRunner.run_container",
+                "ctenv.ctenv.ContainerRunner.run_container",
                 side_effect=mock_run_container,
             ),
             patch("sys.exit"),
@@ -654,7 +654,7 @@ env = ["NODE_ENV=development"]
 @pytest.mark.unit
 def test_get_default_config_dict():
     """Test that get_default_config_dict() returns the expected default values."""
-    from ctenv.cli import get_default_config_dict
+    from ctenv.ctenv import get_default_config_dict
     import os
     import pwd
     import grp
@@ -715,7 +715,7 @@ working_dir = "/custom/path"
         gosu_path.chmod(0o755)
 
         # Test config file working_dir
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="test")
@@ -762,7 +762,7 @@ gosu_path = "{fake_gosu}"
         temp_gosu.chmod(0o755)
 
         # Test config file gosu_path
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="test")
@@ -782,7 +782,7 @@ gosu_path = "{fake_gosu}"
 @pytest.mark.unit
 def test_volume_options_preserved():
     """Test that volume options like :ro are preserved and :z is properly merged."""
-    from ctenv.cli import ContainerRunner
+    from ctenv.ctenv import ContainerRunner
 
     # Test volumes with various option combinations
     volumes = (
@@ -828,7 +828,7 @@ def test_volume_options_preserved():
 def test_docker_args_volume_options():
     """Test that Docker args correctly merge :z with existing volume options."""
     import tempfile
-    from ctenv.cli import ContainerRunner
+    from ctenv.ctenv import ContainerRunner
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -839,7 +839,7 @@ def test_docker_args_volume_options():
         gosu_path.chmod(0o755)
 
         # Create config with volumes that have options
-        from ctenv.cli import CtenvConfig
+        from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
         config = ctenv_config.resolve_container_config(

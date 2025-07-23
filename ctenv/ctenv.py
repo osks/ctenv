@@ -141,10 +141,20 @@ def get_platform_specific_gosu_name(target_platform: Optional[str] = None) -> st
     return f"gosu-{arch}"
 
 
+def is_installed_package():
+    """Check if running as installed package vs single file."""
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec('ctenv.binaries')
+        return spec is not None
+    except ImportError:
+        return False
+
+
 def find_default_gosu_path(
     start_dir: Optional[Path] = None, target_platform: Optional[str] = None
 ) -> Optional[Path]:
-    """Find default gosu binary - should always use bundled binary.
+    """Find default gosu binary.
 
     Args:
         start_dir: Unused (kept for API compatibility)
@@ -156,25 +166,24 @@ def find_default_gosu_path(
     # Get platform-specific binary name
     platform_gosu = get_platform_specific_gosu_name(target_platform)
 
-    # First, try to find bundled binary
-    try:
-        # With zip_safe=False, we can use direct paths to package files
-        import ctenv
+    # If running as installed package, try to find bundled binary
+    if is_installed_package():
+        try:
+            # With zip_safe=False, we can use direct paths to package files
+            import ctenv
 
-        package_dir = Path(ctenv.__file__).parent
-        bundled_gosu = package_dir / "binaries" / platform_gosu
+            package_dir = Path(ctenv.__file__).parent
+            bundled_gosu = package_dir / "binaries" / platform_gosu
 
-        if bundled_gosu.exists() and bundled_gosu.is_file():
-            logging.debug(f"Using bundled gosu: {bundled_gosu}")
-            return bundled_gosu
-    except (ImportError, AttributeError):
-        # Package not found, continue with other methods
-        pass
+            if bundled_gosu.exists() and bundled_gosu.is_file():
+                logging.debug(f"Using bundled gosu: {bundled_gosu}")
+                return bundled_gosu
+        except (ImportError, AttributeError):
+            # Package not found, continue with other methods
+            pass
 
-    # No more .ctenv directory traversal - bundled binaries make this unnecessary
-
-    # No fallback to system PATH - bundled binaries should always work
-    logging.debug("No gosu binary found")
+    # Single-file mode or package mode failed - no bundled binary available
+    logging.debug("No bundled gosu binary found")
     return None
 
 
