@@ -131,6 +131,7 @@ Example `.ctenv/ctenv.toml`:
 ```toml
 [defaults]
 image = "node:18"
+network = "none"
 sudo = true
 
 [contexts.dev]
