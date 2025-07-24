@@ -29,9 +29,6 @@ ctenv run --image ubuntu
 
 # Run specific command
 ctenv run -- npm test
-
-# Use custom image
-ctenv run --image python:3.11 -- python --version
 ```
 
 ## Why ctenv?
