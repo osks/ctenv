@@ -11,7 +11,7 @@
 ctenv - Run programs in containers as current user
 """
 
-__version__ = "0.1"
+__version__ = "0.3"
 
 import argparse
 import collections.abc
