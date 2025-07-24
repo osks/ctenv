@@ -597,7 +597,3 @@ def test_ulimits_configuration():
         assert "--ulimit=nofile=1024" in ulimit_args
         assert "--ulimit=nproc=2048" in ulimit_args
         assert "--ulimit=core=0" in ulimit_args
-
-
-
-

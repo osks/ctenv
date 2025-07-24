@@ -145,7 +145,8 @@ def is_installed_package():
     """Check if running as installed package vs single file."""
     try:
         import importlib.util
-        spec = importlib.util.find_spec('ctenv.binaries')
+
+        spec = importlib.util.find_spec("ctenv.binaries")
         return spec is not None
     except ImportError:
         return False
@@ -390,7 +391,9 @@ class CtenvConfig:
             container_config = self.find_container(container)
             if container_config is None:
                 available = sorted(self.containers.keys())
-                raise ValueError(f"Unknown container '{container}'. Available: {available}")
+                raise ValueError(
+                    f"Unknown container '{container}'. Available: {available}"
+                )
 
             result_dict = merge_config(result_dict, container_config)
         else:
@@ -1192,11 +1195,11 @@ def cmd_run(args, command):
 
 def cmd_config_show(args):
     """Show configuration or container details."""
-    container = getattr(args, 'container', None)
+    container = getattr(args, "container", None)
 
     try:
         # Load configuration early
-        explicit_configs = [Path(c) for c in getattr(args, 'config', None) or []]
+        explicit_configs = [Path(c) for c in getattr(args, "config", None) or []]
         ctenv_config = CtenvConfig.load(explicit_config_files=explicit_configs)
 
         if container:
@@ -1214,7 +1217,9 @@ def cmd_config_show(args):
 
             try:
                 # Get the resolved container config for this container
-                resolved_config = ctenv_config.resolve_container_config(container=container)
+                resolved_config = ctenv_config.resolve_container_config(
+                    container=container
+                )
                 resolved_config = resolved_config.resolve_missing_paths()
             except FileNotFoundError as e:
                 print(f"Error: {e}", file=sys.stderr)
@@ -1245,9 +1250,9 @@ def cmd_config_show(args):
                 print(f"  command: {defaults_config.get('command')}")
                 print(f"  network: {defaults_config.get('network')}")
                 print(f"  sudo: {defaults_config.get('sudo')}")
-                if defaults_config.get('env'):
+                if defaults_config.get("env"):
                     print(f"  env: {list(defaults_config['env'])}")
-                if defaults_config.get('volumes'):
+                if defaults_config.get("volumes"):
                     print(f"  volumes: {list(defaults_config['volumes'])}")
 
             # Show containers
