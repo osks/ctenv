@@ -29,6 +29,9 @@ ctenv run --image ubuntu
 
 # Run specific command
 ctenv run -- npm test
+
+# Run Claude Code with volumes and post-start setup
+ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude --post-start-command "npm install -g @anthropic-ai/claude-code"
 ```
 
 ## Why ctenv?
