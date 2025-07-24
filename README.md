@@ -6,98 +6,126 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-ctenv runs commands in containers by dynamically creating a matching user (same UID/GID) in existing images at runtime, ensuring files in mounted directories get your permissions.
+Run commands in any container image while preserving your user identity and file permissions.
+
+## Install
+
+```bash
+# Install with pip
+pip install ctenv
+
+# Install with uv
+uv tool install ctenv
+
+# Or run directly without installing
+uv tool run ctenv --help
+```
+
+## Usage
+
+```bash
+# Interactive shell in ubuntu container
+ctenv run --image ubuntu
+
+# Run specific command
+ctenv run -- npm test
+
+# Use custom image
+ctenv run --image python:3.11 -- python --version
+```
 
 ## Why ctenv?
 
-- ctenv can run commands as your user in a container
-- Can use existing images by creating a matching user in the container at runtime
-- Files created with your UID/GID
-- Provides similar functionality as Podman's `--userns=keep-id` but with Docker
-- Optionally fixes ownership of mounted volumes with `:chown` (brings Podman's `:U` functionality to Docker)
-- Configurable containers for reusable container setups
+When running containers with mounted directories, files created inside often have root ownership or wrong permissions. ctenv solves this by:
 
-### Use cases
+- Creating a matching user (same UID/GID) dynamically in existing images at runtime
+- Mounting your current directory at `/repo` with correct permissions  
+- Using `gosu` to drop privileges after container setup
 
-- **Build Systems**: Running containerized builds against local repositories
-- **Development Tools**: Using formatters, linters, or compilers from containers on your code
-- **Claude Code**: Running AI assistants in containers while maintaining file permissions
-- **CI/CD Testing**: Replicating CI environments locally with proper permissions
+This works with any existing Docker image without modification - no custom Dockerfiles needed. Provides similar functionality to Podman's `--userns=keep-id` but works with Docker. Also similar to Development Containers but focused on running individual commands rather than persistent development environments.
 
-ctenv is somewhat related to [Development
-Containers](https://containers.dev/) (`devcontainers`), but has a
-smaller scope. One thing ctenv can do but doesn't seem supported by
-devcontainers, is starting a new container directly for a command,
-rather than keeping a container running in the background.
+Under the hood, ctenv starts containers as root for file ownership setup, then drops privileges using bundled `gosu` binaries before executing your command. It generates bash entrypoint scripts dynamically to handle user creation and environment setup.
 
-## Design
+## Highlights
 
-ctenv starts the container as root to have permissions for chown, and
-then drops permissions using `gosu` before running the command. It
-does this by generating an entrypoint bash script that it mounts and
-runs.
+- Works with existing images without modifications  
+- Files created have your UID/GID (preserves permissions)
+- Convenient volume mounting like `-v ~/.gitconfig` (mounts to same path in container)
+- Simple configuration with reusable `.ctenv.toml` setups
 
-Implemented as a Python package requiring Python 3.9+. Can be installed via `uv` or `pip`.
+## Requirements
 
-## Installation
+- Python 3.9+
+- Docker (tested on Linux/macOS)
 
-With `uv` you can just run `uv tool ctenv` to use it directly.
+## Features
 
-Install this tool using `pip`:
-```bash
-pip install ctenv
-```
+- User identity preservation (matching UID/GID in container)
+- Volume mounting with shortcuts like `-v ~/.gitconfig` (mounts to same path)
+- Volume ownership fixing with custom `:chown` option (similar to Podman's `:U` and `:chown`)
+- Post-start commands for running setup as root before dropping to user permissions
+- Template variables like `${USER}`, `${env.HOME}` in configurations
+- Configuration file support with reusable container definitions
+- Cross-platform support for linux/amd64 and linux/arm64 containers
+- Bundled gosu binaries for privilege dropping
+- Interactive and non-interactive command execution
 
-## Examples
+## Configuration
 
-### Claude Code
-
-To limit what Claude Code can do, it's nice to be able to run it in a container.
-Anthropic has [example on how to run Claude Code in Development Containers](https://docs.anthropic.com/en/docs/claude-code/devcontainer)
-and here is the code for how it's set up: https://github.com/anthropics/claude-code/tree/main/.devcontainer
-
-We can use ctenv to mount the code into the container and setup
-the same user as yourself in the container, so permissions match.
-
-Run Claude Code in a container using ctenv:
-
-```shell
-ctenv run --image "node:20" --post-start-command "npm install -g @anthropic-ai/claude-code"
-```
-
-To not have to login everytime and to keep history, we can mount Claude Code's files:
-
-```shell
-ctenv run --image "node:20" \
-          --post-start-command "npm install -g @anthropic-ai/claude-code" \
-          --volume ~/.claude.json \
-          --volume ~/.claude
-```
-
-Note: On macOS Claude Code seem to store credentials in the keychain
-if you have a Claude account. The credentials therefor won't be
-available in the container. However, if you login in Claude Code in
-the container, it will write credentials to
-`~/.claude/.credentials.json` instead and continue to use them from
-there. Since the above mounts that directory, be aware that the
-credentials file will then exist outside the container in a file now,
-instead of the keychain.
-
-For convenience you can configure a container in `.ctenv.toml`:
+Create `.ctenv.toml` for reusable container setups:
 
 ```toml
+[defaults]
+command = "zsh"
+
+[containers.python]
+image = "python:3.11"
+volumes = ["~/.cache/pip"]
+
+# Run Claude Code in isolation
 [containers.claude]
 image = "node:20"
-post_start_commands = [
-    "npm install -g @anthropic-ai/claude-code"
-]
+post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
 volumes = ["~/.claude.json", "~/.claude"]
 ```
 
-and then you can start it with just: `ctenv run claude`
+Then run:
+```bash
+ctenv run python -- python script.py
+ctenv run claude
+```
 
+## Common Use Cases
 
-If you want to limit which networks claude can access:
+### Development Tools
+Run linters, formatters, or compilers from containers:
+```bash
+ctenv run --image rust:latest -- cargo fmt
+ctenv run --image node:20 -- eslint src/
+```
+
+### Build Systems
+Use containerized build environments:
+```toml
+[containers.build]
+image = "some-build-system:v17"
+volumes = ["build-cache:/var/cache:rw,chown"]
+```
+
+### Claude Code
+Run Claude Code in isolation:
+```toml
+[containers.claude]
+image = "node:20"
+post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
+volumes = ["~/.claude.json", "~/.claude"]
+```
+
+## Detailed Examples
+
+### Claude Code with Network Restrictions
+For running Claude Code in isolation with network limitations:
+
 ```toml
 [containers.claude]
 image = "node:20"
@@ -108,32 +136,13 @@ post_start_commands = [
     "iptables -A OUTPUT -d 192.168.0.0/24 -j DROP",
     "npm install -g @anthropic-ai/claude-code"
 ]
-volumes = ["${env.HOME}/.claude.json:${env.HOME}/.claude.json", "${env.HOME}/.claude:${env.HOME}/.claude"]
+volumes = ["~/.claude.json", "~/.claude"]
 ```
 
+Note: On macOS, Claude Code stores credentials in the keychain by default. When run in a container, it will create `~/.claude/.credentials.json` instead, which persists outside the container due to the volume mount.
 
-
-### Build system
-
-The build system ctenv was originally written for had the build
-environment in a container image. A custom script was used to run the
-build and handle permissions in the container, similar to what ctenv
-does. The custom script didn't make it easy to run anything else than
-the build in that environment, and was tied to that repository. An
-internal version of ctenv was developed, allowing developers to run
-other commands in the same environment as the build system.
-
-The build system also used a volume for storing a cache and the cached
-files contained hard-coded paths, so it was important that the
-environment in the container was as similar as possible to the regular
-user environment outside the container. For sharing the cache between
-different clones of the repository, the repository needed to be
-mounted at a fixed path. The caching is also the reason for matching
-the path to HOME (which is otherwise different on for example macOS vs
-typical Linux distributions), making it possible to run the build also
-on macOS.
-
-The ctenv config for this case look something like this:
+### Build System with Caching
+Complex build environment with shared caches:
 
 ```toml
 [containers.build]
@@ -144,7 +153,10 @@ env = [
     "BUILD_CACHES_DIR=/var/cache/build-caches/image-${image|slug}",
 ]
 volumes = [
-    "build-caches-user-${USER}:/var/cache/build-caches:rw,chown"
+    "build-caches-user-${USER}:/var/cache/build-caches:rw,chown",
+    "${env.HOME}/.ssh:/home/builduser/.ssh:ro"
 ]
 post_start_commands = ["source /venv/bin/activate"]
 ```
+
+This setup ensures the build environment matches the user's environment while sharing caches between different repository clones.
