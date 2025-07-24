@@ -32,6 +32,11 @@ test = [
     "pytest-cov",
     "ruff",
     "mypy",
+    "tox>=4.27.0",
+    "tox-uv>=1.26.1",
+]
+dev = [
+    "build>=1.2.2.post1",
 ]
 
 [tool.setuptools]
@@ -45,14 +50,6 @@ ctenv = ["binaries/*", "LICENSE-gosu"]
 [tool.setuptools.dynamic]
 version = {attr = "ctenv.__version__"}
 
-[dependency-groups]
-test = [
-    "tox>=4.27.0",
-    "tox-uv>=1.26.1",
-]
-dev = [
-    "build>=1.2.2.post1",
-]
 
 [tool.mypy]
 python_version = "3.9"
