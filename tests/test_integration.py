@@ -210,11 +210,11 @@ def test_config_with_user_config_file(temp_workspace):
     """Test that config command loads user config from ~/.ctenv.toml."""
     import os
     from pathlib import Path
-    
+
     # Create a fake home directory in temp space
     fake_home = Path(temp_workspace) / "fake_home"
     fake_home.mkdir()
-    
+
     # Create user config file
     user_config = fake_home / ".ctenv.toml"
     user_config.write_text("""
@@ -225,11 +225,11 @@ sudo = true
 [containers.test_user]
 image = "alpine:latest"
 """)
-    
+
     # Run config command with fake home
     env = os.environ.copy()
     env["HOME"] = str(fake_home)
-    
+
     result = subprocess.run(
         [
             "python",
@@ -253,7 +253,7 @@ image = "alpine:latest"
 def test_config_with_project_config_file(temp_workspace):
     """Test that config command loads project config from .ctenv.toml."""
     from pathlib import Path
-    
+
     # Create project config file in temp workspace
     project_config = Path(temp_workspace) / ".ctenv.toml"
     project_config.write_text("""
@@ -264,7 +264,7 @@ image = "node:18"
 image = "ubuntu:22.04"
 env = ["DEBUG=1"]
 """)
-    
+
     result = subprocess.run(
         [
             "python",

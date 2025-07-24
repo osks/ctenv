@@ -876,12 +876,12 @@ def test_docker_args_volume_options():
         )  # :rw preserved, :z added
 
 
-@pytest.mark.unit 
+@pytest.mark.unit
 def test_load_project_config_direct_toml():
     """Test that load_project_config finds .ctenv.toml directly (not in .ctenv/ subdir)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create .ctenv.toml directly in the directory (not in .ctenv/ subdir)
         config_file = tmpdir / ".ctenv.toml"
         config_content = """
@@ -892,10 +892,10 @@ image = "ubuntu:20.04"
 image = "node:18"
 """
         config_file.write_text(config_content)
-        
+
         # Test loading from the directory
         config = load_project_config(tmpdir)
-        
+
         assert config is not None
         assert config.defaults["image"] == "ubuntu:20.04"
         assert config.containers["test"]["image"] == "node:18"
@@ -903,14 +903,14 @@ image = "node:18"
 
 @pytest.mark.unit
 def test_load_project_config_searches_upward():
-    """Test that load_project_config searches upward through parent directories.""" 
+    """Test that load_project_config searches upward through parent directories."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create nested directory structure
         subdir = tmpdir / "project" / "src"
         subdir.mkdir(parents=True)
-        
+
         # Create .ctenv.toml in the root directory
         config_file = tmpdir / ".ctenv.toml"
         config_content = """
@@ -918,23 +918,23 @@ def test_load_project_config_searches_upward():
 image = "python:3.11"
 """
         config_file.write_text(config_content)
-        
+
         # Test loading from the nested subdirectory
         config = load_project_config(subdir)
-        
+
         assert config is not None
         assert config.containers["dev"]["image"] == "python:3.11"
 
 
-@pytest.mark.unit 
+@pytest.mark.unit
 def test_load_project_config_returns_none_when_not_found():
     """Test that load_project_config returns None when no config file is found."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # No config file created
         config = load_project_config(tmpdir)
-        
+
         assert config is None
 
 
@@ -943,10 +943,10 @@ def test_load_user_config_direct_toml(monkeypatch):
     """Test that load_user_config finds ~/.ctenv.toml directly (not in ~/.ctenv/ subdir)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Mock Path.home() to return our temp directory
-        monkeypatch.setattr(Path, 'home', lambda: tmpdir)
-        
+        monkeypatch.setattr(Path, "home", lambda: tmpdir)
+
         # Create .ctenv.toml directly in the home directory (not in .ctenv/ subdir)
         config_file = tmpdir / ".ctenv.toml"
         config_content = """
@@ -958,10 +958,10 @@ sudo = true
 image = "ubuntu:22.04"
 """
         config_file.write_text(config_content)
-        
+
         # Test loading user config
         config = load_user_config()
-        
+
         assert config is not None
         assert config.defaults["image"] == "alpine:latest"
         assert config.defaults["sudo"] is True
@@ -973,11 +973,11 @@ def test_load_user_config_returns_none_when_not_found(monkeypatch):
     """Test that load_user_config returns None when no config file is found."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Mock Path.home() to return our temp directory
-        monkeypatch.setattr(Path, 'home', lambda: tmpdir)
-        
+        monkeypatch.setattr(Path, "home", lambda: tmpdir)
+
         # No config file created
         config = load_user_config()
-        
+
         assert config is None

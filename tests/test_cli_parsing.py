@@ -191,7 +191,9 @@ class TestRunCommandParsing:
 
     @patch("ctenv.ctenv.CtenvConfig.load")
     @patch("ctenv.ctenv.ContainerRunner.run_container")
-    def test_run_container_with_options(self, mock_run_container, mock_config_file_load):
+    def test_run_container_with_options(
+        self, mock_run_container, mock_config_file_load
+    ):
         """Test: ctenv run dev --image alpine (container with options)."""
         mock_ctenv_config = MagicMock()
         # Mock the defaults to return the expected default command
