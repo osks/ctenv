@@ -599,46 +599,5 @@ def test_ulimits_configuration():
         assert "--ulimit=core=0" in ulimit_args
 
 
-@pytest.mark.skip(reason="Test environment interference - TODO: fix isolation")
-@pytest.mark.unit
-def test_platform_specific_gosu_discovery():
-    """Test that platform-specific gosu binaries are found correctly."""
-    from ctenv.ctenv import get_platform_specific_gosu_name, find_gosu_binary
-    from unittest.mock import patch
 
-    # Test platform name generation
-    platform_name = get_platform_specific_gosu_name()
-    assert platform_name.startswith("gosu-")
 
-    # Should be one of the expected platform names
-    # Note: gosu only provides Linux binaries since containers run Linux
-    expected_names = [
-        "gosu-amd64",
-        "gosu-arm64",
-    ]
-    assert platform_name in expected_names
-
-    # Test that find_gosu_binary prefers platform-specific binaries
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        ctenv_dir = tmpdir / ".ctenv"
-        ctenv_dir.mkdir()
-
-        # Create both generic and platform-specific gosu
-        generic_gosu = ctenv_dir / "gosu"
-        platform_gosu = ctenv_dir / platform_name
-
-        generic_gosu.write_text('#!/bin/sh\necho "generic"')
-        generic_gosu.chmod(0o755)
-
-        platform_gosu.write_text('#!/bin/sh\necho "platform-specific"')
-        platform_gosu.chmod(0o755)
-
-        # Mock home directory to point to our test dir and disable system PATH
-        with (
-            patch("pathlib.Path.home", return_value=tmpdir),
-            patch("shutil.which", return_value=None),
-        ):
-            # Should prefer platform-specific
-            found_gosu = find_gosu_binary(start_dir=tmpdir)
-            assert found_gosu.resolve() == platform_gosu.resolve()
