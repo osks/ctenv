@@ -12,26 +12,26 @@ Run commands in any container image while preserving your user identity and file
 
 ```bash
 # Install with pip
-pip install ctenv
+$ pip install ctenv
 
 # Install with uv
-uv tool install ctenv
+$ uv tool install ctenv
 
 # Or run directly without installing
-uv tool run ctenv --help
+$ uv tool run ctenv --help
 ```
 
 ## Usage
 
 ```bash
 # Interactive shell in ubuntu container
-ctenv run --image ubuntu
+$ ctenv run --image ubuntu
 
 # Run specific command
-ctenv run -- npm test
+$ ctenv run -- npm test
 
 # Run Claude Code in a container
-ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude \
+$ ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude \
     --post-start-command "npm install -g @anthropic-ai/claude-code"
 ```
 
@@ -92,8 +92,8 @@ volumes = ["~/.claude.json", "~/.claude"]
 
 Then run:
 ```bash
-ctenv run python -- python script.py
-ctenv run claude
+$ ctenv run python -- python script.py
+$ ctenv run claude
 ```
 
 ## Common Use Cases
@@ -101,16 +101,8 @@ ctenv run claude
 ### Development Tools
 Run linters, formatters, or compilers from containers:
 ```bash
-ctenv run --image rust:latest -- cargo fmt
-ctenv run --image node:20 -- eslint src/
-```
-
-### Build Systems
-Use containerized build environments:
-```toml
-[containers.build]
-image = "some-build-system:v17"
-volumes = ["build-cache:/var/cache:rw,chown"]
+$ ctenv run --image rust:latest -- cargo fmt
+$ ctenv run --image node:20 -- eslint src/
 ```
 
 ### Claude Code
@@ -120,6 +112,14 @@ Run Claude Code in isolation:
 image = "node:20"
 post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
 volumes = ["~/.claude.json", "~/.claude"]
+```
+
+### Build Systems
+Use containerized build environments:
+```toml
+[containers.build]
+image = "some-build-system:v17"
+volumes = ["build-cache:/var/cache:rw,chown"]
 ```
 
 ## Detailed Examples
