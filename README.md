@@ -31,7 +31,8 @@ ctenv run --image ubuntu
 ctenv run -- npm test
 
 # Run Claude Code in a container
-ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude --post-start-command "npm install -g @anthropic-ai/claude-code"
+ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude \
+    --post-start-command "npm install -g @anthropic-ai/claude-code"
 ```
 
 ## Why ctenv?
