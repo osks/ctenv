@@ -41,17 +41,17 @@ from typing import Optional, Dict, Any, List, Tuple
 
 
 def preprocess_tilde_expansion(text: str) -> str:
-    """Convert ~/ at start of paths to ${env:HOME}/ for template processing."""
+    """Convert ~/ at start of paths to ${env.HOME}/ for template processing."""
     if not text:
         return text
 
     # Only expand ~/ at the beginning of the string or after : (for volume specs)
     # Pattern matches:
-    # - ~/ at start: "~/.docker" -> "${env:HOME}/.docker"
-    # - ~/ after colon: "/host:~/.docker" -> "/host:${env:HOME}/.docker"
-    # - ~/ after double colon: "/host::~/.docker" -> "/host::${env:HOME}/.docker"
+    # - ~/ at start: "~/.docker" -> "${env.HOME}/.docker"
+    # - ~/ after colon: "/host:~/.docker" -> "/host:${env.HOME}/.docker"
+    # - ~/ after double colon: "/host::~/.docker" -> "/host::${env.HOME}/.docker"
     pattern = r"(^|:)~/"
-    return re.sub(pattern, r"\1${env:HOME}/", text)
+    return re.sub(pattern, r"\1${env.HOME}/", text)
 
 
 def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
@@ -62,7 +62,7 @@ def substitute_template_variables(text: str, variables: Dict[str, str]) -> str:
         var_name, filter_name = match.groups()
 
         # Get value
-        if var_name.startswith("env:"):
+        if var_name.startswith("env."):
             value = os.environ.get(var_name[4:], "")
         else:
             value = variables.get(var_name, "")

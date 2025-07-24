@@ -331,13 +331,13 @@ def test_tilde_preprocessing():
     from ctenv.ctenv import preprocess_tilde_expansion
 
     # Test basic tilde expansion
-    assert preprocess_tilde_expansion("~/.docker") == "${env:HOME}/.docker"
-    assert preprocess_tilde_expansion("~/config/file") == "${env:HOME}/config/file"
+    assert preprocess_tilde_expansion("~/.docker") == "${env.HOME}/.docker"
+    assert preprocess_tilde_expansion("~/config/file") == "${env.HOME}/config/file"
 
     # Test tilde after colon (volume format)
-    assert preprocess_tilde_expansion("/host:~/.config") == "/host:${env:HOME}/.config"
+    assert preprocess_tilde_expansion("/host:~/.config") == "/host:${env.HOME}/.config"
     assert (
-        preprocess_tilde_expansion("/host::~/.config") == "/host::${env:HOME}/.config"
+        preprocess_tilde_expansion("/host::~/.config") == "/host::${env.HOME}/.config"
     )
 
     # Test cases that should NOT be expanded
@@ -461,7 +461,7 @@ def test_cli_volume_template_expansion():
                         args.config = None
                         args.container = None
                         # Command is not used in this test since we pass it separately to cmd_run
-                        args.volumes = ["~/.docker", "${env:HOME}/.cache::ro"]
+                        args.volumes = ["~/.docker", "${env.HOME}/.cache::ro"]
                         args.image = "ubuntu"
                         args.working_dir = None
                         args.env = None

@@ -365,11 +365,11 @@ def test_substitute_template_variables_env():
     os.environ["TEST_VAR"] = "test_value"
 
     variables = {"USER": "alice"}
-    result = substitute_template_variables("Value: ${env:TEST_VAR}", variables)
+    result = substitute_template_variables("Value: ${env.TEST_VAR}", variables)
     assert result == "Value: test_value"
 
     # Test missing env var
-    result = substitute_template_variables("Missing: ${env:NONEXISTENT}", variables)
+    result = substitute_template_variables("Missing: ${env.NONEXISTENT}", variables)
     assert result == "Missing: "
 
     # Clean up
@@ -405,7 +405,7 @@ def test_substitute_in_container():
     container_data = {
         "image": "docker.io/app:v1",
         "volumes": ["cache-${USER}:/cache"],
-        "env": ["USER=${USER}", "CACHE=${image|slug}", "TEST=${env:TEST_ENV}"],
+        "env": ["USER=${USER}", "CACHE=${image|slug}", "TEST=${env.TEST_ENV}"],
         "sudo": True,  # Non-string values should be preserved
     }
 
