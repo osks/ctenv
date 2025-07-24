@@ -6,6 +6,22 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: "pyproject.toml"
+    - name: Install dependencies
+      run: |
+        make dev
+    - name: Run linting
+      run: |
+        make lint
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -21,9 +37,6 @@ jobs:
     - name: Install dependencies
       run: |
         make dev
-    - name: Run linting
-      run: |
-        make lint
     - name: Run tests
       run: |
         make test
