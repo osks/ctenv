@@ -1,7 +1,13 @@
-# Task 35: Refactor ctenv to support both single-file execution and package installation with bundled gosu binaries
-
-## Status
-To Do
+---
+id: task-35
+title: Refactor ctenv to support both single-file execution and package installation with bundled gosu binaries
+status: Done
+assignee: []
+created_date: '2025-07-23'
+updated_date: '2025-07-24'
+labels: [refactoring, packaging, architecture]
+dependencies: []
+---
 
 ## Description
 Refactor the ctenv implementation to work as both:
