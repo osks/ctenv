@@ -1,5 +1,6 @@
 # ctenv
 
+[![GitHub repo](https://img.shields.io/badge/github-repo-green)](https://github.com/osks/ctenv)
 [![PyPI](https://img.shields.io/pypi/v/ctenv.svg)](https://pypi.org/project/ctenv/)
 [![Changelog](https://img.shields.io/github/v/release/osks/ctenv?include_prereleases&label=changelog)](https://github.com/osks/ctenv/releases)
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)

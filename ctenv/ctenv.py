@@ -1192,11 +1192,11 @@ def cmd_run(args, command):
 
 def cmd_config_show(args):
     """Show configuration or container details."""
-    container = args.container
+    container = getattr(args, 'container', None)
 
     try:
         # Load configuration early
-        explicit_configs = [Path(c) for c in args.config] if args.config else None
+        explicit_configs = [Path(c) for c in getattr(args, 'config', None) or []]
         ctenv_config = CtenvConfig.load(explicit_config_files=explicit_configs)
 
         if container:
@@ -1237,29 +1237,18 @@ def cmd_config_show(args):
             # Show all configuration
             print("Configuration:")
 
-            # Show which config files are being used
-            source_files = ctenv_config.source_files
-            if len(source_files) == 0:
-                print("\nUsing builtin containers only")
-            elif len(source_files) == 1:
-                print(f"\nUsing config file: {source_files[0]}")
-            else:
-                print("\nUsing config files (highest to lowest priority):")
-                for i, source_file in enumerate(source_files, 1):
-                    print(f"  {i}. {source_file}")
-
             # Show defaults section if present
             if ctenv_config.defaults:
                 print("\nDefaults:")
                 defaults_config = ctenv_config.defaults
-                print(f"  image: {defaults_config.image}")
-                print(f"  command: {defaults_config.command}")
-                print(f"  network: {defaults_config.network}")
-                print(f"  sudo: {defaults_config.sudo}")
-                if defaults_config.env:
-                    print(f"  env: {list(defaults_config.env)}")
-                if defaults_config.volumes:
-                    print(f"  volumes: {list(defaults_config.volumes)}")
+                print(f"  image: {defaults_config.get('image')}")
+                print(f"  command: {defaults_config.get('command')}")
+                print(f"  network: {defaults_config.get('network')}")
+                print(f"  sudo: {defaults_config.get('sudo')}")
+                if defaults_config.get('env'):
+                    print(f"  env: {list(defaults_config['env'])}")
+                if defaults_config.get('volumes'):
+                    print(f"  volumes: {list(defaults_config['volumes'])}")
 
             # Show containers
             if ctenv_config.containers:
@@ -1444,7 +1433,7 @@ def main(argv=None):
     if args.subcommand == "run":
         cmd_run(args, command)
     elif args.subcommand == "config":
-        if args.config_command == "show":
+        if args.config_command == "show" or args.config_command is None:
             cmd_config_show(args)
         else:
             parser.parse_args(["config", "--help"])

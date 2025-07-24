@@ -164,3 +164,42 @@ def test_volume_mounting(test_images, temp_workspace):
 
     assert result.returncode == 0
     assert "hello from host" in result.stdout
+
+
+@pytest.mark.integration
+def test_config_command(temp_workspace):
+    """Test that config command runs without errors."""
+    result = subprocess.run(
+        [
+            "python",
+            "-m",
+            "ctenv",
+            "config",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=temp_workspace,
+    )
+
+    assert result.returncode == 0
+    assert "Configuration:" in result.stdout
+
+
+@pytest.mark.integration
+def test_config_show_command(temp_workspace):
+    """Test that config show command runs without errors."""
+    result = subprocess.run(
+        [
+            "python",
+            "-m",
+            "ctenv",
+            "config",
+            "show",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=temp_workspace,
+    )
+
+    assert result.returncode == 0
+    assert "Configuration:" in result.stdout
