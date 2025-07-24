@@ -313,8 +313,8 @@ def merge_config(config, overrides):
 
 
 def load_user_config(start_dir: Optional[Path] = None) -> Optional[ConfigFile]:
-    """Load user configuration (~/.ctenv/ctenv.toml)."""
-    user_config_path = Path.home() / ".ctenv" / "ctenv.toml"
+    """Load user configuration (~/.ctenv.toml)."""
+    user_config_path = Path.home() / ".ctenv.toml"
 
     if not user_config_path.exists() or not user_config_path.is_file():
         return None
@@ -329,7 +329,7 @@ def load_project_config(start_dir: Optional[Path] = None) -> Optional[ConfigFile
 
     current = start_dir.resolve()
     while True:
-        config_path = current / ".ctenv" / "ctenv.toml"
+        config_path = current / ".ctenv.toml"
         if config_path.exists() and config_path.is_file():
             return ConfigFile.from_file(config_path)
 

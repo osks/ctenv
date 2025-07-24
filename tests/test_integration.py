@@ -203,3 +203,81 @@ def test_config_show_command(temp_workspace):
 
     assert result.returncode == 0
     assert "Configuration:" in result.stdout
+
+
+@pytest.mark.integration
+def test_config_with_user_config_file(temp_workspace):
+    """Test that config command loads user config from ~/.ctenv.toml."""
+    import os
+    from pathlib import Path
+    
+    # Create a fake home directory in temp space
+    fake_home = Path(temp_workspace) / "fake_home"
+    fake_home.mkdir()
+    
+    # Create user config file
+    user_config = fake_home / ".ctenv.toml"
+    user_config.write_text("""
+[defaults]
+image = "python:3.12"
+sudo = true
+
+[containers.test_user]
+image = "alpine:latest"
+""")
+    
+    # Run config command with fake home
+    env = os.environ.copy()
+    env["HOME"] = str(fake_home)
+    
+    result = subprocess.run(
+        [
+            "python",
+            "-m",
+            "ctenv",
+            "config",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=temp_workspace,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "Configuration:" in result.stdout
+    assert "python:3.12" in result.stdout  # Should show user config default
+    assert "test_user" in result.stdout  # Should show user config container
+
+
+@pytest.mark.integration
+def test_config_with_project_config_file(temp_workspace):
+    """Test that config command loads project config from .ctenv.toml."""
+    from pathlib import Path
+    
+    # Create project config file in temp workspace
+    project_config = Path(temp_workspace) / ".ctenv.toml"
+    project_config.write_text("""
+[defaults]
+image = "node:18"
+
+[containers.test_project]
+image = "ubuntu:22.04"
+env = ["DEBUG=1"]
+""")
+    
+    result = subprocess.run(
+        [
+            "python",
+            "-m",
+            "ctenv",
+            "config",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=temp_workspace,
+    )
+
+    assert result.returncode == 0
+    assert "Configuration:" in result.stdout
+    assert "node:18" in result.stdout  # Should show project config default
+    assert "test_project" in result.stdout  # Should show project config container
