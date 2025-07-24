@@ -107,7 +107,7 @@ post_start_commands = [
     "iptables -A OUTPUT -d 192.168.0.0/24 -j DROP",
     "npm install -g @anthropic-ai/claude-code"
 ]
-volumes = ["${env:HOME}/.claude.json:${env:HOME}/.claude.json", "${env:HOME}/.claude:${env:HOME}/.claude"]
+volumes = ["${env.HOME}/.claude.json:${env.HOME}/.claude.json", "${env.HOME}/.claude:${env.HOME}/.claude"]
 ```
 
 
