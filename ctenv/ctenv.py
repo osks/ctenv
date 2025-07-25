@@ -247,10 +247,10 @@ def get_default_config_dict() -> Dict[str, Any]:
         "group_id": group_info.gr_gid,
         "user_home": user_info.pw_dir,
         # Required paths
-        "working_dir": str(Path(os.getcwd())),
+        "workspace": "auto",  # Default to auto-detection
+        "workdir": None,  # Default to None (preserve relative position)
         "gosu_path": None,  # Will be resolved later with platform consideration
         # Mount points
-        "working_dir_mount": "/repo",
         "gosu_mount": "/gosu",
         # Container settings
         "image": "ubuntu:latest",
@@ -279,6 +279,47 @@ def _load_config_file(config_path: Path) -> Dict[str, Any]:
         raise ValueError(f"Error reading {config_path}: {e}") from e
 
 
+def _resolve_relative_paths(config_data: Dict[str, Any], config_dir: Path) -> Dict[str, Any]:
+    """Resolve relative paths in config data relative to config file directory."""
+    resolved_data = copy.deepcopy(config_data)
+    
+    # Fields that need path resolution
+    path_fields = ["workspace", "workdir"]  # Add more as needed
+    
+    def resolve_path_in_dict(data_dict: Dict[str, Any]) -> None:
+        for key, value in data_dict.items():
+            if key in path_fields and isinstance(value, str):
+                # Handle workspace with volume syntax
+                if key == "workspace" and ":" in value:
+                    # Parse host:container:options syntax
+                    parts = value.split(":")
+                    if len(parts) >= 2:
+                        host_part = parts[0]
+                        if host_part == ".":
+                            # Resolve "." to config directory
+                            parts[0] = str(config_dir)
+                            data_dict[key] = ":".join(parts)
+                elif key == "workspace" and value == ".":
+                    # Simple "." -> resolve to config directory
+                    data_dict[key] = str(config_dir)
+                elif key == "workdir" and not value.startswith("/"):
+                    # Relative workdir -> resolve relative to config directory
+                    resolved_path = config_dir / value
+                    data_dict[key] = str(resolved_path)
+    
+    # Resolve paths in defaults
+    if "defaults" in resolved_data and isinstance(resolved_data["defaults"], dict):
+        resolve_path_in_dict(resolved_data["defaults"])
+    
+    # Resolve paths in each container
+    if "containers" in resolved_data:
+        for container_name, container_config in resolved_data["containers"].items():
+            if isinstance(container_config, dict):
+                resolve_path_in_dict(container_config)
+    
+    return resolved_data
+
+
 @dataclass
 class ConfigFile:
     """Represents a single configuration file with containers and defaults."""
@@ -303,8 +344,13 @@ class ConfigFile:
             raise ValueError(f"Config file not found: {config_path}")
 
         config_data = _load_config_file(config_path)
-        raw_containers = config_data.get("containers", {})
-        raw_defaults = config_data.get("defaults")  # None if not present
+        
+        # Resolve relative paths before processing
+        config_dir = config_path.parent
+        resolved_data = _resolve_relative_paths(config_data, config_dir)
+        
+        raw_containers = resolved_data.get("containers", {})
+        raw_defaults = resolved_data.get("defaults")  # None if not present
 
         logging.debug(f"Loaded config from {config_path}")
         return cls(
@@ -495,11 +541,11 @@ class ContainerConfig:
     user_home: str
 
     # Core paths (always required)
-    working_dir: Path
+    workspace: str = "auto"  # Can be "auto", ".", path, or volume syntax
+    workdir: Optional[str] = None  # Where to cd inside container
     gosu_path: Optional[Path] = None
 
     # Mount points (structural, always set)
-    working_dir_mount: str = "/repo"
     gosu_mount: str = "/gosu"
 
     # Container settings (optional - None means "not specified")
@@ -522,8 +568,14 @@ class ContainerConfig:
         """Generate container name based on working directory."""
         if self.container_name:
             return self.container_name
-        # Replace / with - to make valid container name
-        dir_id = str(self.working_dir).replace("/", "-")
+        # Use workspace source path for container name
+        # Parse workspace to get source path
+        workspace_parts = self.workspace.split(":")
+        workspace_source = workspace_parts[0]
+        if workspace_source in ("auto", "."):
+            # Use current directory for now, will be resolved later
+            workspace_source = str(Path.cwd())
+        dir_id = workspace_source.replace("/", "-")
         return f"ctenv-{dir_id}"
 
     def resolve_missing_paths(self) -> "ContainerConfig":
@@ -581,6 +633,83 @@ class ContainerConfig:
 
         # Convert back
         return ContainerConfig.from_dict(config_dict)
+    
+    def resolve_workspace(self) -> Tuple[Path, Path, str, Optional[Path]]:
+        """Resolve workspace string to mount paths and working directory.
+        
+        Returns:
+            Tuple of (workspace_source, workspace_target, mount_options, container_workdir)
+        """
+        # Parse workspace string with volume syntax
+        parts = self.workspace.split(":")
+        
+        # Default mount options
+        mount_options = "z,rw"
+        
+        # Handle different formats
+        if len(parts) == 1:
+            # Simple format: /path or auto or .
+            source = parts[0]
+            target = None  # Will be set to source after resolution
+            options = None
+        elif len(parts) == 2:
+            # host:container format
+            source = parts[0]
+            target = parts[1]
+            options = None
+        elif len(parts) >= 3:
+            # host:container:options format
+            source = parts[0]
+            target = parts[1]
+            options = parts[2]
+            if options:
+                mount_options = f"{options},z"
+        else:
+            raise ValueError(f"Invalid workspace format: {self.workspace}")
+        
+        # Resolve source path
+        if source in ("auto", "", "."):
+            # Auto-detect workspace
+            workspace_source = self._find_project_root() or Path.cwd()
+        else:
+            # Explicit path
+            workspace_source = Path(source).resolve()
+        
+        # Resolve target path
+        if target is None:
+            # Same as source
+            workspace_target = workspace_source
+        else:
+            workspace_target = Path(target)
+        
+        # Resolve container working directory
+        if self.workdir is not None:
+            # Explicit workdir
+            if self.workdir.startswith("/"):
+                # Absolute path
+                container_workdir = Path(self.workdir)
+            else:
+                # Relative path - resolve relative to workspace target
+                container_workdir = workspace_target / self.workdir
+        else:
+            # Preserve relative position
+            try:
+                rel_path = Path.cwd().relative_to(workspace_source)
+                container_workdir = workspace_target / rel_path
+            except ValueError:
+                # Not in workspace, use workspace root
+                container_workdir = workspace_target
+        
+        return workspace_source, workspace_target, mount_options, container_workdir
+    
+    def _find_project_root(self) -> Optional[Path]:
+        """Find project root by searching for .ctenv.toml file."""
+        current = Path.cwd()
+        while current != current.parent:
+            if (current / ".ctenv.toml").exists():
+                return current
+            current = current.parent
+        return None
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "ContainerConfig":
@@ -607,7 +736,7 @@ class ContainerConfig:
                 continue
 
             # Handle path fields
-            if key in ("working_dir", "gosu_path") and isinstance(value, str):
+            if key == "gosu_path" and isinstance(value, str):
                 kwargs[key] = Path(value) if value else None
             # Handle list fields
             elif key in (
@@ -890,19 +1019,23 @@ class ContainerRunner:
         # Parse volume options
         processed_volumes, chown_paths = ContainerRunner.parse_volumes(config.volumes)
 
+        # Resolve workspace
+        workspace_source, workspace_target, mount_options, container_workdir = config.resolve_workspace()
+
         # Volume mounts
         volume_args = [
-            f"--volume={config.working_dir}:{config.working_dir_mount}:z,rw",
+            f"--volume={workspace_source}:{workspace_target}:{mount_options}",
             f"--volume={config.gosu_path}:{config.gosu_mount}:z,ro",
             f"--volume={entrypoint_script_path}:/entrypoint.sh:z,ro",
-            f"--workdir={config.working_dir_mount}",
+            f"--workdir={container_workdir}",
         ]
         args.extend(volume_args)
 
         logging.debug("Volume mounts:")
         logging.debug(
-            f"  Working dir: {config.working_dir} -> {config.working_dir_mount}"
+            f"  Workspace: {workspace_source} -> {workspace_target} (options: {mount_options})"
         )
+        logging.debug(f"  Working directory: {container_workdir}")
         logging.debug(f"  Gosu binary: {config.gosu_path} -> {config.gosu_mount}")
         logging.debug(
             f"  Entrypoint script: {entrypoint_script_path} -> /entrypoint.sh"
@@ -1005,13 +1138,14 @@ class ContainerRunner:
         if not config.gosu_path.is_file():
             raise FileNotFoundError(f"gosu path {config.gosu_path} is not a file.")
 
-        # Verify current directory exists
-        logging.debug(f"Verifying working directory: {config.working_dir}")
-        if not config.working_dir.exists():
-            raise FileNotFoundError(f"Directory {config.working_dir} does not exist.")
+        # Verify workspace exists
+        workspace_source, _, _, _ = config.resolve_workspace()
+        logging.debug(f"Verifying workspace directory: {workspace_source}")
+        if not workspace_source.exists():
+            raise FileNotFoundError(f"Workspace directory {workspace_source} does not exist.")
 
-        if not config.working_dir.is_dir():
-            raise FileNotFoundError(f"Path {config.working_dir} is not a directory.")
+        if not workspace_source.is_dir():
+            raise FileNotFoundError(f"Workspace path {workspace_source} is not a directory.")
 
         # Parse volumes to get chown paths for script generation
         _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
@@ -1136,9 +1270,8 @@ def cmd_run(args, command):
         cli_overrides = {
             "image": args.image,
             "command": command,
-            "working_dir": str(Path(args.working_dir).resolve())
-            if args.working_dir
-            else None,
+            "workspace": args.workspace,
+            "workdir": args.workdir,
             "env": args.env,
             "volumes": processed_volumes,
             "sudo": args.sudo,
@@ -1177,7 +1310,9 @@ def cmd_run(args, command):
         logging.debug(f"  Command: {config.command}")
         logging.debug(f"  User: {config.user_name} (UID: {config.user_id})")
         logging.debug(f"  Group: {config.group_name} (GID: {config.group_id})")
-        logging.debug(f"  Working directory: {config.working_dir}")
+        workspace_source, workspace_target, _, container_workdir = config.resolve_workspace()
+        logging.debug(f"  Workspace: {workspace_source} -> {workspace_target}")
+        logging.debug(f"  Working directory: {container_workdir}")
         logging.debug(f"  Container name: {config.get_container_name()}")
         logging.debug(f"  Environment variables: {config.env}")
         logging.debug(f"  Volumes: {config.volumes}")
@@ -1375,9 +1510,12 @@ Note: Use '--' to separate commands from container/options.""",
         "--network", help="Enable container networking (default: disabled for security)"
     )
     run_parser.add_argument(
-        "--dir",
-        dest="working_dir",
-        help="Directory to mount as workdir (default: current directory)",
+        "--workspace",
+        help="Workspace to mount (supports volume syntax: /path, /host:/container, auto:/repo)",
+    )
+    run_parser.add_argument(
+        "--workdir",
+        help="Working directory inside container (where to cd)",
     )
     run_parser.add_argument(
         "--gosu-path",

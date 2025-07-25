@@ -42,7 +42,7 @@ def test_config_user_detection():
     assert config.user_id == os.getuid()
     assert config.group_id == os.getgid()
     assert config.image == "ubuntu:latest"
-    assert config.working_dir_mount == "/repo"
+    assert config.workspace == "auto"
 
 
 @pytest.mark.unit
@@ -55,13 +55,13 @@ def test_config_with_mock_user():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=Path(tmpdir),
+            workspace="auto",
             gosu_path=Path("/test/gosu"),
         )
 
         assert config.user_name == "testuser"
         assert config.user_id == 1000
-        assert config.working_dir == Path(tmpdir)
+        assert config.workspace == "auto"
 
 
 @pytest.mark.unit
@@ -75,13 +75,13 @@ def test_container_name_generation():
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
         config1 = ctenv_config.resolve_container_config(
-            cli_overrides={"working_dir": "/path/to/project"}
+            cli_overrides={"workspace": "/path/to/project"}
         )
         config2 = ctenv_config.resolve_container_config(
-            cli_overrides={"working_dir": "/path/to/project"}
+            cli_overrides={"workspace": "/path/to/project"}
         )
         config3 = ctenv_config.resolve_container_config(
-            cli_overrides={"working_dir": "/different/path"}
+            cli_overrides={"workspace": "/different/path"}
         )
 
     name1 = config1.get_container_name()
@@ -102,7 +102,7 @@ def test_entrypoint_script_generation():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         command="bash",
     )
@@ -129,7 +129,7 @@ def test_entrypoint_script_examples():
                 group_name="staff",
                 group_id=20,
                 user_home="/home/developer",
-                working_dir=Path("/test"),
+                workspace="auto",
                 gosu_path=Path("/test/gosu"),
                 command="bash",
             ),
@@ -142,7 +142,7 @@ def test_entrypoint_script_examples():
                 group_name="runners",
                 group_id=1000,
                 user_home="/home/runner",
-                working_dir=Path("/test"),
+                workspace="auto",
                 gosu_path=Path("/test/gosu"),
                 command="python3 main.py --verbose",
             ),
@@ -463,7 +463,8 @@ def test_cli_volume_template_expansion():
                         # Command is not used in this test since we pass it separately to cmd_run
                         args.volumes = ["~/.docker", "${env.HOME}/.cache::ro"]
                         args.image = "ubuntu"
-                        args.working_dir = None
+                        args.workspace = None
+                        args.workdir = None
                         args.env = None
                         args.sudo = None
                         args.network = None

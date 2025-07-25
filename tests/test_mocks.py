@@ -19,7 +19,7 @@ def test_docker_command_examples():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/workspace"),
+        workspace="auto",
         image="ubuntu:latest",
         command="bash",
         gosu_path=Path("/test/gosu"),
@@ -38,9 +38,11 @@ def test_docker_command_examples():
         # Platform flag should only be present if explicitly specified
         assert "--platform=linux/amd64" not in args
         assert f"--name={config.get_container_name()}" in args
-        assert "--volume=/workspace:/repo:z,rw" in args
+        # With workspace="auto", mounts current directory to itself
+        current_dir = str(Path.cwd())
+        assert f"--volume={current_dir}:{current_dir}:z,rw" in args
         assert "--volume=/test/gosu:/gosu:z,ro" in args
-        assert "--workdir=/repo" in args
+        assert f"--workdir={current_dir}" in args
         assert "--entrypoint" in args
         assert "/entrypoint.sh" in args
         assert "ubuntu:latest" in args
@@ -63,7 +65,7 @@ def test_platform_support():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/workspace"),
+        workspace="auto",
         image="ubuntu:latest",
         command="bash",
         gosu_path=Path("/test/gosu"),
@@ -83,7 +85,7 @@ def test_platform_support():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/workspace"),
+        workspace="auto",
         image="ubuntu:latest",
         command="bash",
         gosu_path=Path("/test/gosu"),
@@ -158,7 +160,7 @@ def test_docker_command_scenarios():
                 group_name="developers",
                 group_id=1001,
                 user_home="/home/developer",
-                working_dir=Path(full_config["DIR"]),
+                workspace="auto",
                 gosu_path=Path("/usr/local/bin/gosu"),
                 image=full_config["IMAGE"],
                 command=full_config["COMMAND"],
@@ -211,7 +213,7 @@ def test_new_cli_options():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/workspace"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         image="ubuntu:latest",
         command="bash",
@@ -263,7 +265,7 @@ def test_sudo_entrypoint_script():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         command="bash",
         sudo=True,
@@ -275,7 +277,7 @@ def test_sudo_entrypoint_script():
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         command="bash",
         sudo=False,
@@ -318,7 +320,7 @@ def test_docker_command_construction(mock_run):
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         image="ubuntu:latest",
         command="echo hello",
@@ -355,7 +357,7 @@ def test_docker_not_available(mock_run, mock_which):
         group_name="testgroup",
         group_id=1000,
         user_home="/home/testuser",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
     )
 
@@ -383,7 +385,7 @@ def test_container_failure_handling(mock_run):
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=Path("/test"),
+            workspace="auto",
             gosu_path=Path("/test/gosu"),
             image="invalid:image",
             command="echo test",
@@ -405,7 +407,7 @@ def test_tty_detection():
         group_name="test",
         group_id=1000,
         user_home="/home/test",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         image="ubuntu",
         command="bash",
@@ -423,7 +425,7 @@ def test_tty_detection():
         group_name="test",
         group_id=1000,
         user_home="/home/test",
-        working_dir=Path("/test"),
+        workspace="auto",
         gosu_path=Path("/test/gosu"),
         image="ubuntu",
         command="bash",
@@ -452,7 +454,7 @@ def test_volume_chown_option():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=tmpdir,
+            workspace="auto",
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
@@ -522,7 +524,7 @@ def test_post_start_commands():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=tmpdir,
+            workspace="auto",
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
@@ -578,7 +580,7 @@ def test_ulimits_configuration():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=tmpdir,
+            workspace="auto",
             gosu_path=gosu_path,
             image="test:latest",
             command="bash",
