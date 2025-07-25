@@ -26,8 +26,8 @@ def test_basic_container_execution(test_images, temp_workspace):
 
 
 @pytest.mark.integration
-def test_working_directory_is_repo(test_images, temp_workspace):
-    """Test that working directory inside container is /repo."""
+def test_working_directory_is_mounted_path(test_images, temp_workspace):
+    """Test that working directory inside container matches workspace mount."""
     result = subprocess.run(
         [
             "python",
@@ -43,7 +43,8 @@ def test_working_directory_is_repo(test_images, temp_workspace):
     )
 
     assert result.returncode == 0
-    assert "/repo" in result.stdout.strip()
+    # With new workspace system, should mount to actual temp_workspace path
+    assert str(temp_workspace) in result.stdout.strip()
 
 
 @pytest.mark.integration
@@ -60,7 +61,7 @@ def test_file_permission_preservation(test_images, temp_workspace):
             "run",
             "--",
             "touch",
-            f"/repo/{test_file}",
+            test_file,
         ],
         capture_output=True,
         text=True,
@@ -155,7 +156,7 @@ def test_volume_mounting(test_images, temp_workspace):
             "run",
             "--",
             "cat",
-            "/repo/host_file.txt",
+            "host_file.txt",
         ],
         capture_output=True,
         text=True,

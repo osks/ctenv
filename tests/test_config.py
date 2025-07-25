@@ -681,7 +681,8 @@ def test_get_default_config_dict():
     assert defaults["image"] == "ubuntu:latest"
     assert defaults["command"] == "bash"
     assert defaults["container_name"] is None
-    assert defaults["working_dir"] == str(Path(os.getcwd()))
+    assert defaults["workspace"] == "auto"  # New workspace field
+    assert defaults["workdir"] is None  # New workdir field
     assert defaults["env"] == []
     assert defaults["volumes"] == []
     assert defaults["post_start_commands"] == []
@@ -695,19 +696,19 @@ def test_get_default_config_dict():
 
 @pytest.mark.unit
 def test_working_dir_config():
-    """Test that working_dir can be configured via CLI and config file."""
+    """Test that workdir can be configured via CLI and config file."""
     import tempfile
     import os
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
-        # Create config file with working_dir
+        # Create config file with workdir
         config_file = tmpdir / "ctenv.toml"
         config_content = """
 [containers.test]
 image = "alpine:latest"
-working_dir = "/custom/path"
+workdir = "/custom/path"
 """
         config_file.write_text(config_content)
 
@@ -716,23 +717,23 @@ working_dir = "/custom/path"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
 
-        # Test config file working_dir
+        # Test config file workdir
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.resolve_container_config(container="test")
-        assert config.working_dir == Path("/custom/path")
+        assert config.workdir == "/custom/path"
 
         # Test CLI override
         config_cli = ctenv_config.resolve_container_config(
-            container="test", cli_overrides={"working_dir": "/cli/override"}
+            container="test", cli_overrides={"workdir": "/cli/override"}
         )
-        assert config_cli.working_dir == Path("/cli/override")
+        assert config_cli.workdir == "/cli/override"
 
         # Test default (no config file, no CLI)
         ctenv_config_default = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
         config_default = ctenv_config_default.resolve_container_config()
-        assert config_default.working_dir == Path(os.getcwd())
+        assert config_default.workdir is None
 
 
 @pytest.mark.unit

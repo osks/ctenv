@@ -17,7 +17,7 @@ def test_post_start_commands_shell_functionality():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=Path(tmpdir),
+            workspace="auto",
             command="bash",
             # Malicious commands with various injection attempts
             post_start_commands=[
@@ -53,7 +53,7 @@ def test_volume_chown_path_injection_prevention():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=Path(tmpdir),
+            workspace="auto",
             command="bash",
         )
 
@@ -94,7 +94,7 @@ def test_complex_shell_scenarios():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=Path(tmpdir),
+            workspace="auto",
             command="bash",
             post_start_commands=[
                 # Nested quotes and substitutions
@@ -128,7 +128,7 @@ def test_safe_commands_work_normally():
             group_name="testgroup",
             group_id=1000,
             user_home="/home/testuser",
-            working_dir=Path(tmpdir),
+            workspace="auto",
             command="bash",
             post_start_commands=[
                 "npm install",
