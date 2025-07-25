@@ -65,87 +65,25 @@ These four settings allow for flexible scenarios:
 - **Project override**: Mount project root, but cd to different subdirectory
 - **Explicit control**: User specifies workspace and workdir independently
 
-## CLI Design Decision
-
-### Chosen Approach: Option B (Separate Flags)
-
-After analysis, Option B provides better usability and handles edge cases more cleanly.
+## CLI Design
 
 ### Flag Design
 
 **Primary flags:**
 - `--workdir PATH` - Where to cd inside container (matches Docker's convention)
-- `--[MOUNT_FLAG] PATH` - Which directory to mount as workspace
+- `--workspace PATH` - Which directory to mount (supports volume syntax)
 
-**Auto-mounting behavior:**
-- When no mount flag specified: auto-detect workspace (project root or cwd)
-- When mount flag specified: use that directory as workspace
-- Working directory defaults to preserving user's relative position in workspace
-
-### Flag Name Candidates
-
-**Still evaluating:**
-- `--dir PATH` - Short, familiar, generic
-- `--workspace PATH` - Descriptive, pairs conceptually with `--workdir`
-
-### Design Proposal: --workspace with volume syntax
-
-**Proposed behavior:**
+**Volume syntax:**
 - `--workspace /path` - Mount `/path` to `/path`, preserve current working directory behavior  
 - `--workspace /host:/container` - Mount `/host` to `/container`, preserve current working directory behavior
 - `--workspace /host:/container:ro` - Mount with options, preserve current working directory behavior
 
-**Key insight from Conflict 1:** `--workspace` should only control mounting, not working directory. The default working directory behavior (preserving user's relative position) should remain the same whether using auto-detection or explicit workspace.
+**Auto-mounting behavior:**
+- When no `--workspace` specified: auto-detect workspace (project root or cwd)
+- When `--workspace` specified: use that directory as workspace
+- Working directory always defaults to preserving user's relative position in workspace
 
-**This resolves:** Use Case 1 works consistently between auto-detection and explicit workspace specification.
-
-### Design Clarifications for Volume Syntax Proposal
-
-**Clarification 1: Workspace flag should preserve working directory behavior** *(from Use Case 1)*
-
-*Reference: Use Case 1 - Developer working in project subdirectory*
-
-```bash
-# User in: /home/user/myproject/src/
-# Use Case 1 with auto-detection: mount project root, preserve relative position
-ctenv run -- python -m pytest ../tests/  # Works in /home/user/myproject/src/
-
-# With updated proposal - explicit workspace preserves working directory behavior:
-ctenv run --workspace /home/user/myproject -- python -m pytest ../tests/
-# Fixed: Still runs from /home/user/myproject/src/ - consistent with auto-detection
-```
-
-**Clarification 2: Auto-detection is the intended default** *(from Use Case 2)*
-
-*Reference: Use Case 2 - Project work requiring different working directory*
-
-This isn't actually a conflict because auto-detection is the intended default behavior:
-
-```bash
-# User in: /home/user/myproject/src/components/
-# Use Case 2 - normal usage relies on auto-detection (no --workspace needed):
-ctenv run --workdir ../../build -- make
-
-# User would only specify --workspace when overriding auto-detection:
-ctenv run --workspace /different/project --workdir /different/project/build -- make
-# This verbosity is expected since user is doing something non-standard
-```
-
-*The volume syntax is intended for Use Cases 3 & 4 where auto-detection doesn't give the desired workspace.*
-
-**Clarification 3: Clear separation of flag responsibilities**
-
-With the updated design where `--workspace` only controls mounting:
-
-```bash
-# This is now clear: --workspace controls mount, --workdir controls where to cd
-ctenv run --workspace /home/user/myproject --workdir /home/user/myproject/src -- npm test
-# Mount: /home/user/myproject → /home/user/myproject
-# Working dir: /home/user/myproject/src
-# No conflict - each flag has a distinct purpose
-```
-
-*Since `--workspace` no longer implies a working directory, there's no precedence ambiguity.*
+**Key design principle:** `--workspace` only controls mounting, never working directory. This ensures consistent behavior between auto-detection and explicit specification.
 
 ### CLI Examples
 
@@ -154,16 +92,16 @@ ctenv run --workspace /home/user/myproject --workdir /home/user/myproject/src --
 ctenv run -- npm test                          # Auto-mount workspace, preserve cwd
 
 # Override working directory only  
-ctenv run --workdir /workspace/build -- make   # Auto-mount, cd to /workspace/build
+ctenv run --workdir ../../build -- make        # Auto-mount, cd to relative path
 
 # Explicit workspace (simple form)
-ctenv run --workspace /path/to/project -- npm test    # Mount and cd to /path/to/project
+ctenv run --workspace /path/to/project -- npm test    # Mount different project
 
 # Explicit workspace with different workdir
 ctenv run --workspace /path/to/project --workdir /path/to/project/src -- npm test
 
 # Volume-style options
-ctenv run --workspace /host:/container:ro -- ls       # Mount with options, cd to /container
+ctenv run --workspace /host:/container:ro -- ls       # Mount with options
 ```
 
 ### Key Use Cases
@@ -215,11 +153,11 @@ ctenv run --workdir ../../build -- make
 # User in: /home/user/projects/web-scraper/
 # No .ctenv.toml found (would normally mount just /home/user/projects/web-scraper/)
 # Want: Mount entire projects directory but stay in current subdirectory
-ctenv run --[MOUNT_FLAG] /home/user/projects --workdir /home/user/projects/web-scraper -- python scrape.py
+ctenv run --workspace /home/user/projects --workdir /home/user/projects/web-scraper -- python scrape.py
 
 # Now you can access other projects:
-ctenv run --[MOUNT_FLAG] /home/user/projects --workdir /home/user/projects/web-scraper -- ls ../shared-utils/
-ctenv run --[MOUNT_FLAG] /home/user/projects --workdir /home/user/projects/web-scraper -- python ../data-processor/clean.py
+ctenv run --workspace /home/user/projects --workdir /home/user/projects/web-scraper -- ls ../shared-utils/
+ctenv run --workspace /home/user/projects --workdir /home/user/projects/web-scraper -- python ../data-processor/clean.py
 ```
 
 **Use Case 4: Advanced: Explicit workspace control**
@@ -228,101 +166,118 @@ ctenv run --[MOUNT_FLAG] /home/user/projects --workdir /home/user/projects/web-s
 
 ```bash
 # Force specific directory as workspace, with custom working directory
-ctenv run --[MOUNT_FLAG] /path/to/project-b --workdir /path/to/project-b/tools -- ./deploy.sh
+ctenv run --workspace /path/to/project-b --workdir /path/to/project-b/tools -- ./deploy.sh
 ```
 
-### Auto-Detection Algorithm
+**Use Case 5: Build reproducibility with fixed paths**
 
-**Step 1: Determine workspace**
-1. If mount flag provided: use specified directory
-2. If no mount flag: search for `.ctenv.toml` starting from current directory, traversing up
-3. If `.ctenv.toml` found: workspace = that directory
-4. If no `.ctenv.toml` found: workspace = current working directory
+*Scenario:* You're building software where paths can leak into build artifacts (compiled binaries, debug info, cached files, etc.). You need builds to be identical regardless of where the project is located on different machines or CI systems. Using real host paths like `/home/user/myproject` vs `/home/jenkins/workspace/myproject` would create different build outputs.
 
-**Step 2: Determine working directory**
-1. If `--workdir` provided: use specified path
-2. If no `--workdir`: preserve user's current location relative to workspace
+*Need:* Always mount workspace to a fixed, predictable path like `/repo` to ensure build reproducibility, while preserving smart project detection and working directory logic. **This should work automatically without specifying paths manually.**
 
-**Step 3: Mount and execute**
-1. Mount: `workspace_path → workspace_path` (same path in container)
-2. Set container working directory to computed working directory
-3. Execute command
+```bash
+# User in: /home/user/myproject/src/
+# Project root: /home/user/myproject/ (has .ctenv.toml)
+# With config: workspace = ".:/repo"
+$ pwd
+/home/user/myproject/src
+$ ctenv run -- python -m pytest /repo/tests/
+# Auto-detects: /home/user/myproject → /repo
+# Working dir: /repo/src (preserves relative position)
 
-**Navigation benefits:**
-- `cd ..` works naturally to navigate up to parent directories
-- Relative paths work as expected
-- Project structure preserved in container
+# User in: /home/user/scripts/ (no project)  
+# Same config applies automatically
+$ pwd
+/home/user/scripts
+$ ctenv run -- python /repo/process.py
+# Auto-detects: /home/user/scripts → /repo
+# Working dir: /repo
 
-### Configuration File Design
+# This ensures identical builds regardless of host path:
+# Developer machine: /home/alice/myproject → /repo
+# CI system: /var/lib/jenkins/workspace/myproject → /repo  
+# Both produce identical artifacts since all paths inside container are /repo/*
+```
 
-**Configuration supports the same flags as CLI:**
+**Key requirement:** This must be configurable in `.ctenv.toml` so teams can set it as a project standard:
 
 ```toml
 [defaults]
-# Default workspace (when auto-detection doesn't apply)
-# Flag name TBD: "dir" or "workspace"
-dir = "/workspace"              # Mount workspace to /workspace
-workdir = "/workspace"          # cd to /workspace
+workspace = ".:/repo"      # Auto-detect source (.), always mount to /repo
+
+[containers.build]  
+workspace = ".:/repo"      # Ensure build reproducibility
+```
+
+**Alternative syntax:** Using `"."` for auto-detection is more intuitive than `"auto"` - it follows standard path conventions where `.` means "current context" (auto-detected workspace in this case).
+
+Without this config option, users would have to manually specify the full host path every time, which defeats the purpose of auto-detection.
+
+## Implementation Details
+
+### Auto-Detection Algorithm
+
+1. **Determine workspace**: Search for `.ctenv.toml` from current directory upward. If found, workspace = that directory. Otherwise, workspace = current directory.
+2. **Determine working directory**: If `--workdir` provided, use it. Otherwise, preserve user's current location relative to workspace.
+3. **Mount and execute**: Mount `workspace → workspace`, cd to computed working directory, execute command.
+
+### Configuration File Design
+
+```toml
+[defaults]
+workspace = "/workspace"        # Default workspace mount
+workdir = "/workspace"          # Default working directory
 
 [containers.dev]
 image = "node:20"
-workdir = "/workspace/app"      # Override working directory for this container
+workdir = "/workspace/app"      # Override working directory
 
 [containers.build]
 image = "alpine:latest"
-dir = "/build"                  # Override workspace mount for this container
+workspace = "/build"            # Override workspace mount
 workdir = "/build"
 ```
 
-**Precedence (highest to lowest):**
-1. CLI flags
-2. Container-specific config
-3. Default config  
-4. Auto-detection
+**Precedence**: CLI flags > container-specific config > default config > auto-detection
 
-### Examples
+## Documentation & Testing
 
-**Project structure:**
+### Documentation Updates
+- Replace `/repo` examples with real paths in README
+- Document `.ctenv.toml` project detection behavior
+- Add migration note about breaking change
+- Document `--workspace` volume syntax and `--workdir` usage
+
+### Testing Requirements
+- Project detection algorithm (with/without `.ctenv.toml`, nested projects)
+- CLI argument parsing and precedence
+- Mount path logic and volume syntax
+- Working directory calculation
+- Cross-project scenarios and edge cases
+
+## Implementation Notes
+
+### Path Resolution for `.:/repo` Syntax
+
+**Config file paths** (like `workspace = ".:/repo"`) should be resolved in `ConfigFile.from_file()` before config merging:
+
+```python
+# In ConfigFile.from_file()
+config_dir = config_path.parent  
+# Resolve "." in workspace = ".:/repo" to absolute project path
+resolved_data = resolve_relative_paths(raw_config, config_dir)
 ```
-myproject/
-├── .ctenv.toml
-├── src/
-│   └── components/
-└── tests/
-```
 
-**Running from subdirectory:**
-```bash
-$ pwd
-/home/user/myproject/src/components
+**CLI paths** (like `--workspace .:/repo`) should be resolved during CLI processing relative to current working directory.
 
-$ ctenv run --image node:20 -- pwd
-/home/user/myproject/src/components
+This approach:
+- Resolves paths immediately when files are loaded, before merging
+- Preserves file context where it's available  
+- Handles multiple config sources cleanly
+- No changes needed to `from_dict()` or downstream code
 
-$ ctenv run --image node:20 -- ls ../..
-src  tests  .ctenv.toml  # Can see project root!
-```
-
-## Documentation Updates
-
-### README Changes
-1. **Update feature description**: Replace `/repo` examples with real paths
-2. **Add project detection explanation**: How `.ctenv.toml` enables smart mounting
-3. **Update CLI examples**: Show `--workdir` and mount flag usage
-4. **Migration note**: Warn about breaking change, provide migration examples
-
-### New Documentation
-- **Migration guide**: How to update scripts expecting `/repo`
-- **Project configuration**: Document `.ctenv.toml` project detection
-- **Advanced usage**: Complex mounting scenarios and flag combinations
+**Relative path support**: Both `--workspace` and `--workdir` should support relative paths. For CLI args, paths are resolved relative to current working directory. For config files, paths are resolved relative to the config file location (or workspace root for `--workdir`).
 
 ## Open Questions
 
-1. **Final flag name decision**: `--dir` vs `--workspace`
-2. **Volume syntax proposal**: Should mount flag support Docker-style `host:container:options` syntax?
-3. **Working directory behavior**: If mount flag sets both mount and workdir, how does this interact with:
-   - Project auto-detection preserving user's relative position?  
-   - Option precedence when both mount flag and `--workdir` are specified?
-4. **Relative path support**: Should `--workdir` support relative paths (like `../../build`)?
-5. **Error handling**: What happens when project root isn't accessible/readable?
-6. **Nested projects**: Behavior when multiple `.ctenv.toml` files exist in hierarchy?
+1. **Error handling**: What happens when project root isn't accessible/readable?
