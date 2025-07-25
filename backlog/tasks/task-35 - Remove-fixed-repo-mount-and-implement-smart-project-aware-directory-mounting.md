@@ -73,6 +73,8 @@ These four settings allow for flexible scenarios:
 - `--workdir PATH` - Where to cd inside container (matches Docker's convention)
 - `--workspace PATH` - Which directory to mount (supports volume syntax)
 
+**Key insight**: The value of `--workspace` is giving a name to the auto-detecting project directory functionality. Without this flag, users would need to use `--volume` with the full project path manually specified.
+
 **Volume syntax:**
 - `--workspace /path` - Mount `/path` to `/path`, preserve current working directory behavior  
 - `--workspace /host:/container` - Mount `/host` to `/container`, preserve current working directory behavior
@@ -280,4 +282,28 @@ This approach:
 
 ## Open Questions
 
-1. **Error handling**: What happens when project root isn't accessible/readable?
+1. **Volume syntax with auto-detection**: ✓ Resolved - use `auto` as explicit token:
+   - `--workspace auto` - Auto-detect and mount to same path (default behavior)
+   - `--workspace auto:/repo` - Auto-detect source, mount to `/repo`
+   - `--workspace :/repo` - Shorthand for `auto:/repo`
+   - Internal default when no `--workspace` specified: `"auto"`
+
+2. **Working directory path translation**: ✓ Resolved - automatic translation:
+   - User in `/home/user/project/src/`
+   - Project mounts to `/repo` 
+   - Working directory automatically becomes `/repo/src/`
+   - The relative path within the workspace is preserved in the container mount
+
+3. **Multiple workspace mounts**: No - workspace is a single mount point. Use `--volume` for additional mounts.
+
+4. **Config precedence with container paths**: ✓ Resolved - complete override:
+   - Config: `workspace = ".:/repo"`
+   - CLI: `--workspace /other/path` (shorthand for `/other/path:/other/path`)
+   - Result: CLI completely overrides config
+   - Implementation: Store workspace as single string variable (like volumes), parse when needed in ContainerRunner
+
+5. **Error handling**: ✓ Resolved - fail early with basic checks:
+   - Check if workspace path exists and is readable
+   - If not, show clear error message and exit
+   - No fallback to current directory - just fail
+   - Keep checks simple (just existence/readability, no complex validation)
