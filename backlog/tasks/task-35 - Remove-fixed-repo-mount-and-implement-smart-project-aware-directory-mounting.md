@@ -76,16 +76,20 @@ These four settings allow for flexible scenarios:
 **Key insight**: The value of `--workspace` is giving a name to the auto-detecting project directory functionality. Without this flag, users would need to use `--volume` with the full project path manually specified.
 
 **Volume syntax:**
-- `--workspace /path` - Mount `/path` to `/path`, preserve current working directory behavior  
-- `--workspace /host:/container` - Mount `/host` to `/container`, preserve current working directory behavior
-- `--workspace /host:/container:ro` - Mount with options, preserve current working directory behavior
+- `--workspace /path` - Mount `/path` to `/path` (shorthand for `/path:/path`)
+- `--workspace /host:/container` - Mount `/host` to `/container`
+- `--workspace /host:/container:ro` - Mount with options
+- `--workspace auto` - Auto-detect workspace and mount to same path (default)
+- `--workspace auto:/repo` - Auto-detect workspace, mount to `/repo`
+- `--workspace :/repo` - Shorthand for `auto:/repo`
 
-**Auto-mounting behavior:**
-- When no `--workspace` specified: auto-detect workspace (project root or cwd)
-- When `--workspace` specified: use that directory as workspace
-- Working directory always defaults to preserving user's relative position in workspace
-
-**Key design principle:** `--workspace` only controls mounting, never working directory. This ensures consistent behavior between auto-detection and explicit specification.
+**Key behaviors:**
+- Default when no `--workspace` specified: `"auto"` (auto-detect and mount to same path)
+- Workspace is stored as single string variable (like volumes), parsed when needed
+- CLI overrides config completely: `--workspace /path` replaces any config setting
+- Working directory automatically translates to preserve relative position:
+  - User in `/project/src/`, workspace mounts to `/repo` → working dir becomes `/repo/src/`
+- No fallback on errors - fail early with clear message if workspace path doesn't exist
 
 ### CLI Examples
 
@@ -219,9 +223,20 @@ Without this config option, users would have to manually specify the full host p
 
 ### Auto-Detection Algorithm
 
-1. **Determine workspace**: Search for `.ctenv.toml` from current directory upward. If found, workspace = that directory. Otherwise, workspace = current directory.
-2. **Determine working directory**: If `--workdir` provided, use it. Otherwise, preserve user's current location relative to workspace.
-3. **Mount and execute**: Mount `workspace → workspace`, cd to computed working directory, execute command.
+1. **Determine workspace**: 
+   - If workspace contains `auto`: Search for `.ctenv.toml` from current directory upward
+   - If `.ctenv.toml` found: workspace source = that directory
+   - If not found: workspace source = current directory
+   - If workspace is `.` (in config): resolve relative to config file location
+
+2. **Parse workspace string**: Split `source:target:options` like volume syntax
+
+3. **Determine working directory**: 
+   - If `--workdir` provided: use it
+   - Otherwise: translate user's position relative to workspace source into container target
+   - Example: User in `/project/src/`, mounting `/project:/repo` → workdir = `/repo/src/`
+
+4. **Mount and execute**: Mount workspace, cd to computed working directory, execute command
 
 ### Configuration File Design
 
@@ -278,32 +293,13 @@ This approach:
 - Handles multiple config sources cleanly
 - No changes needed to `from_dict()` or downstream code
 
-**Relative path support**: Both `--workspace` and `--workdir` should support relative paths. For CLI args, paths are resolved relative to current working directory. For config files, paths are resolved relative to the config file location (or workspace root for `--workdir`).
+**Relative path support**: Both `--workspace` and `--workdir` support relative paths:
+- CLI args: resolved relative to current working directory
+- Config files: resolved relative to config file location
+- Special case: `.` in workspace config means "directory containing this config file"
 
-## Open Questions
+## Design Constraints
 
-1. **Volume syntax with auto-detection**: ✓ Resolved - use `auto` as explicit token:
-   - `--workspace auto` - Auto-detect and mount to same path (default behavior)
-   - `--workspace auto:/repo` - Auto-detect source, mount to `/repo`
-   - `--workspace :/repo` - Shorthand for `auto:/repo`
-   - Internal default when no `--workspace` specified: `"auto"`
-
-2. **Working directory path translation**: ✓ Resolved - automatic translation:
-   - User in `/home/user/project/src/`
-   - Project mounts to `/repo` 
-   - Working directory automatically becomes `/repo/src/`
-   - The relative path within the workspace is preserved in the container mount
-
-3. **Multiple workspace mounts**: No - workspace is a single mount point. Use `--volume` for additional mounts.
-
-4. **Config precedence with container paths**: ✓ Resolved - complete override:
-   - Config: `workspace = ".:/repo"`
-   - CLI: `--workspace /other/path` (shorthand for `/other/path:/other/path`)
-   - Result: CLI completely overrides config
-   - Implementation: Store workspace as single string variable (like volumes), parse when needed in ContainerRunner
-
-5. **Error handling**: ✓ Resolved - fail early with basic checks:
-   - Check if workspace path exists and is readable
-   - If not, show clear error message and exit
-   - No fallback to current directory - just fail
-   - Keep checks simple (just existence/readability, no complex validation)
+- **Single workspace mount**: Workspace is one mount point only. Use `--volume` for additional mounts.
+- **No partial overrides**: CLI completely replaces config workspace setting.
+- **Error handling**: Fail early if workspace path doesn't exist or isn't readable.
