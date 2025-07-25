@@ -22,22 +22,6 @@ just a clean change.
 - Can't navigate up from subdirectories
 - Not intuitive for general use
 
-## Proposed Behavior
-
-**With .ctenv.toml (project detected):**
-```bash
-# User cwd: /home/user/myproject/src/
-# Mount: /home/user/myproject → /home/user/myproject
-# Container cwd: /home/user/myproject/src/
-```
-
-**Without .ctenv.toml:**
-```bash
-# User cwd: /home/user/somedir/
-# Mount: /home/user/somedir → /home/user/somedir
-# Container cwd: /home/user/somedir
-```
-
 ## Implementation Design
 
 ### Core Concepts
@@ -215,7 +199,7 @@ workspace = ".:/repo"      # Auto-detect source (.), always mount to /repo
 workspace = ".:/repo"      # Ensure build reproducibility
 ```
 
-**Alternative syntax:** Using `"."` for auto-detection is more intuitive than `"auto"` - it follows standard path conventions where `.` means "current context" (auto-detected workspace in this case).
+**Note:** Both `"."` and `"auto"` work in both CLI and config files for consistency - they mean the same thing (auto-detect workspace).
 
 Without this config option, users would have to manually specify the full host path every time, which defeats the purpose of auto-detection.
 
@@ -266,11 +250,48 @@ workdir = "/build"
 - Document `--workspace` volume syntax and `--workdir` usage
 
 ### Testing Requirements
-- Project detection algorithm (with/without `.ctenv.toml`, nested projects)
+
+**Unit Tests:**
+- Project detection algorithm (with/without `.ctenv.toml`)
 - CLI argument parsing and precedence
-- Mount path logic and volume syntax
+- Mount path logic and volume syntax parsing
 - Working directory calculation
-- Cross-project scenarios and edge cases
+- Path resolution in `ConfigFile.from_file()`
+
+**Integration Tests (Critical):**
+Integration tests are essential for this feature since it affects core container behavior:
+
+1. **Project detection scenarios**:
+   - Run from project root with `.ctenv.toml`
+   - Run from subdirectory within project
+   - Run from directory without `.ctenv.toml`
+   - Verify correct mount paths and working directories in each case
+
+2. **Workspace mounting variations**:
+   - `ctenv run -- pwd` to verify working directory
+   - `ctenv run -- ls -la` to verify mount succeeded
+   - `ctenv run --workspace auto:/repo -- pwd` to verify custom mount target
+   - `ctenv run --workspace .:/build -- pwd` with config file
+
+3. **Path translation verification**:
+   - User in `/project/src/`, mount to `/repo`, verify pwd shows `/repo/src/`
+   - Test with various subdirectory depths
+   - Test with symlinks in path
+
+4. **Config file integration**:
+   - Create test `.ctenv.toml` with `workspace = ".:/repo"`
+   - Verify auto-detection uses config setting
+   - Test CLI override of config setting
+
+5. **Error scenarios**:
+   - Non-existent workspace path
+   - Permission denied on workspace
+   - Invalid volume syntax
+
+6. **Real-world workflow tests**:
+   - Build reproducibility: Mount different host paths to `/repo`, verify identical container paths
+   - Multi-project: Test Use Case 3 with mounting parent directory
+   - Cross-project: Test Use Case 4 with explicit different project
 
 ## Implementation Notes
 
@@ -303,3 +324,5 @@ This approach:
 - **Single workspace mount**: Workspace is one mount point only. Use `--volume` for additional mounts.
 - **No partial overrides**: CLI completely replaces config workspace setting.
 - **Error handling**: Fail early if workspace path doesn't exist or isn't readable.
+- **No backward compatibility needed**: Project isn't in use yet, so clean breaking change is fine.
+- **CLI and config consistency**: Both `auto` and `.` work in both CLI and config files.
