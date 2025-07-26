@@ -781,62 +781,46 @@ def build_entrypoint_script(
     """Generate bash script for container entrypoint."""
     chown_paths = chown_paths or []
 
-    # Build chown commands for volumes marked with :chown
-    chown_commands = ""
+    # Build chown paths value using null-separated string
+    chown_paths_value = ""
     if chown_paths:
-        chown_commands = """
-# Fix ownership of chown-enabled volumes
-log_debug "Checking volumes for ownership fixes"
-"""
-        for path in chown_paths:
-            # Safely quote the path to prevent injection
-            quoted_path = shlex.quote(path)
-            # For logging, escape quotes in the original path
-            escaped_path = path.replace('"', '\\"')
-            chown_commands += f'log_debug "Checking chown volume: {escaped_path}"\n'
-            chown_commands += f"if [ -d {quoted_path} ]; then\n"
-            chown_commands += (
-                f'    log_debug "Fixing ownership of volume: {escaped_path}"\n'
-            )
-            chown_commands += f'    chown -R "$USER_ID:$GROUP_ID" {quoted_path}\n'
-            chown_commands += "else\n"
-            chown_commands += (
-                f'    log_debug "Chown volume does not exist: {escaped_path}"\n'
-            )
-            chown_commands += "fi\n"
+        # Use null character as separator - guaranteed not to appear in paths
+        chown_paths_value = shlex.quote(chr(0).join(chown_paths))
     else:
-        chown_commands = """
-# No volumes require ownership fixes
-log_debug "No chown-enabled volumes configured"
-"""
+        chown_paths_value = "''"
 
-    # Build post-start commands section
-    post_start_commands = ""
+    # Build post-start commands value using null-separated string
+    post_start_commands_value = ""
     if config.post_start_commands:
-        post_start_commands = """
-# Execute post-start commands
-log_debug "Executing post-start commands"
-"""
-        for cmd in config.post_start_commands:
-            # Escape the command for safe display in log
-            escaped_cmd = cmd.replace('"', '\\"')
-            post_start_commands += (
-                f'log_debug "Executing post-start command: {escaped_cmd}"\n'
-            )
-            # Execute command normally - users expect shell interpretation
-            post_start_commands += f"{cmd}\n"
+        # Use null character as separator
+        post_start_commands_value = shlex.quote(chr(0).join(config.post_start_commands))
     else:
-        post_start_commands = """
-# No post-start commands configured
-log_debug "No post-start commands to execute"
-"""
+        post_start_commands_value = "''"
 
     script = f"""#!/bin/sh
+# Use POSIX shell for compatibility with BusyBox/Alpine Linux
 set -e
 
 # Logging setup
 VERBOSE={1 if verbose else 0}
 QUIET={1 if quiet else 0}
+
+# User and group configuration
+USER_NAME="{config.user_name}"
+USER_ID="{config.user_id}"
+GROUP_NAME="{config.group_name}"
+GROUP_ID="{config.group_id}"
+USER_HOME="{config.user_home}"
+ADD_SUDO={1 if config.sudo else 0}
+
+# Container configuration
+GOSU_MOUNT="{config.gosu_mount}"
+COMMAND="{config.command}"
+
+# Variables for chown paths and post-start commands (null-separated)
+CHOWN_PATHS={chown_paths_value}
+POST_START_COMMANDS={post_start_commands_value}
+
 
 # Debug messages - only shown with --verbose
 log_debug() {{
@@ -852,13 +836,40 @@ log_info() {{
     fi
 }}
 
-# User and group configuration
-USER_NAME="{config.user_name}"
-USER_ID="{config.user_id}"
-GROUP_NAME="{config.group_name}"
-GROUP_ID="{config.group_id}"
-USER_HOME="{config.user_home}"
-ADD_SUDO={1 if config.sudo else 0}
+# Function to fix ownership of chown-enabled volumes
+fix_chown_volumes() {{
+    log_debug "Checking volumes for ownership fixes"
+    if [ -z "$CHOWN_PATHS" ]; then
+        log_debug "No chown-enabled volumes configured"
+        return
+    fi
+    
+    # Use printf to split on null characters
+    printf '%s\0' "$CHOWN_PATHS" | while IFS= read -r -d '' path; do
+        log_debug "Checking chown volume: $path"
+        if [ -d "$path" ]; then
+            log_debug "Fixing ownership of volume: $path"
+            chown -R "$USER_ID:$GROUP_ID" "$path"
+        else
+            log_debug "Chown volume does not exist: $path"
+        fi
+    done
+}}
+
+# Function to execute post-start commands  
+run_post_start_commands() {{
+    log_debug "Executing post-start commands"
+    if [ -z "$POST_START_COMMANDS" ]; then
+        log_debug "No post-start commands to execute"
+        return
+    fi
+    
+    # Use printf to split on null characters
+    printf '%s\0' "$POST_START_COMMANDS" | while IFS= read -r -d '' cmd; do
+        log_debug "Executing post-start command: $cmd"
+        eval "$cmd"
+    done
+}}
 
 # Detect if we're using BusyBox utilities
 IS_BUSYBOX=0
@@ -916,8 +927,11 @@ fi
 log_debug "Setting ownership of home directory"
 chown "$USER_NAME" "$HOME"
 
-{chown_commands}
-{post_start_commands}
+# Fix ownership of chown-enabled volumes
+fix_chown_volumes
+
+# Execute post-start commands
+run_post_start_commands
 
 # Setup sudo if requested
 if [ "$ADD_SUDO" = "1" ]; then
@@ -956,8 +970,8 @@ log_debug "Setting up shell environment"
 export PS1="[ctenv] $ "
 
 # Execute command as user
-log_info "Starting command as $USER_NAME: {config.command}"
-exec {config.gosu_mount} "$USER_NAME" {config.command}
+log_info "Starting command as $USER_NAME: $COMMAND"
+exec "$GOSU_MOUNT" "$USER_NAME" $COMMAND
 """
     return script
 

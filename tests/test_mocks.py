@@ -496,10 +496,13 @@ def test_volume_chown_option():
                 config, chown_paths, verbose=False, quiet=False
             )
 
-            # Should contain chown commands for cache and data, but not logs
-            assert 'chown -R "$USER_ID:$GROUP_ID" /var/cache' in script_content
-            assert 'chown -R "$USER_ID:$GROUP_ID" /data' in script_content
-            assert 'chown -R "$USER_ID:$GROUP_ID" /logs' not in script_content
+            # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
+            assert '/var/cache' in script_content
+            assert '/data' in script_content  
+            assert '/logs' not in script_content
+            # Should contain the chown function
+            assert 'fix_chown_volumes()' in script_content
+            assert 'chown -R "$USER_ID:$GROUP_ID" "$path"' in script_content
 
         finally:
             # No cleanup needed for test script path
@@ -538,28 +541,30 @@ def test_post_start_commands():
         # Generate entrypoint script content directly
         script_content = build_entrypoint_script(config, verbose=False, quiet=False)
 
-        # Should contain post-start commands section
-        assert "# Execute post-start commands" in script_content
+        # Should contain post-start commands in the POST_START_COMMANDS variable
+        assert "POST_START_COMMANDS=" in script_content
         assert "source /bitbake-venv/bin/activate" in script_content
         assert "mkdir -p /var/cache/custom" in script_content
-        assert "echo 'Setup complete'" in script_content
+        assert "Setup complete" in script_content  # Check for the content, not the exact quoting
+        # Should contain the function to execute post-start commands
+        assert "run_post_start_commands()" in script_content
 
         # Commands should be executed before the gosu command
         lines = script_content.split("\n")
-        post_start_start = None
+        post_start_call = None
         gosu_line = None
 
         for i, line in enumerate(lines):
-            if "# Execute post-start commands" in line:
-                post_start_start = i
-            elif "exec /gosu" in line:
+            if "run_post_start_commands()" in line:
+                post_start_call = i
+            elif 'exec "$GOSU_MOUNT"' in line:
                 gosu_line = i
                 break
 
-        # Post-start commands should come before gosu
-        assert post_start_start is not None
+        # Post-start commands function call should come before gosu
+        assert post_start_call is not None
         assert gosu_line is not None
-        assert post_start_start < gosu_line
+        assert post_start_call < gosu_line
 
 
 @pytest.mark.unit
