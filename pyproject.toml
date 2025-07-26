@@ -9,7 +9,7 @@ readme = "README.md"
 authors = [{name = "Oskar Skoog", email = "oskar@osd.se"}]
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = []
 dependencies = [
     "tomli; python_version < '3.11'",
@@ -52,7 +52,7 @@ version = {attr = "ctenv.__version__"}
 
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_unused_configs = true
 # Very permissive for gradual adoption
 ignore_missing_imports = true

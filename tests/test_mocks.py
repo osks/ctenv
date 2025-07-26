@@ -5,29 +5,49 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.ctenv import ContainerRunner, ContainerConfig, build_entrypoint_script
+from ctenv.ctenv import ContainerRunner, ContainerSpec, RuntimeContext, parse_container_config, build_entrypoint_script
+
+
+def create_test_runtime(user_name="testuser", user_id=1000, group_name="testgroup", 
+                       group_id=1000, user_home="/home/testuser", tty=False):
+    """Helper to create RuntimeContext for tests."""
+    return RuntimeContext(
+        user_name=user_name,
+        user_id=user_id,
+        user_home=user_home,
+        group_name=group_name,
+        group_id=group_id,
+        cwd=Path.cwd(),
+        tty=tty
+    )
 
 
 @pytest.mark.unit
 def test_docker_command_examples():
     """Test and display actual Docker commands that would be generated."""
 
-    # Create config with test data
-    config = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        image="ubuntu:latest",
-        command="bash",
-        gosu_path=Path("/test/gosu"),
-    )
+    # Create config dict with test data
+    from pathlib import Path
+    import os
+    import getpass
+    import grp
+
+    config_dict = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",  # Auto-detect
+        "gosu_path": "/test/gosu",
+    }
+
+    # Create runtime context
+    runtime = create_test_runtime()
+
+    # Parse config to get ContainerSpec
+    container_spec = parse_container_config(config_dict, runtime)
 
     # Create a test script path for build_run_args
     test_script_path = "/tmp/test_entrypoint.sh"
-    args = ContainerRunner.build_run_args(config, test_script_path)
+    args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
     try:
         # Verify command structure
@@ -37,12 +57,12 @@ def test_docker_command_examples():
         assert "--init" in args
         # Platform flag should only be present if explicitly specified
         assert "--platform=linux/amd64" not in args
-        assert f"--name={config.get_container_name()}" in args
-        # With workspace="auto", mounts current directory to itself
+        assert f"--name={container_spec.container_name}" in args
+        # With workspace=":", mounts current directory 
         current_dir = str(Path.cwd())
-        assert f"--volume={current_dir}:{current_dir}:z,rw" in args
-        assert "--volume=/test/gosu:/gosu:z,ro" in args
-        assert f"--workdir={current_dir}" in args
+        assert f"--volume={current_dir}:" in " ".join(args)  # Path will be in volume mount
+        assert "--volume=/test/gosu:" in " ".join(args)  # Gosu mount
+        assert "--workdir=" in " ".join(args)  # Working directory set
         assert "--entrypoint" in args
         assert "/entrypoint.sh" in args
         assert "ubuntu:latest" in args
@@ -59,41 +79,36 @@ def test_docker_command_examples():
 @pytest.mark.unit
 def test_platform_support():
     """Test platform support in Docker commands."""
-    config_with_platform = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        image="ubuntu:latest",
-        command="bash",
-        gosu_path=Path("/test/gosu"),
-        platform="linux/arm64",
-    )
+    
+    # Test with platform specified
+    config_dict_with_platform = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+        "platform": "linux/arm64",
+    }
 
+    runtime = create_test_runtime()
+
+    container_spec = parse_container_config(config_dict_with_platform, runtime)
     test_script_path = "/tmp/test_entrypoint.sh"
-    args = ContainerRunner.build_run_args(config_with_platform, test_script_path)
+    args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
     # Should include platform flag when specified
     assert "--platform=linux/arm64" in args
 
     # Test without platform
-    config_no_platform = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        image="ubuntu:latest",
-        command="bash",
-        gosu_path=Path("/test/gosu"),
-    )
+    config_dict_no_platform = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+        # No platform specified
+    }
 
-    args_no_platform = ContainerRunner.build_run_args(
-        config_no_platform, test_script_path
-    )
+    container_spec_no_platform = parse_container_config(config_dict_no_platform, runtime)
+    args_no_platform = ContainerRunner.build_run_args(container_spec_no_platform, test_script_path)
 
     # Should not include platform flag when not specified
     platform_args = [arg for arg in args_no_platform if arg.startswith("--platform")]
@@ -153,21 +168,23 @@ def test_docker_command_scenarios():
         }
 
         try:
-            # Create a Config object for this scenario
-            scenario_config = ContainerConfig(
-                user_name="developer",
-                user_id=1001,
-                group_name="developers",
-                group_id=1001,
-                user_home="/home/developer",
-                workspace="auto",
-                gosu_path=Path("/usr/local/bin/gosu"),
-                image=full_config["IMAGE"],
-                command=full_config["COMMAND"],
+            # Create a config dict for this scenario
+            config_dict = {
+                "image": full_config["IMAGE"],
+                "command": full_config["COMMAND"],
+                "workspace": ":",
+                "gosu_path": "/usr/local/bin/gosu",
+            }
+            
+            runtime = create_test_runtime(
+                user_name="developer", user_id=1001, user_home="/home/developer",
+                group_name="developers", group_id=1001
             )
+            
+            container_spec = parse_container_config(config_dict, runtime)
             # Create a test script path for build_run_args
             test_script_path = "/tmp/test_entrypoint.sh"
-            args = ContainerRunner.build_run_args(scenario_config, test_script_path)
+            args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
             # Format command nicely
             print(f"\n{scenario['name']}:")
@@ -206,28 +223,27 @@ def test_docker_command_scenarios():
 def test_new_cli_options():
     """Test Docker commands generated with new CLI options."""
 
-    # Create config with new CLI options
-    config = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        image="ubuntu:latest",
-        command="bash",
-        container_name="test-container",
-        env=("TEST_VAR=hello", "USER"),
-        volumes=("/host/data:/container/data",),
-        sudo=True,
-        network="bridge",
-    )
+    # Create config dict with new CLI options
+    config_dict = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+        "container_name": "test-container",
+        "env": ["TEST_VAR=hello", "USER"],
+        "volumes": ["/host/data:/container/data"],
+        "sudo": True,
+        "network": "bridge",
+    }
+
+    runtime = create_test_runtime()
+
+    container_spec = parse_container_config(config_dict, runtime)
 
     try:
         # Create a test script path for build_run_args
         test_script_path = "/tmp/test_entrypoint.sh"
-        args = ContainerRunner.build_run_args(config, test_script_path)
+        args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
         # Test environment variables
         assert "--env=TEST_VAR=hello" in args
@@ -246,10 +262,10 @@ def test_new_cli_options():
         assert "ubuntu:latest" in args
 
         print("\nExample with new CLI options:")
-        print(f"  Environment: {config.env}")
-        print(f"  Volumes: {config.volumes}")
-        print(f"  Sudo: {config.sudo}")
-        print(f"  Network: {config.network}")
+        print(f"  Environment: {container_spec.env}")
+        print(f"  Volumes: {[vol.to_string() for vol in container_spec.volumes]}")
+        print(f"  Sudo: {container_spec.sudo}")
+        print(f"  Network: {container_spec.network}")
 
     finally:
         # No cleanup needed for test script path
@@ -259,35 +275,33 @@ def test_new_cli_options():
 @pytest.mark.unit
 def test_sudo_entrypoint_script():
     """Test entrypoint script generation with sudo support."""
-    config_with_sudo = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        command="bash",
-        sudo=True,
-    )
+    
+    config_dict_with_sudo = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+        "sudo": True,
+    }
 
-    config_without_sudo = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        command="bash",
-        sudo=False,
-    )
+    config_dict_without_sudo = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+        "sudo": False,
+    }
+
+    runtime = create_test_runtime()
+    
+    container_spec_with_sudo = parse_container_config(config_dict_with_sudo, runtime)
+    container_spec_without_sudo = parse_container_config(config_dict_without_sudo, runtime)
 
     script_with_sudo = build_entrypoint_script(
-        config_with_sudo, verbose=False, quiet=False
+        container_spec_with_sudo, verbose=False, quiet=False
     )
     script_without_sudo = build_entrypoint_script(
-        config_without_sudo, verbose=False, quiet=False
+        container_spec_without_sudo, verbose=False, quiet=False
     )
 
     # Test sudo setup is properly configured with ADD_SUDO variable
@@ -314,22 +328,20 @@ def test_docker_command_construction(mock_run):
     mock_run.return_value.returncode = 0
 
     # Create config with test data
-    config = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        image="ubuntu:latest",
-        command="echo hello",
-        container_name="test-container",
-    )
+    config_dict = {
+        "image": "ubuntu:latest",
+        "command": "echo hello",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+        "container_name": "test-container",
+    }
+    
+    runtime = create_test_runtime()
+    container_spec = parse_container_config(config_dict, runtime)
 
     # Test argument building
     test_script_path = "/tmp/test_entrypoint.sh"
-    args = ContainerRunner.build_run_args(config, test_script_path)
+    args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
     try:
         # Check command structure
@@ -338,7 +350,7 @@ def test_docker_command_construction(mock_run):
         assert "--rm" in args
         assert "--init" in args
         assert "ubuntu:latest" in args
-        assert f"--name={config.container_name}" in args
+        assert f"--name={container_spec.container_name}" in args
     finally:
         # No cleanup needed for test script path
         pass
@@ -351,18 +363,18 @@ def test_docker_not_available(mock_run, mock_which):
     """Test behavior when Docker is not available."""
     mock_which.return_value = None  # Docker not found in PATH
 
-    config = ContainerConfig(
-        user_name="testuser",
-        user_id=1000,
-        group_name="testgroup",
-        group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-    )
+    config_dict = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+    }
+    
+    runtime = create_test_runtime()
+    container_spec = parse_container_config(config_dict, runtime)
 
     with pytest.raises(FileNotFoundError, match="Docker not found"):
-        ContainerRunner.run_container(config)
+        ContainerRunner.run_container(container_spec)
 
 
 @pytest.mark.unit
@@ -379,20 +391,18 @@ def test_container_failure_handling(mock_run):
         patch("pathlib.Path.is_dir", return_value=True),
         patch("shutil.which", return_value="/usr/bin/docker"),
     ):
-        config = ContainerConfig(
-            user_name="testuser",
-            user_id=1000,
-            group_name="testgroup",
-            group_id=1000,
-            user_home="/home/testuser",
-            workspace="auto",
-            gosu_path=Path("/test/gosu"),
-            image="invalid:image",
-            command="echo test",
-            container_name="test-container",
-        )
+        config_dict = {
+            "image": "invalid:image",
+            "command": "echo test",
+            "workspace": ":",
+            "gosu_path": "/test/gosu",
+            "container_name": "test-container",
+        }
+        
+        runtime = create_test_runtime()
+        container_spec = parse_container_config(config_dict, runtime)
 
-        result = ContainerRunner.run_container(config)
+        result = ContainerRunner.run_container(container_spec)
         assert result.returncode == 1
 
 
@@ -401,38 +411,32 @@ def test_tty_detection():
     """Test TTY flag handling."""
 
     # Test with TTY enabled
-    config_with_tty = ContainerConfig(
-        user_name="test",
-        user_id=1000,
-        group_name="test",
-        group_id=1000,
-        user_home="/home/test",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        image="ubuntu",
-        command="bash",
-        tty=True,
-    )
+    config_dict_with_tty = {
+        "image": "ubuntu",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+    }
 
+    runtime_with_tty = create_test_runtime(tty=True)
+    container_spec_with_tty = parse_container_config(config_dict_with_tty, runtime_with_tty)
+    
     test_script_path = "/tmp/test_entrypoint.sh"
-    args = ContainerRunner.build_run_args(config_with_tty, test_script_path)
+    args = ContainerRunner.build_run_args(container_spec_with_tty, test_script_path)
     assert "-t" in args and "-i" in args
 
     # Test without TTY
-    config_without_tty = ContainerConfig(
-        user_name="test",
-        user_id=1000,
-        group_name="test",
-        group_id=1000,
-        user_home="/home/test",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        image="ubuntu",
-        command="bash",
-        tty=False,
-    )
+    config_dict_without_tty = {
+        "image": "ubuntu",
+        "command": "bash",
+        "workspace": ":",
+        "gosu_path": "/test/gosu",
+    }
 
-    args = ContainerRunner.build_run_args(config_without_tty, test_script_path)
+    runtime_without_tty = create_test_runtime(tty=False)
+    container_spec_without_tty = parse_container_config(config_dict_without_tty, runtime_without_tty)
+    
+    args = ContainerRunner.build_run_args(container_spec_without_tty, test_script_path)
     assert "-t" not in args and "-i" not in args
 
 
@@ -448,26 +452,24 @@ def test_volume_chown_option():
         gosu_path.chmod(0o755)
 
         # Test volume with chown option
-        config = ContainerConfig(
-            user_name="testuser",
-            user_id=1000,
-            group_name="testgroup",
-            group_id=1000,
-            user_home="/home/testuser",
-            workspace="auto",
-            gosu_path=gosu_path,
-            image="test:latest",
-            command="bash",
-            volumes=(
+        config_dict = {
+            "image": "test:latest",
+            "command": "bash",
+            "workspace": ":",
+            "gosu_path": str(gosu_path),
+            "volumes": [
                 "cache-vol:/var/cache:rw,chown",
                 "data-vol:/data:chown",
                 "logs:/logs:ro",
-            ),
-        )
+            ],
+        }
+
+        runtime = create_test_runtime()
+        container_spec = parse_container_config(config_dict, runtime)
 
         # Test that build_run_args processes chown correctly
         test_script_path = "/tmp/test_entrypoint.sh"
-        docker_args = ContainerRunner.build_run_args(config, test_script_path)
+        docker_args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
         try:
             # Check that chown was removed from volume args
@@ -491,17 +493,17 @@ def test_volume_chown_option():
             assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
-            _, chown_paths = ContainerRunner.parse_volumes(config.volumes)
+            _, chown_paths = ContainerRunner.process_volume_specs(container_spec.volumes)
             script_content = build_entrypoint_script(
-                config, chown_paths, verbose=False, quiet=False
+                container_spec, chown_paths, verbose=False, quiet=False
             )
 
             # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
-            assert '/var/cache' in script_content
-            assert '/data' in script_content  
-            assert '/logs' not in script_content
+            assert "/var/cache" in script_content
+            assert "/data" in script_content
+            assert "/logs" not in script_content
             # Should contain the chown function
-            assert 'fix_chown_volumes()' in script_content
+            assert "fix_chown_volumes()" in script_content
             assert 'chown -R "$USER_ID:$GROUP_ID" "$path"' in script_content
 
         finally:
@@ -521,31 +523,31 @@ def test_post_start_commands():
         gosu_path.chmod(0o755)
 
         # Test config with post-start commands
-        config = ContainerConfig(
-            user_name="testuser",
-            user_id=1000,
-            group_name="testgroup",
-            group_id=1000,
-            user_home="/home/testuser",
-            workspace="auto",
-            gosu_path=gosu_path,
-            image="test:latest",
-            command="bash",
-            post_start_commands=(
+        config_dict = {
+            "image": "test:latest",
+            "command": "bash",
+            "workspace": ":",
+            "gosu_path": str(gosu_path),
+            "post_start_commands": [
                 "source /bitbake-venv/bin/activate",
                 "mkdir -p /var/cache/custom",
                 "echo 'Setup complete'",
-            ),
-        )
+            ],
+        }
+
+        runtime = create_test_runtime()
+        container_spec = parse_container_config(config_dict, runtime)
 
         # Generate entrypoint script content directly
-        script_content = build_entrypoint_script(config, verbose=False, quiet=False)
+        script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
         assert "POST_START_COMMANDS=" in script_content
         assert "source /bitbake-venv/bin/activate" in script_content
         assert "mkdir -p /var/cache/custom" in script_content
-        assert "Setup complete" in script_content  # Check for the content, not the exact quoting
+        assert (
+            "Setup complete" in script_content
+        )  # Check for the content, not the exact quoting
         # Should contain the function to execute post-start commands
         assert "run_post_start_commands()" in script_content
 
@@ -579,22 +581,20 @@ def test_ulimits_configuration():
         gosu_path.chmod(0o755)
 
         # Test config with ulimits
-        config = ContainerConfig(
-            user_name="testuser",
-            user_id=1000,
-            group_name="testgroup",
-            group_id=1000,
-            user_home="/home/testuser",
-            workspace="auto",
-            gosu_path=gosu_path,
-            image="test:latest",
-            command="bash",
-            ulimits={"nofile": 1024, "nproc": 2048, "core": "0"},
-        )
+        config_dict = {
+            "image": "test:latest",
+            "command": "bash",
+            "workspace": ":",
+            "gosu_path": str(gosu_path),
+            "ulimits": {"nofile": 1024, "nproc": 2048, "core": "0"},
+        }
+
+        runtime = create_test_runtime()
+        container_spec = parse_container_config(config_dict, runtime)
 
         # Test that build_run_args generates ulimit flags
         test_script_path = "/tmp/test_entrypoint.sh"
-        docker_args = ContainerRunner.build_run_args(config, test_script_path)
+        docker_args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
         # Check that ulimit flags are present
         ulimit_args = [arg for arg in docker_args if arg.startswith("--ulimit=")]

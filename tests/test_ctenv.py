@@ -7,7 +7,13 @@ from unittest.mock import patch
 from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.ctenv import create_parser, ContainerConfig, build_entrypoint_script
+from ctenv.ctenv import (
+    create_parser,
+    ContainerSpec,
+    RuntimeContext,
+    parse_container_config,
+    build_entrypoint_script,
+)
 
 
 @pytest.mark.unit
@@ -23,91 +29,145 @@ def test_version():
 
 @pytest.mark.unit
 def test_config_user_detection():
-    """Test that Config correctly detects user information."""
+    """Test that config correctly loads and merges with runtime context."""
     import tempfile
 
     # Use explicit image to avoid config file interference
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig
+        from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config = ctenv_config.resolve_container_config(
+        config_dict = ctenv_config.get_container_config(
             cli_overrides={"image": "ubuntu:latest"}
         )
 
+        # Create runtime context and parse to ContainerSpec
+        runtime = RuntimeContext.current()
+        resolved_spec = parse_container_config(config_dict, runtime)
+
     import getpass
 
-    assert config.user_name == getpass.getuser()
-    assert config.user_id == os.getuid()
-    assert config.group_id == os.getgid()
-    assert config.image == "ubuntu:latest"
-    assert config.workspace == "auto"
+    # Check that runtime context is used for user info
+    assert resolved_spec.user_name == getpass.getuser()
+    assert resolved_spec.user_id == os.getuid()
+    assert resolved_spec.group_id == os.getgid()
+    assert resolved_spec.image == "ubuntu:latest"
+
+    # Check workspace is properly resolved
+    assert resolved_spec.workspace.host_path  # Should be resolved from "auto"
+    assert resolved_spec.workspace.container_path  # Should have container path
 
 
 @pytest.mark.unit
-def test_config_with_mock_user():
-    """Test Config with custom values."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config = ContainerConfig(
+def test_config_with_mock_runtime():
+    """Test ContainerSpec creation with mock runtime context."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory():
+        # Create mock runtime context
+        mock_runtime = RuntimeContext(
             user_name="testuser",
             user_id=1000,
+            user_home="/home/testuser",
             group_name="testgroup",
             group_id=1000,
-            user_home="/home/testuser",
-            workspace="auto",
-            gosu_path=Path("/test/gosu"),
+            cwd=Path.cwd(),
+            tty=False
         )
 
-        assert config.user_name == "testuser"
-        assert config.user_id == 1000
-        assert config.workspace == "auto"
+        # Create config dict with basic settings
+        config_dict = {
+            "image": "ubuntu:latest",
+            "command": "bash",
+            "workspace": "auto",
+            "gosu_path": "/test/gosu",
+        }
+
+        # Parse to ContainerSpec
+        resolved_spec = parse_container_config(config_dict, mock_runtime)
+
+        assert resolved_spec.user_name == "testuser"
+        assert resolved_spec.user_id == 1000
+        assert resolved_spec.group_name == "testgroup"
+        assert resolved_spec.group_id == 1000
+        assert resolved_spec.user_home == "/home/testuser"
+
+        # Check workspace is resolved
+        assert resolved_spec.workspace.host_path  # Should be resolved from "auto"
+        assert resolved_spec.workspace.container_path
 
 
 @pytest.mark.unit
 def test_container_name_generation():
     """Test consistent container name generation."""
     import tempfile
+    from pathlib import Path
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig
-        from pathlib import Path
+        from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+
+        # Create mock runtime
+        mock_runtime = RuntimeContext(
+            user_name="testuser",
+            user_id=1000,
+            user_home="/home/testuser", 
+            group_name="testgroup",
+            group_id=1000,
+            cwd=Path.cwd(),
+            tty=False
+        )
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config1 = ctenv_config.resolve_container_config(
-            cli_overrides={"workspace": "/path/to/project"}
+        config_dict1 = ctenv_config.get_container_config(
+            cli_overrides={"workspace": "/path/to/project", "image": "ubuntu:latest"}
         )
-        config2 = ctenv_config.resolve_container_config(
-            cli_overrides={"workspace": "/path/to/project"}
+        config_dict2 = ctenv_config.get_container_config(
+            cli_overrides={"workspace": "/path/to/project", "image": "ubuntu:latest"}
         )
-        config3 = ctenv_config.resolve_container_config(
-            cli_overrides={"workspace": "/different/path"}
+        config_dict3 = ctenv_config.get_container_config(
+            cli_overrides={"workspace": "/different/path", "image": "ubuntu:latest"}
         )
 
-    name1 = config1.get_container_name()
-    name2 = config2.get_container_name()
-    name3 = config3.get_container_name()
+        # Parse to ContainerSpecs
+        spec1 = parse_container_config(config_dict1, mock_runtime)
+        spec2 = parse_container_config(config_dict2, mock_runtime)
+        spec3 = parse_container_config(config_dict3, mock_runtime)
 
-    assert name1 == name2  # Consistent naming
-    assert name1 != name3  # Different paths produce different names
-    assert name1.startswith("ctenv-")
+    assert spec1.container_name == spec2.container_name  # Consistent naming
+    assert spec1.container_name != spec3.container_name  # Different paths produce different names
+    assert spec1.container_name.startswith("ctenv-")
 
 
 @pytest.mark.unit
 def test_entrypoint_script_generation():
     """Test bash entrypoint script generation."""
-    config = ContainerConfig(
+    from pathlib import Path
+    
+    # Create mock runtime
+    mock_runtime = RuntimeContext(
         user_name="testuser",
         user_id=1000,
+        user_home="/home/testuser",
         group_name="testgroup",
         group_id=1000,
-        user_home="/home/testuser",
-        workspace="auto",
-        gosu_path=Path("/test/gosu"),
-        command="bash",
+        cwd=Path.cwd(),
+        tty=False
     )
+    
+    # Create config dict
+    config_dict = {
+        "image": "ubuntu:latest",
+        "command": "bash",
+        "workspace": "/test/workspace",
+        "gosu_path": "/test/gosu",
+    }
+    
+    # Parse to ContainerSpec
+    spec = parse_container_config(config_dict, mock_runtime)
 
-    script = build_entrypoint_script(config, verbose=False, quiet=False)
+    script = build_entrypoint_script(spec, verbose=False, quiet=False)
 
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
@@ -119,33 +179,44 @@ def test_entrypoint_script_generation():
 @pytest.mark.unit
 def test_entrypoint_script_examples():
     """Show example entrypoint scripts for documentation."""
+    from pathlib import Path
 
     scenarios = [
         {
             "name": "Basic user setup",
-            "config": ContainerConfig(
+            "runtime": RuntimeContext(
                 user_name="developer",
                 user_id=1001,
+                user_home="/home/developer",
                 group_name="staff",
                 group_id=20,
-                user_home="/home/developer",
-                workspace="auto",
-                gosu_path=Path("/test/gosu"),
-                command="bash",
+                cwd=Path.cwd(),
+                tty=False
             ),
+            "config_dict": {
+                "image": "ubuntu:latest",
+                "command": "bash",
+                "workspace": "/test/workspace",
+                "gosu_path": "/test/gosu",
+            }
         },
         {
             "name": "Custom command execution",
-            "config": ContainerConfig(
+            "runtime": RuntimeContext(
                 user_name="runner",
                 user_id=1000,
+                user_home="/home/runner",
                 group_name="runners",
                 group_id=1000,
-                user_home="/home/runner",
-                workspace="auto",
-                gosu_path=Path("/test/gosu"),
-                command="python3 main.py --verbose",
+                cwd=Path.cwd(),
+                tty=False
             ),
+            "config_dict": {
+                "image": "ubuntu:latest", 
+                "command": "python3 main.py --verbose",
+                "workspace": "/test/workspace",
+                "gosu_path": "/test/gosu",
+            }
         },
     ]
 
@@ -154,13 +225,13 @@ def test_entrypoint_script_examples():
     print(f"{'=' * 50}")
 
     for scenario in scenarios:
-        script = build_entrypoint_script(scenario["config"], verbose=False, quiet=False)
+        # Parse to ContainerSpec
+        spec = parse_container_config(scenario["config_dict"], scenario["runtime"])
+        script = build_entrypoint_script(spec, verbose=False, quiet=False)
 
         print(f"\n{scenario['name']}:")
-        print(
-            f"  User: {scenario['config'].user_name} (UID: {scenario['config'].user_id})"
-        )
-        print(f"  Command: {scenario['config'].command}")
+        print(f"  User: {spec.user_name} (UID: {spec.user_id})")
+        print(f"  Command: {spec.command}")
         print("  Script:")
 
         # Indent each line for better formatting
@@ -252,13 +323,13 @@ def test_post_start_cmd_cli_option():
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config = ctenv_config.resolve_container_config(
+        config_dict = ctenv_config.get_container_config(
             cli_overrides={"post_start_commands": ["npm install", "npm run build"]}
         )
 
     # Should contain the CLI post-start extra commands
-    assert "npm install" in config.post_start_commands
-    assert "npm run build" in config.post_start_commands
+    assert "npm install" in config_dict["post_start_commands"]
+    assert "npm run build" in config_dict["post_start_commands"]
 
 
 @pytest.mark.unit
@@ -282,18 +353,18 @@ post_start_commands = ["echo config-cmd"]
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
-        config = ctenv_config.resolve_container_config(
+        config_dict = ctenv_config.get_container_config(
             container="test",
             cli_overrides={"post_start_commands": ["echo cli-cmd1", "echo cli-cmd2"]},
         )
 
         # Should contain both config file and CLI commands
-        assert "echo config-cmd" in config.post_start_commands
-        assert "echo cli-cmd1" in config.post_start_commands
-        assert "echo cli-cmd2" in config.post_start_commands
+        assert "echo config-cmd" in config_dict["post_start_commands"]
+        assert "echo cli-cmd1" in config_dict["post_start_commands"]
+        assert "echo cli-cmd2" in config_dict["post_start_commands"]
 
         # Config file command should come first, then CLI commands
-        commands = list(config.post_start_commands)
+        commands = list(config_dict["post_start_commands"])
         assert commands.index("echo config-cmd") < commands.index("echo cli-cmd1")
 
     finally:
@@ -308,18 +379,28 @@ def test_post_start_cmd_in_generated_script():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig
+        from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config = ctenv_config.resolve_container_config(
-            cli_overrides={"post_start_commands": ["npm install", "npm run test"]}
+        config_dict = ctenv_config.get_container_config(
+            cli_overrides={
+                "post_start_commands": ["npm install", "npm run test"],
+                "image": "ubuntu:latest"
+            }
         )
 
-    script = build_entrypoint_script(config, verbose=True, quiet=False)
+        # Create runtime context and parse to ContainerSpec
+        runtime = RuntimeContext.current()
+        spec = parse_container_config(config_dict, runtime)
+
+    script = build_entrypoint_script(spec, verbose=True, quiet=False)
 
     # Should contain the post-start commands in the script variables
-    assert "POST_START_COMMANDS='npm install" in script or "POST_START_COMMANDS=\"npm install" in script
+    assert (
+        "POST_START_COMMANDS='npm install" in script
+        or 'POST_START_COMMANDS="npm install' in script
+    )
     assert "npm run test" in script
     # Should contain the function that executes post-start commands
     assert "run_post_start_commands()" in script
@@ -327,44 +408,21 @@ def test_post_start_cmd_in_generated_script():
 
 
 @pytest.mark.unit
-def test_tilde_preprocessing():
-    """Test tilde preprocessing function."""
-    from ctenv.ctenv import preprocess_tilde_expansion
-
-    # Test basic tilde expansion
-    assert preprocess_tilde_expansion("~/.docker") == "${env.HOME}/.docker"
-    assert preprocess_tilde_expansion("~/config/file") == "${env.HOME}/config/file"
-
-    # Test tilde after colon (volume format)
-    assert preprocess_tilde_expansion("/host:~/.config") == "/host:${env.HOME}/.config"
-    assert (
-        preprocess_tilde_expansion("/host::~/.config") == "/host::${env.HOME}/.config"
-    )
-
-    # Test cases that should NOT be expanded
-    assert preprocess_tilde_expansion("~") == "~"  # No trailing slash
-    assert preprocess_tilde_expansion("file~name") == "file~name"  # Not at path start
-    assert (
-        preprocess_tilde_expansion("/path/~file") == "/path/~file"
-    )  # Not at path start
-
-    # Test empty/None input
-    assert preprocess_tilde_expansion("") == ""
-    assert preprocess_tilde_expansion(None) is None
-
-
-@pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
-    from ctenv.ctenv import ContainerRunner
+    from ctenv.ctenv import VolumeSpec, ContainerRunner
 
-    # Test single path format
-    volumes, chown_paths = ContainerRunner.parse_volumes(("~/.docker",))
-    assert volumes == ["~/.docker:~/.docker"]
-    assert chown_paths == []
+    # Test single path format - smart defaulting
+    vol_spec = VolumeSpec.parse_as_volume("~/.docker")
+    assert vol_spec.host_path == "~/.docker"
+    assert vol_spec.container_path == "~/.docker"  # Smart defaulted
+    assert vol_spec.options == []
 
-    # Test multiple single paths
-    volumes, chown_paths = ContainerRunner.parse_volumes(("/host/path", "~/config"))
+    # Test with process_volume_specs
+    volumes, chown_paths = ContainerRunner.process_volume_specs([
+        VolumeSpec.parse_as_volume("/host/path"),
+        VolumeSpec.parse_as_volume("~/config")
+    ])
     assert volumes == ["/host/path:/host/path", "~/config:~/config"]
     assert chown_paths == []
 
@@ -372,20 +430,25 @@ def test_volume_parsing_smart_defaulting():
 @pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
-    from ctenv.ctenv import ContainerRunner
+    from ctenv.ctenv import VolumeSpec, ContainerRunner
 
     # Test empty target with options
-    volumes, chown_paths = ContainerRunner.parse_volumes(("~/.docker::ro",))
-    assert volumes == ["~/.docker:~/.docker:ro"]
-    assert chown_paths == []
+    vol_spec = VolumeSpec.parse_as_volume("~/.docker::ro")
+    assert vol_spec.host_path == "~/.docker"
+    assert vol_spec.container_path == "~/.docker"  # Smart defaulted
+    assert vol_spec.options == ["ro"]
 
     # Test empty target with chown option
-    volumes, chown_paths = ContainerRunner.parse_volumes(("~/data::chown,rw",))
+    volumes, chown_paths = ContainerRunner.process_volume_specs([
+        VolumeSpec.parse_as_volume("~/data::chown,rw")
+    ])
     assert volumes == ["~/data:~/data:rw"]
     assert chown_paths == ["~/data"]
 
     # Test empty target with multiple options
-    volumes, chown_paths = ContainerRunner.parse_volumes(("/path::ro,chown,z",))
+    volumes, chown_paths = ContainerRunner.process_volume_specs([
+        VolumeSpec.parse_as_volume("/path::ro,chown,z")
+    ])
     assert volumes == ["/path:/path:ro,z"]
     assert chown_paths == ["/path"]
 
@@ -393,118 +456,81 @@ def test_volume_parsing_empty_target_syntax():
 @pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
-    from ctenv.ctenv import ContainerRunner
+    from ctenv.ctenv import VolumeSpec, ContainerRunner
 
     # Test standard format still works
-    volumes, chown_paths = ContainerRunner.parse_volumes(("/host:/container:ro",))
-    assert volumes == ["/host:/container:ro"]
-    assert chown_paths == []
+    vol_spec = VolumeSpec.parse_as_volume("/host:/container:ro")
+    assert vol_spec.host_path == "/host"
+    assert vol_spec.container_path == "/container"
+    assert vol_spec.options == ["ro"]
 
     # Test chown option still works
-    volumes, chown_paths = ContainerRunner.parse_volumes(("/host:/container:chown",))
+    volumes, chown_paths = ContainerRunner.process_volume_specs([
+        VolumeSpec.parse_as_volume("/host:/container:chown")
+    ])
     assert volumes == ["/host:/container"]
     assert chown_paths == ["/container"]
 
 
 @pytest.mark.unit
-def test_template_expansion_with_tilde():
-    """Test template expansion with tilde preprocessing."""
+def test_cli_volume_template_expansion():
+    """Test that CLI volumes get template expansion and variable substitution."""
     import tempfile
     import os
+    from unittest.mock import patch
+    from pathlib import Path
 
-    with tempfile.TemporaryDirectory():
-        # Set up test environment
+    with tempfile.TemporaryDirectory() as tmpdir:
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.ctenv import (
-                preprocess_tilde_expansion,
-                substitute_template_variables,
+            from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+
+            # Create mock runtime context
+            mock_runtime = RuntimeContext(
+                user_name="testuser",
+                user_id=1000,
+                user_home=test_home,
+                group_name="testgroup",
+                group_id=1000,
+                cwd=Path.cwd(),
+                tty=False
             )
 
-            # Test tilde expansion with template system
-            variables = {"USER": "testuser", "image": "ubuntu"}
+            # Test CLI volume processing directly
+            ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
+            
+            # CLI volumes with tilde and template variables
+            cli_volumes = ["~/.docker", "${user_home}/.cache::ro"]
+            
+            config_dict = ctenv_config.get_container_config(
+                cli_overrides={
+                    "image": "ubuntu:latest",
+                    "volumes": cli_volumes
+                }
+            )
 
-            # Preprocess tilde then apply templates
-            volume = "~/.docker:/container"
-            preprocessed = preprocess_tilde_expansion(volume)
-            expanded = substitute_template_variables(preprocessed, variables)
+            # Check that raw volumes are preserved in config dict
+            assert config_dict["volumes"] == cli_volumes
 
-            assert expanded == f"{test_home}/.docker:/container"
+            # Parse and resolve to ContainerSpec 
+            spec = parse_container_config(config_dict, mock_runtime)
 
-
-@pytest.mark.unit
-def test_cli_volume_template_expansion():
-    """Test that CLI volumes get template expansion."""
-    import tempfile
-    import os
-    from unittest.mock import patch, MagicMock
-
-    with tempfile.TemporaryDirectory():
-        test_home = "/home/testuser"
-
-        with patch.dict(os.environ, {"HOME": test_home}):
-            # Mock the necessary functions to test just the volume processing
-            with patch("ctenv.ctenv.CtenvConfig") as mock_config_class:
-                with patch("ctenv.ctenv.ContainerConfig"):
-                    with patch("ctenv.ctenv.ContainerRunner") as mock_runner:
-                        from ctenv.ctenv import cmd_run
-
-                        # Set up mocks
-                        mock_config = MagicMock()
-                        mock_config_class.load.return_value = mock_config
-                        mock_config.resolve_container_config.return_value = MagicMock()
-
-                        # Create mock args
-                        args = MagicMock()
-                        args.verbose = False
-                        args.quiet = False
-                        args.config = None
-                        args.container = None
-                        # Command is not used in this test since we pass it separately to cmd_run
-                        args.volumes = ["~/.docker", "${env.HOME}/.cache::ro"]
-                        args.image = "ubuntu"
-                        args.workspace = None
-                        args.workdir = None
-                        args.env = None
-                        args.sudo = None
-                        args.network = None
-                        args.gosu_path = None
-                        args.platform = None
-                        args.post_start_commands = None
-                        args.run_args = None
-                        args.dry_run = True
-
-                        # Mock the resolve_missing_paths and resolve_templates
-                        resolved_config = MagicMock()
-                        resolved_config.resolve_missing_paths.return_value = (
-                            resolved_config
-                        )
-                        resolved_config.resolve_templates.return_value = resolved_config
-                        mock_config.resolve_container_config.return_value = (
-                            resolved_config
-                        )
-
-                        # Mock the runner to avoid actual execution
-                        mock_result = MagicMock()
-                        mock_result.returncode = 0
-                        mock_runner.run_container.return_value = mock_result
-
-                        try:
-                            cmd_run(args, "bash")
-                        except SystemExit:
-                            pass  # Expected for dry-run
-
-                        # Verify that processed volumes were passed to config
-                        call_args = mock_config.resolve_container_config.call_args
-                        cli_overrides = call_args[1]["cli_overrides"]
-                        processed_volumes = cli_overrides["volumes"]
-
-                        # Check that tilde and template expansion occurred
-                        assert processed_volumes is not None
-                        assert len(processed_volumes) == 2
-                        assert processed_volumes[0] == f"{test_home}/.docker"
-                        assert processed_volumes[1] == f"{test_home}/.cache::ro"
+            # Check that volumes are resolved with tilde expansion and variable substitution
+            volume_specs = spec.volumes
+            assert len(volume_specs) == 2
+            
+            # First volume: ~/.docker should expand and smart default
+            vol1 = volume_specs[0]
+            assert vol1.host_path == f"{test_home}/.docker"
+            assert vol1.container_path == f"{test_home}/.docker"  # Smart defaulted
+            assert vol1.options == []
+            
+            # Second volume: ${user_home}/.cache::ro should expand with options
+            vol2 = volume_specs[1]
+            assert vol2.host_path == f"{test_home}/.cache"
+            assert vol2.container_path == f"{test_home}/.cache"  # Smart defaulted
+            assert vol2.options == ["ro"]
 
 
 @pytest.mark.unit
@@ -512,6 +538,8 @@ def test_config_file_tilde_expansion():
     """Test tilde expansion in config files."""
     import tempfile
     import os
+    from unittest.mock import patch
+    from pathlib import Path
 
     config_content = """
 [containers.test]
@@ -526,18 +554,50 @@ volumes = ["~/.docker", "~/config:/container/config"]
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.ctenv import CtenvConfig
-            from pathlib import Path
+            from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+
+            # Create mock runtime context
+            mock_runtime = RuntimeContext(
+                user_name="testuser",
+                user_id=1000,
+                user_home=test_home,
+                group_name="testgroup", 
+                group_id=1000,
+                cwd=Path.cwd(),
+                tty=False
+            )
 
             ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
-            config = ctenv_config.resolve_container_config(container="test")
-            resolved_config = config.resolve_templates()
+            config_dict = ctenv_config.get_container_config(
+                container="test",
+                cli_overrides={"image": "ubuntu:latest"}  # Provide required image
+            )
 
-            # Check that tilde expansion occurred in config volumes
-            assert resolved_config.volumes is not None
-            volumes = list(resolved_config.volumes)
-            assert f"{test_home}/.docker" in volumes
-            assert f"{test_home}/config:/container/config" in volumes
+            # Check that raw volumes are preserved in config dict before parsing
+            # Note: Volumes get parsed to VolumeSpec during parse_container_config(), 
+            # but the raw dict should still contain the original strings with smart defaulting applied
+            expected_processed = [
+                "~/.docker:~/.docker",  # Smart defaulting applied
+                "~/config:/container/config",
+            ]
+            assert config_dict["volumes"] == expected_processed
+
+            # Parse and resolve to ContainerSpec with runtime context
+            spec = parse_container_config(config_dict, mock_runtime)
+
+            # Check that volumes are resolved with tilde expansion
+            volume_specs = spec.volumes
+            assert len(volume_specs) == 2
+            
+            # First volume: ~/.docker should expand and smart default
+            vol1 = volume_specs[0]
+            assert vol1.host_path == f"{test_home}/.docker"
+            assert vol1.container_path == f"{test_home}/.docker"  # Smart defaulted
+            
+            # Second volume: ~/config:/container/config should expand host path only
+            vol2 = volume_specs[1] 
+            assert vol2.host_path == f"{test_home}/config"
+            assert vol2.container_path == "/container/config"
 
     finally:
         os.unlink(config_file)
