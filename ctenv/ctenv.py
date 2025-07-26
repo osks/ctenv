@@ -24,7 +24,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.3"
+# Version format: MAJOR.MINOR[.devN]
+# - Use .dev0 suffix during development
+# - Remove .dev0 for stable releases  
+# - Increment MINOR for new features, MAJOR for breaking changes
+__version__ = "0.3.dev0"
 
 import argparse
 import collections.abc
