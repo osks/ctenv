@@ -112,7 +112,7 @@ def test_entrypoint_script_generation():
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
     assert 'USER_ID="1000"' in script
-    assert 'exec /gosu "$USER_NAME" bash' in script
+    assert 'exec "$GOSU_MOUNT" "$USER_NAME" $COMMAND' in script
     assert 'export PS1="[ctenv] $ "' in script
 
 
@@ -318,11 +318,12 @@ def test_post_start_cmd_in_generated_script():
 
     script = build_entrypoint_script(config, verbose=True, quiet=False)
 
-    # Should contain the post-start commands in the script
-    assert "npm install" in script
+    # Should contain the post-start commands in the script variables
+    assert "POST_START_COMMANDS='npm install" in script or "POST_START_COMMANDS=\"npm install" in script
     assert "npm run test" in script
-    assert 'log_debug "Executing post-start command: npm install"' in script
-    assert 'log_debug "Executing post-start command: npm run test"' in script
+    # Should contain the function that executes post-start commands
+    assert "run_post_start_commands()" in script
+    assert "run_post_start_commands" in script
 
 
 @pytest.mark.unit
