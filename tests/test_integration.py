@@ -43,8 +43,9 @@ def test_working_directory_is_mounted_path(test_images, temp_workspace):
     )
 
     assert result.returncode == 0
-    # With new workspace system, should mount to actual temp_workspace path
-    assert str(temp_workspace) in result.stdout.strip()
+    # With new workspace system, container working directory matches host path
+    expected_path = os.path.realpath(temp_workspace)
+    assert result.stdout.strip() == expected_path
 
 
 @pytest.mark.integration

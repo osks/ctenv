@@ -83,7 +83,7 @@ def mock_gosu_discovery(request):
     if "integration" in request.keywords:
         yield None
     else:
-        with patch("ctenv.ctenv.find_gosu_binary") as mock_find:
+        with patch("ctenv.ctenv._resolve_gosu_path") as mock_find:
             # Return a fake gosu path for tests
             mock_find.return_value = Path("/test/gosu")
             yield mock_find

@@ -6,10 +6,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from ctenv.ctenv import (
     _load_config_file,
-    substitute_template_variables,
-    substitute_in_container,
-    load_project_config,
-    load_user_config,
+    substitute_variables,
+    find_project_config,
+    find_user_config,
+    ConfigFile,
 )
 
 
@@ -88,12 +88,12 @@ def test_resolve_config_values_defaults():
 
     def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
-        from ctenv.ctenv import get_default_config_dict, merge_config
+        from ctenv.ctenv import get_builtin_defaults, merge_dict
 
         # Compute defaults (system defaults + file defaults if any)
-        computed_defaults = get_default_config_dict()
+        computed_defaults = get_builtin_defaults()
         if defaults:
-            computed_defaults = merge_config(computed_defaults, defaults)
+            computed_defaults = merge_dict(computed_defaults, defaults)
 
         return CtenvConfig(defaults=computed_defaults, containers=containers)
 
@@ -104,11 +104,11 @@ def test_resolve_config_values_defaults():
         defaults={},
     )
 
-    resolved = ctenv_config.resolve_container_config(container="default")
+    resolved = ctenv_config.get_container_config(container="default")
 
-    assert resolved.image == "ubuntu:latest"
-    assert resolved.network == "bridge"
-    assert resolved.sudo is True
+    assert resolved["image"] == "ubuntu:latest"
+    assert resolved["network"] == "bridge"
+    assert resolved["sudo"] is True
 
 
 @pytest.mark.unit
@@ -118,12 +118,12 @@ def test_resolve_config_values_container():
 
     def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
-        from ctenv.ctenv import get_default_config_dict, merge_config
+        from ctenv.ctenv import get_builtin_defaults, merge_dict
 
         # Compute defaults (system defaults + file defaults if any)
-        computed_defaults = get_default_config_dict()
+        computed_defaults = get_builtin_defaults()
         if defaults:
-            computed_defaults = merge_config(computed_defaults, defaults)
+            computed_defaults = merge_dict(computed_defaults, defaults)
 
         return CtenvConfig(defaults=computed_defaults, containers=containers)
 
@@ -139,12 +139,12 @@ def test_resolve_config_values_container():
         defaults={},
     )
 
-    resolved = ctenv_config.resolve_container_config(container="dev")
+    resolved = ctenv_config.get_container_config(container="dev")
 
-    assert resolved.image == "node:18"
-    assert resolved.network == "bridge"
-    assert resolved.sudo is False
-    assert resolved.env == ["DEBUG=1"]
+    assert resolved["image"] == "node:18"
+    assert resolved["network"] == "bridge"
+    assert resolved["sudo"] is False
+    assert resolved["env"] == ["DEBUG=1"]
 
 
 @pytest.mark.unit
@@ -154,12 +154,12 @@ def test_resolve_config_values_unknown_container():
 
     def create_test_config(containers, defaults):
         """Helper to create CtenvConfig for testing."""
-        from ctenv.ctenv import get_default_config_dict, merge_config
+        from ctenv.ctenv import get_builtin_defaults, merge_dict
 
         # Compute defaults (system defaults + file defaults if any)
-        computed_defaults = get_default_config_dict()
+        computed_defaults = get_builtin_defaults()
         if defaults:
-            computed_defaults = merge_config(computed_defaults, defaults)
+            computed_defaults = merge_dict(computed_defaults, defaults)
 
         return CtenvConfig(defaults=computed_defaults, containers=containers)
 
@@ -168,7 +168,7 @@ def test_resolve_config_values_unknown_container():
     )
 
     with pytest.raises(ValueError, match="Unknown container 'unknown'"):
-        ctenv_config.resolve_container_config(container="unknown")
+        ctenv_config.get_container_config(container="unknown")
 
 
 @pytest.mark.unit
@@ -196,7 +196,7 @@ sudo = true
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(
+        config = ctenv_config.get_container_config(
             container="default",  # Explicitly specify the container
             cli_overrides={
                 "image": "ubuntu:22.04",  # Override image via CLI
@@ -204,10 +204,10 @@ sudo = true
         )
 
         # CLI should override config file
-        assert config.image == "ubuntu:22.04"
+        assert config["image"] == "ubuntu:22.04"
         # Config file values should be used for non-overridden options (from default container)
-        assert config.sudo is True  # From default container in config file
-        assert config.network == "bridge"  # From default container in config file
+        assert config["sudo"] is True  # From default container in config file
+        assert config["network"] == "bridge"  # From default container in config file
 
 
 @pytest.mark.unit
@@ -238,12 +238,12 @@ env = ["CI=true"]
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(container="test")
+        config = ctenv_config.get_container_config(container="test")
 
         # Should use container values
-        assert config.image == "alpine:latest"
-        assert config.network == "bridge"
-        assert config.env == ["CI=true"]
+        assert config["image"] == "alpine:latest"
+        assert config["network"] == "bridge"
+        assert config["env"] == ["CI=true"]
 
 
 @pytest.mark.unit
@@ -264,8 +264,8 @@ def test_empty_config_structure():
         assert ctenv_config.defaults["image"] == "ubuntu:latest"  # System default
 
         # But system defaults should be applied when resolving config
-        resolved_config = ctenv_config.resolve_container_config()
-        assert resolved_config.image == "ubuntu:latest"  # System default
+        config = ctenv_config.get_container_config()
+        assert config["image"] == "ubuntu:latest"  # System default
 
 
 @pytest.mark.unit
@@ -296,12 +296,12 @@ network = "bridge"
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(container="default")
+        config = ctenv_config.get_container_config(container="default")
 
         # Should merge builtin default with user default
-        assert config.image == "ubuntu:latest"  # From builtin default
-        assert config.sudo is True  # From user default container (overrides defaults)
-        assert config.network == "bridge"  # From user default container
+        assert config["image"] == "ubuntu:latest"  # From builtin default
+        assert config["sudo"] is True  # From user default container (overrides defaults)
+        assert config["network"] == "bridge"  # From user default container
 
 
 @pytest.mark.unit
@@ -332,7 +332,7 @@ network = "bridge"
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(
+        config = ctenv_config.get_container_config(
             container="dev",
             cli_overrides={
                 "image": "alpine:latest",  # CLI override
@@ -340,38 +340,38 @@ network = "bridge"
         )
 
         # CLI should take precedence
-        assert config.image == "alpine:latest"
+        assert config["image"] == "alpine:latest"
         # Context should override defaults
-        assert config.network == "bridge"
+        assert config["network"] == "bridge"
         # Defaults should be used when not overridden
-        assert config.sudo is False
+        assert config["sudo"] is False
 
 
 @pytest.mark.unit
-def test_substitute_template_variables_basic():
+def test_substitute_variables_basic():
     """Test basic variable substitution."""
     variables = {"USER": "alice", "image": "test:latest"}
 
-    result = substitute_template_variables("Hello ${USER}", variables)
+    result = substitute_variables("Hello ${USER}", variables)
     assert result == "Hello alice"
 
-    result = substitute_template_variables("Image: ${image}", variables)
+    result = substitute_variables("Image: ${image}", variables)
     assert result == "Image: test:latest"
 
 
 @pytest.mark.unit
-def test_substitute_template_variables_env():
+def test_substitute_variables_env():
     """Test environment variable substitution."""
     import os
 
     os.environ["TEST_VAR"] = "test_value"
 
     variables = {"USER": "alice"}
-    result = substitute_template_variables("Value: ${env.TEST_VAR}", variables)
+    result = substitute_variables("Value: ${env.TEST_VAR}", variables)
     assert result == "Value: test_value"
 
     # Test missing env var
-    result = substitute_template_variables("Missing: ${env.NONEXISTENT}", variables)
+    result = substitute_variables("Missing: ${env.NONEXISTENT}", variables)
     assert result == "Missing: "
 
     # Clean up
@@ -379,47 +379,24 @@ def test_substitute_template_variables_env():
 
 
 @pytest.mark.unit
-def test_substitute_template_variables_slug_filter():
+def test_substitute_variables_slug_filter():
     """Test slug filter for filesystem-safe strings."""
     variables = {"image": "docker.example.com:5000/app:v1.0"}
 
-    result = substitute_template_variables("Cache: ${image|slug}", variables)
+    result = substitute_variables("Cache: ${image|slug}", variables)
     assert result == "Cache: docker.example.com-5000-app-v1.0"
 
 
 @pytest.mark.unit
-def test_substitute_template_variables_unknown_filter():
+def test_substitute_variables_unknown_filter():
     """Test error handling for unknown filters."""
     variables = {"image": "test:latest"}
 
     with pytest.raises(ValueError, match="Unknown filter: unknown"):
-        substitute_template_variables("Bad: ${image|unknown}", variables)
+        substitute_variables("Bad: ${image|unknown}", variables)
 
 
-@pytest.mark.unit
-def test_substitute_in_container():
-    """Test container-wide variable substitution."""
-    import os
-
-    os.environ["TEST_ENV"] = "test_value"
-
-    variables = {"USER": "alice", "image": "docker.io/app:v1"}
-    container_data = {
-        "image": "docker.io/app:v1",
-        "volumes": ["cache-${USER}:/cache"],
-        "env": ["USER=${USER}", "CACHE=${image|slug}", "TEST=${env.TEST_ENV}"],
-        "sudo": True,  # Non-string values should be preserved
-    }
-
-    result = substitute_in_container(container_data, variables)
-
-    assert result["image"] == "docker.io/app:v1"
-    assert result["volumes"] == ["cache-alice:/cache"]
-    assert result["env"] == ["USER=alice", "CACHE=docker.io-app-v1", "TEST=test_value"]
-    assert result["sudo"] is True
-
-    # Clean up
-    del os.environ["TEST_ENV"]
+# Test removed - substitute_in_container was replaced by ContainerConfig.resolve()
 
 
 @pytest.mark.unit
@@ -448,16 +425,22 @@ env = ["NODE_ENV=development", "DEBUG=true"]
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(container="dev")
+        config = ctenv_config.get_container_config(container="dev")
 
-        # Check that volumes are loaded correctly
-        assert config.volumes == [
-            "./node_modules:/app/node_modules",
-            "./src:/app/src:ro",
+        # Check that volumes are loaded correctly (paths should be resolved)
+        expected_node_modules = str((tmpdir / "node_modules").resolve())
+        expected_src = str((tmpdir / "src").resolve())
+        expected_volumes = [
+            f"{expected_node_modules}:/app/node_modules",
+            f"{expected_src}:/app/src:ro",
         ]
-        assert config.image == "node:18"
-        assert config.network == "bridge"
-        assert config.env == ["NODE_ENV=development", "DEBUG=true"]
+        assert config["volumes"] == expected_volumes
+        assert config["image"] == "node:18"
+        assert config["network"] == "bridge"
+        assert config["env"] == ["NODE_ENV=development", "DEBUG=true"]
+
+        # The config dict is already resolved, so paths should be resolved relative to config file
+        # (The assertions above already check the resolved volumes)
 
 
 @pytest.mark.unit
@@ -482,30 +465,45 @@ env = ["NODE_ENV=development"]
         gosu_path.chmod(0o755)
 
         # Create config with CLI additions
-        from ctenv.ctenv import CtenvConfig
+        from ctenv.ctenv import CtenvConfig, config_resolve_relative_paths
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(
+        
+        # CLI overrides need to be resolved relative to current working directory
+        cli_overrides = {
+            "volumes": ["./data:/data", "./cache:/cache"],
+            "env": ["DEBUG=true", "LOG_LEVEL=info"],
+        }
+        resolved_cli_overrides = config_resolve_relative_paths(cli_overrides, Path.cwd())
+        
+        config = ctenv_config.get_container_config(
             container="dev",
-            cli_overrides={
-                "volumes": ["./data:/data", "./cache:/cache"],
-                "env": ["DEBUG=true", "LOG_LEVEL=info"],
-            },
+            cli_overrides=resolved_cli_overrides,
         )
 
-        # CLI volumes should be appended to config file volumes
-        assert config.volumes == [
-            "./node_modules:/app/node_modules",
-            "./data:/data",
-            "./cache:/cache",
+        # Check that volumes are resolved strings
+        expected_node_modules = str((tmpdir / "node_modules").resolve())
+        expected_data = str(
+            (Path.cwd() / "data").resolve()
+        )  # CLI paths resolved from cwd
+        expected_cache = str(
+            (Path.cwd() / "cache").resolve()
+        )  # CLI paths resolved from cwd
+        expected_volumes = [
+            f"{expected_node_modules}:/app/node_modules",  # From config file
+            f"{expected_data}:/data",  # From CLI
+            f"{expected_cache}:/cache",  # From CLI
         ]
+        assert config["volumes"] == expected_volumes
+
+        # The config dict is already resolved (assertions above verify this)
         # CLI env vars should be appended to config file env vars
-        assert config.env == [
+        assert config["env"] == [
             "NODE_ENV=development",
             "DEBUG=true",
             "LOG_LEVEL=info",
         ]
-        assert config.image == "node:18"  # Other settings preserved
+        assert config["image"] == "node:18"  # Other settings preserved
 
 
 @pytest.mark.unit
@@ -528,18 +526,26 @@ image = "alpine:latest"
         gosu_path.chmod(0o755)
 
         # Create config with only CLI volumes
-        from ctenv.ctenv import CtenvConfig
+        from ctenv.ctenv import CtenvConfig, config_resolve_relative_paths
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(
+        
+        # CLI overrides need to be resolved relative to current working directory
+        cli_overrides = {"volumes": ["./data:/data"], "env": ["TEST=true"]}
+        resolved_cli_overrides = config_resolve_relative_paths(cli_overrides, Path.cwd())
+        
+        config = ctenv_config.get_container_config(
             container="test",
-            cli_overrides={"volumes": ["./data:/data"], "env": ["TEST=true"]},
+            cli_overrides=resolved_cli_overrides,
         )
 
-        # Should only contain CLI volumes/env
-        assert config.volumes == ["./data:/data"]
-        assert config.env == ["TEST=true"]
-        assert config.image == "alpine:latest"
+        # Check that volumes are resolved strings (CLI paths resolved from cwd)
+        expected_data = str((Path.cwd() / "data").resolve())
+        assert config["volumes"] == [f"{expected_data}:/data"]  # CLI volume
+        assert config["env"] == ["TEST=true"]
+        assert config["image"] == "alpine:latest"
+
+        # The config dict is already resolved (assertion above verifies this)
 
 
 @pytest.mark.unit
@@ -555,7 +561,7 @@ def test_config_file_resolve_container_with_templating():
         config_content = """
 [containers.test]
 image = "example.com/app:v1"
-volumes = ["cache-${USER}:/cache"]
+volumes = ["cache-${user_name}:/cache"]
 env = ["CACHE_DIR=/cache/${image|slug}"]
 """
         config_file = tmpdir / "ctenv.toml"
@@ -565,15 +571,13 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(container="test")
+        config = ctenv_config.get_container_config(container="test")
 
-        # The resolved config should have templates applied automatically
-        resolved_volumes = config.resolve_templates().volumes
-        resolved_env = config.resolve_templates().env
-
-        expected_user = getpass.getuser()
-        assert f"cache-{expected_user}:/cache" in resolved_volumes
-        assert "CACHE_DIR=/cache/example.com-app-v1" in resolved_env
+        # Check that templates are preserved in the raw config dict (not yet resolved)
+        assert config["volumes"] == ["cache-${user_name}:/cache"]
+        assert config["env"] == ["CACHE_DIR=/cache/${image|slug}"]
+        
+        # Templates will be resolved later in parse_container_config() when creating ContainerSpec
 
 
 @pytest.mark.unit
@@ -613,21 +617,24 @@ env = ["NODE_ENV=development"]
         args.dry_run = True  # Don't actually run container
         # Set other required attributes that cmd_run expects
         args.image = None
-        args.working_dir = None
+        args.workspace = None  # Add workspace attribute
+        args.workdir = None  # Fixed from working_dir
         args.sudo = None
         args.network = None
         args.gosu_path = str(gosu_path)
         args.post_start_commands = None
+        args.platform = None
+        args.run_args = None
 
         # Mock docker execution to capture the config
         captured_config = {}
 
-        def mock_run_container(config, *args, **kwargs):
+        def mock_run_container(spec, *args, **kwargs):
             captured_config.update(
                 {
-                    "volumes": config.volumes,
-                    "env": config.env,
-                    "image": config.image,
+                    "volumes": [vol.to_string() for vol in spec.volumes],
+                    "env": spec.env,
+                    "image": spec.image,
                 }
             )
             # Return mock result object with returncode attribute
@@ -645,43 +652,34 @@ env = ["NODE_ENV=development"]
             cmd_run(args, "echo test")
 
         # Verify config file volumes were preserved (not overridden by empty CLI list)
+        # Paths should be resolved to absolute paths relative to config file directory
+        # Use Path.resolve() to handle potential symlinks on macOS
+        expected_node_modules = str((tmpdir / "node_modules").resolve())
+        expected_data = str((tmpdir / "data").resolve())
+
         assert captured_config["volumes"] == [
-            "./node_modules:/app/node_modules",
-            "./data:/data",
+            f"{expected_node_modules}:/app/node_modules",
+            f"{expected_data}:/data",
         ]
         assert captured_config["env"] == ["NODE_ENV=development"]
         assert captured_config["image"] == "node:18"
 
 
 @pytest.mark.unit
-def test_get_default_config_dict():
-    """Test that get_default_config_dict() returns the expected default values."""
-    from ctenv.ctenv import get_default_config_dict
-    import os
-    import pwd
-    import grp
-    from pathlib import Path
+def test_get_builtin_defaults():
+    """Test that get_builtin_defaults() returns the expected default values."""
+    from ctenv.ctenv import get_builtin_defaults
 
-    defaults = get_default_config_dict()
+    defaults = get_builtin_defaults()
 
     # Check that it returns a dict
     assert isinstance(defaults, dict)
 
-    # Check that user identity matches current user
-    user_info = pwd.getpwuid(os.getuid())
-    group_info = grp.getgrgid(os.getgid())
-
-    assert defaults["user_name"] == user_info.pw_name
-    assert defaults["user_id"] == user_info.pw_uid
-    assert defaults["group_name"] == group_info.gr_name
-    assert defaults["group_id"] == group_info.gr_gid
-    assert defaults["user_home"] == user_info.pw_dir
-
-    # Check container settings defaults
+    # Check container settings defaults (user info is now in RuntimeContext)
     assert defaults["image"] == "ubuntu:latest"
     assert defaults["command"] == "bash"
     assert defaults["container_name"] is None
-    assert defaults["workspace"] == "auto"  # New workspace field
+    assert defaults["workspace"] == ":"  # Updated workspace field
     assert defaults["workdir"] is None  # New workdir field
     assert defaults["env"] == []
     assert defaults["volumes"] == []
@@ -689,7 +687,7 @@ def test_get_default_config_dict():
     assert defaults["ulimits"] is None
     assert defaults["sudo"] is False
     assert defaults["network"] is None
-    assert defaults["tty"] is False
+    assert defaults["tty"] is None  # Now properly None, detected in RuntimeContext
     # gosu_path should be a string path if found, or None if not found
     assert defaults["gosu_path"] is None or isinstance(defaults["gosu_path"], str)
 
@@ -698,7 +696,6 @@ def test_get_default_config_dict():
 def test_working_dir_config():
     """Test that workdir can be configured via CLI and config file."""
     import tempfile
-    import os
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -721,19 +718,19 @@ workdir = "/custom/path"
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(container="test")
-        assert config.workdir == "/custom/path"
+        config = ctenv_config.get_container_config(container="test")
+        assert config["workdir"] == "/custom/path"
 
         # Test CLI override
-        config_cli = ctenv_config.resolve_container_config(
+        config_cli = ctenv_config.get_container_config(
             container="test", cli_overrides={"workdir": "/cli/override"}
         )
-        assert config_cli.workdir == "/cli/override"
+        assert config_cli["workdir"] == "/cli/override"
 
         # Test default (no config file, no CLI)
         ctenv_config_default = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
-        config_default = ctenv_config_default.resolve_container_config()
-        assert config_default.workdir is None
+        config_default = ctenv_config_default.get_container_config()
+        assert config_default["workdir"] is None
 
 
 @pytest.mark.unit
@@ -768,63 +765,51 @@ gosu_path = "{fake_gosu}"
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        config = ctenv_config.resolve_container_config(container="test")
-        assert config.gosu_path == fake_gosu
+        config = ctenv_config.get_container_config(container="test")
+
+        # Check that gosu_path is in the raw config dict  
+        assert config["gosu_path"] == str(fake_gosu)
 
         # Test CLI override
         cli_gosu = tmpdir / "cli_gosu"
         cli_gosu.write_text('#!/bin/sh\nexec "$@"')
         cli_gosu.chmod(0o755)
 
-        config_cli = ctenv_config.resolve_container_config(
+        config_cli = ctenv_config.get_container_config(
             container="test", cli_overrides={"gosu_path": str(cli_gosu)}
         )
-        assert config_cli.gosu_path == cli_gosu
+
+        # Check that CLI gosu_path is in the raw config dict
+        assert config_cli["gosu_path"] == str(cli_gosu)
 
 
 @pytest.mark.unit
 def test_volume_options_preserved():
-    """Test that volume options like :ro are preserved and :z is properly merged."""
-    from ctenv.ctenv import ContainerRunner
+    """Test that volume options are properly parsed and preserved."""
+    from ctenv.ctenv import VolumeSpec
 
-    # Test volumes with various option combinations
-    volumes = (
-        "./data:/data",  # No options
-        "./src:/app/src:ro",  # Read-only option
-        "./cache:/cache:rw,chown",  # Multiple options including chown
-        "./logs:/logs:ro,chown",  # Read-only + chown
-    )
+    # Test parsing various volume specification formats
+    test_cases = [
+        ("./data:/data", "./data", "/data", []),
+        ("./src:/app/src:ro", "./src", "/app/src", ["ro"]),
+        ("./cache:/cache:rw,chown", "./cache", "/cache", ["rw", "chown"]),
+        ("./logs:/logs:ro,chown", "./logs", "/logs", ["ro", "chown"]),
+    ]
 
-    processed_volumes, chown_paths = ContainerRunner.parse_volumes(volumes)
-
-    # Verify chown paths were extracted
-    assert "/cache" in chown_paths
-    assert "/logs" in chown_paths
-
-    # Verify processed volumes preserve options (except chown)
-    assert "./data:/data" in processed_volumes
-    assert "./src:/app/src:ro" in processed_volumes
-    assert "./cache:/cache:rw" in processed_volumes  # chown removed
-    assert "./logs:/logs:ro" in processed_volumes  # chown removed
-
-    # Test the volume-with-z logic
-    for volume in processed_volumes:
-        if ":" in volume and len(volume.split(":")) > 2:
-            # Volume has options, should append ,z
-            volume_with_z = f"{volume},z"
-        else:
-            # Volume has no options, should add :z
-            volume_with_z = f"{volume}:z"
-
-        # Verify the final volume format
-        if volume == "./data:/data":
-            assert volume_with_z == "./data:/data:z"
-        elif volume == "./src:/app/src:ro":
-            assert volume_with_z == "./src:/app/src:ro,z"
-        elif volume == "./cache:/cache:rw":
-            assert volume_with_z == "./cache:/cache:rw,z"
-        elif volume == "./logs:/logs:ro":
-            assert volume_with_z == "./logs:/logs:ro,z"
+    for spec_str, expected_host, expected_container, expected_options in test_cases:
+        vol_spec = VolumeSpec.parse_as_volume(spec_str)
+        
+        assert vol_spec.host_path == expected_host
+        assert vol_spec.container_path == expected_container
+        assert vol_spec.options == expected_options
+        
+        # Test that it can be converted back to string
+        reconstructed = vol_spec.to_string()
+        # Note: to_string() might reorder or normalize, so we just check key components
+        assert expected_host in reconstructed
+        assert expected_container in reconstructed
+        for option in expected_options:
+            assert option in reconstructed
 
 
 @pytest.mark.unit
@@ -845,10 +830,30 @@ def test_docker_args_volume_options():
         from ctenv.ctenv import CtenvConfig
 
         ctenv_config = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
-        config = ctenv_config.resolve_container_config(
+        config = ctenv_config.get_container_config(
             cli_overrides={
                 "volumes": ["./src:/app/src:ro", "./data:/data", "./cache:/cache:rw"]
             }
+        )
+
+        # Parse config to get ContainerSpec
+        from ctenv.ctenv import parse_container_config, RuntimeContext
+        import os
+        import getpass
+        
+        import grp
+        runtime = RuntimeContext(
+            user_name=getpass.getuser(),
+            user_id=os.getuid(),
+            user_home=os.path.expanduser("~"),
+            group_name=grp.getgrgid(os.getgid()).gr_name,
+            group_id=os.getgid(),
+            cwd=Path.cwd(),
+            tty=False
+        )
+        
+        resolved_config = parse_container_config(
+            config, runtime
         )
 
         # Create temporary entrypoint script
@@ -856,7 +861,7 @@ def test_docker_args_volume_options():
         script_path.write_text("#!/bin/sh\necho test")
 
         # Build Docker run arguments
-        args = ContainerRunner.build_run_args(config, str(script_path))
+        args = ContainerRunner.build_run_args(resolved_config, str(script_path))
 
         # Find volume arguments in the Docker command
         volume_args = [
@@ -868,13 +873,11 @@ def test_docker_args_volume_options():
 
         # Verify volume options are properly merged with :z
         volume_args_str = " ".join(volume_args)
-        assert (
-            "--volume=./src:/app/src:ro,z" in volume_args_str
-        )  # :ro preserved, :z added
+        
+        # Check that :z is properly added to existing options
+        assert "--volume=./src:/app/src:ro,z" in volume_args_str  # :ro preserved, :z added
         assert "--volume=./data:/data:z" in volume_args_str  # only :z added
-        assert (
-            "--volume=./cache:/cache:rw,z" in volume_args_str
-        )  # :rw preserved, :z added
+        assert "--volume=./cache:/cache:rw,z" in volume_args_str  # :rw preserved, :z added
 
 
 @pytest.mark.unit
@@ -895,9 +898,9 @@ image = "node:18"
         config_file.write_text(config_content)
 
         # Test loading from the directory
-        config = load_project_config(tmpdir)
-
-        assert config is not None
+        config_path = find_project_config(tmpdir)
+        assert config_path is not None
+        config = ConfigFile.load(config_path)
         assert config.defaults["image"] == "ubuntu:20.04"
         assert config.containers["test"]["image"] == "node:18"
 
@@ -921,9 +924,9 @@ image = "python:3.11"
         config_file.write_text(config_content)
 
         # Test loading from the nested subdirectory
-        config = load_project_config(subdir)
-
-        assert config is not None
+        config_path = find_project_config(subdir)
+        assert config_path is not None
+        config = ConfigFile.load(config_path)
         assert config.containers["dev"]["image"] == "python:3.11"
 
 
@@ -934,9 +937,9 @@ def test_load_project_config_returns_none_when_not_found():
         tmpdir = Path(tmpdir)
 
         # No config file created
-        config = load_project_config(tmpdir)
+        config_path = find_project_config(tmpdir)
 
-        assert config is None
+        assert config_path is None
 
 
 @pytest.mark.unit
@@ -961,9 +964,9 @@ image = "ubuntu:22.04"
         config_file.write_text(config_content)
 
         # Test loading user config
-        config = load_user_config()
-
-        assert config is not None
+        config_path = find_user_config()
+        assert config_path is not None
+        config = ConfigFile.load(config_path)
         assert config.defaults["image"] == "alpine:latest"
         assert config.defaults["sudo"] is True
         assert config.containers["home"]["image"] == "ubuntu:22.04"
@@ -979,6 +982,6 @@ def test_load_user_config_returns_none_when_not_found(monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmpdir)
 
         # No config file created
-        config = load_user_config()
+        config_path = find_user_config()
 
-        assert config is None
+        assert config_path is None

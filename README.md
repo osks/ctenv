@@ -65,7 +65,7 @@ Under the hood, ctenv starts containers as root for file ownership setup, then d
 - Volume mounting with shortcuts like `-v ~/.gitconfig` (mounts to same path)
 - Volume ownership fixing with custom `:chown` option (similar to Podman's `:U` and `:chown`)
 - Post-start commands for running setup as root before dropping to user permissions
-- Template variables like `${USER}`, `${env.HOME}` in configurations
+- Template variables with environment variables, like `${env.HOME}`
 - Configuration file support with reusable container definitions
 - Cross-platform support for linux/amd64 and linux/arm64 containers
 - Bundled gosu binaries for privilege dropping
@@ -154,7 +154,7 @@ env = [
     "BUILD_CACHES_DIR=/var/cache/build-caches/image-${image|slug}",
 ]
 volumes = [
-    "build-caches-user-${USER}:/var/cache/build-caches:rw,chown",
+    "build-caches-user-${env.USER}:/var/cache/build-caches:rw,chown",
     "${env.HOME}/.ssh:/home/builduser/.ssh:ro"
 ]
 post_start_commands = ["source /venv/bin/activate"]
