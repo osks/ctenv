@@ -634,11 +634,11 @@ class ContainerConfig:
         # Convert back
         return ContainerConfig.from_dict(config_dict)
     
-    def resolve_workspace(self) -> Tuple[Path, Path, str, Optional[Path]]:
-        """Resolve workspace string to mount paths and working directory.
+    def resolve_workspace(self) -> Tuple[Path, Path, str]:
+        """Resolve workspace string to mount paths.
         
         Returns:
-            Tuple of (workspace_source, workspace_target, mount_options, container_workdir)
+            Tuple of (workspace_source, workspace_target, mount_options)
         """
         # Parse workspace string with volume syntax
         parts = self.workspace.split(":")
@@ -682,25 +682,34 @@ class ContainerConfig:
         else:
             workspace_target = Path(target)
         
-        # Resolve container working directory
+        return workspace_source, workspace_target, mount_options
+    
+    def resolve_workdir(self, workspace_source: Path, workspace_target: Path) -> Path:
+        """Resolve working directory based on workspace configuration.
+        
+        Args:
+            workspace_source: The host workspace path
+            workspace_target: The container workspace path
+            
+        Returns:
+            The resolved container working directory
+        """
         if self.workdir is not None:
             # Explicit workdir
             if self.workdir.startswith("/"):
                 # Absolute path
-                container_workdir = Path(self.workdir)
+                return Path(self.workdir)
             else:
                 # Relative path - resolve relative to workspace target
-                container_workdir = workspace_target / self.workdir
+                return workspace_target / self.workdir
         else:
             # Preserve relative position
             try:
                 rel_path = Path.cwd().relative_to(workspace_source)
-                container_workdir = workspace_target / rel_path
+                return workspace_target / rel_path
             except ValueError:
                 # Not in workspace, use workspace root
-                container_workdir = workspace_target
-        
-        return workspace_source, workspace_target, mount_options, container_workdir
+                return workspace_target
     
     def _find_project_root(self) -> Optional[Path]:
         """Find project root by searching for .ctenv.toml file."""
@@ -818,7 +827,7 @@ log_debug "Executing post-start commands"
 log_debug "No post-start commands to execute"
 """
 
-    script = f"""#!/bin/bash
+    script = f"""#!/bin/sh
 set -e
 
 # Logging setup
@@ -847,6 +856,13 @@ GROUP_ID="{config.group_id}"
 USER_HOME="{config.user_home}"
 ADD_SUDO={1 if config.sudo else 0}
 
+# Detect if we're using BusyBox utilities
+IS_BUSYBOX=0
+if command -v adduser >/dev/null 2>&1 && adduser --help 2>&1 | grep -q "BusyBox"; then
+    IS_BUSYBOX=1
+    log_debug "Detected BusyBox utilities"
+fi
+
 log_debug "Starting ctenv container setup"
 log_debug "User: $USER_NAME (UID: $USER_ID)"
 log_debug "Group: $GROUP_NAME (GID: $GROUP_ID)"
@@ -859,16 +875,24 @@ if getent group "$GROUP_ID" >/dev/null 2>&1; then
     log_debug "Using existing group: $GROUP_NAME"
 else
     log_debug "Creating group: $GROUP_NAME (GID: $GROUP_ID)"
-    groupadd -g "$GROUP_ID" "$GROUP_NAME"
+    if [ "$IS_BUSYBOX" = "1" ]; then
+        addgroup -g "$GROUP_ID" "$GROUP_NAME"
+    else
+        groupadd -g "$GROUP_ID" "$GROUP_NAME"
+    fi
 fi
 
 # Create user if needed
 log_debug "Checking if user $USER_NAME exists"
 if ! getent passwd "$USER_NAME" >/dev/null 2>&1; then
     log_debug "Creating user: $USER_NAME (UID: $USER_ID)"
-    useradd --no-create-home --home-dir "$USER_HOME" \\
-        --shell /bin/bash -u "$USER_ID" -g "$GROUP_ID" \\
-        -o -c "" "$USER_NAME"
+    if [ "$IS_BUSYBOX" = "1" ]; then
+        adduser -D -H -h "$USER_HOME" -s /bin/sh -u "$USER_ID" -G "$GROUP_NAME" "$USER_NAME"
+    else
+        useradd --no-create-home --home-dir "$USER_HOME" \\
+            --shell /bin/sh -u "$USER_ID" -g "$GROUP_ID" \\
+            -o -c "" "$USER_NAME"
+    fi
 else
     log_debug "User $USER_NAME already exists"
 fi
@@ -894,16 +918,26 @@ chown "$USER_NAME" "$HOME"
 # Setup sudo if requested
 if [ "$ADD_SUDO" = "1" ]; then
     log_debug "Setting up sudo access for $USER_NAME"
-    # Install sudo and configure passwordless access
-    if command -v apt-get >/dev/null 2>&1; then
-        log_info "Installing sudo..."
-        apt-get update -qq && apt-get install -y -qq sudo
-    elif command -v yum >/dev/null 2>&1; then
-        log_info "Installing sudo..."
-        yum install -y -q sudo
-    elif command -v apk >/dev/null 2>&1; then
-        log_info "Installing sudo..."
-        apk add --no-cache sudo
+    
+    # Check if sudo is already installed
+    if ! command -v sudo >/dev/null 2>&1; then
+        log_debug "sudo not found, installing..."
+        # Install sudo based on available package manager
+        if command -v apt-get >/dev/null 2>&1; then
+            log_info "Installing sudo..."
+            apt-get update -qq && apt-get install -y -qq sudo
+        elif command -v yum >/dev/null 2>&1; then
+            log_info "Installing sudo..."
+            yum install -y -q sudo
+        elif command -v apk >/dev/null 2>&1; then
+            log_info "Installing sudo..."
+            apk add --no-cache sudo
+        else
+            echo "ERROR: sudo not installed and no supported package manager found (apt-get, yum, or apk)" >&2
+            exit 1
+        fi
+    else
+        log_debug "sudo is already installed"
     fi
 
     # Add user to sudoers
@@ -1020,7 +1054,9 @@ class ContainerRunner:
         processed_volumes, chown_paths = ContainerRunner.parse_volumes(config.volumes)
 
         # Resolve workspace
-        workspace_source, workspace_target, mount_options, container_workdir = config.resolve_workspace()
+        workspace_source, workspace_target, mount_options = config.resolve_workspace()
+        # Resolve working directory based on workspace
+        container_workdir = config.resolve_workdir(workspace_source, workspace_target)
 
         # Volume mounts
         volume_args = [
@@ -1139,7 +1175,7 @@ class ContainerRunner:
             raise FileNotFoundError(f"gosu path {config.gosu_path} is not a file.")
 
         # Verify workspace exists
-        workspace_source, _, _, _ = config.resolve_workspace()
+        workspace_source, _, _ = config.resolve_workspace()
         logging.debug(f"Verifying workspace directory: {workspace_source}")
         if not workspace_source.exists():
             raise FileNotFoundError(f"Workspace directory {workspace_source} does not exist.")
@@ -1310,7 +1346,8 @@ def cmd_run(args, command):
         logging.debug(f"  Command: {config.command}")
         logging.debug(f"  User: {config.user_name} (UID: {config.user_id})")
         logging.debug(f"  Group: {config.group_name} (GID: {config.group_id})")
-        workspace_source, workspace_target, _, container_workdir = config.resolve_workspace()
+        workspace_source, workspace_target, _ = config.resolve_workspace()
+        container_workdir = config.resolve_workdir(workspace_source, workspace_target)
         logging.debug(f"  Workspace: {workspace_source} -> {workspace_target}")
         logging.debug(f"  Working directory: {container_workdir}")
         logging.debug(f"  Container name: {config.get_container_name()}")
