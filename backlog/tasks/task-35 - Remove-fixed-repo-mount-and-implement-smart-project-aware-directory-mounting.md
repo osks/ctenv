@@ -1,7 +1,7 @@
 ---
 id: task-35
 title: Remove fixed /repo mount and implement smart project-aware directory mounting
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-25'
 labels: []
