@@ -48,7 +48,7 @@ def run_ctenv(workspace_dir, args, cwd=None):
         "run",
         "--dry-run",
         "--gosu-path",
-        str(Path(__file__).parent.parent / "gosu-amd64"),
+        str(Path(__file__).parent.parent / "ctenv" / "binaries" / "gosu-amd64"),
     ] + args
 
     result = subprocess.run(
