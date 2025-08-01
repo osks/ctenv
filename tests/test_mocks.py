@@ -5,11 +5,22 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.ctenv import ContainerRunner, ContainerSpec, RuntimeContext, parse_container_config, build_entrypoint_script
+from ctenv.ctenv import (
+    ContainerRunner,
+    RuntimeContext,
+    parse_container_config,
+    build_entrypoint_script,
+)
 
 
-def create_test_runtime(user_name="testuser", user_id=1000, group_name="testgroup", 
-                       group_id=1000, user_home="/home/testuser", tty=False):
+def create_test_runtime(
+    user_name="testuser",
+    user_id=1000,
+    group_name="testgroup",
+    group_id=1000,
+    user_home="/home/testuser",
+    tty=False,
+):
     """Helper to create RuntimeContext for tests."""
     return RuntimeContext(
         user_name=user_name,
@@ -18,7 +29,7 @@ def create_test_runtime(user_name="testuser", user_id=1000, group_name="testgrou
         group_name=group_name,
         group_id=group_id,
         cwd=Path.cwd(),
-        tty=tty
+        tty=tty,
     )
 
 
@@ -28,9 +39,6 @@ def test_docker_command_examples():
 
     # Create config dict with test data
     from pathlib import Path
-    import os
-    import getpass
-    import grp
 
     config_dict = {
         "image": "ubuntu:latest",
@@ -58,9 +66,11 @@ def test_docker_command_examples():
         # Platform flag should only be present if explicitly specified
         assert "--platform=linux/amd64" not in args
         assert f"--name={container_spec.container_name}" in args
-        # With workspace=":", mounts current directory 
+        # With workspace=":", mounts current directory
         current_dir = str(Path.cwd())
-        assert f"--volume={current_dir}:" in " ".join(args)  # Path will be in volume mount
+        assert f"--volume={current_dir}:" in " ".join(
+            args
+        )  # Path will be in volume mount
         assert "--volume=/test/gosu:" in " ".join(args)  # Gosu mount
         assert "--workdir=" in " ".join(args)  # Working directory set
         assert "--entrypoint" in args
@@ -79,7 +89,7 @@ def test_docker_command_examples():
 @pytest.mark.unit
 def test_platform_support():
     """Test platform support in Docker commands."""
-    
+
     # Test with platform specified
     config_dict_with_platform = {
         "image": "ubuntu:latest",
@@ -107,8 +117,12 @@ def test_platform_support():
         # No platform specified
     }
 
-    container_spec_no_platform = parse_container_config(config_dict_no_platform, runtime)
-    args_no_platform = ContainerRunner.build_run_args(container_spec_no_platform, test_script_path)
+    container_spec_no_platform = parse_container_config(
+        config_dict_no_platform, runtime
+    )
+    args_no_platform = ContainerRunner.build_run_args(
+        container_spec_no_platform, test_script_path
+    )
 
     # Should not include platform flag when not specified
     platform_args = [arg for arg in args_no_platform if arg.startswith("--platform")]
@@ -175,12 +189,15 @@ def test_docker_command_scenarios():
                 "workspace": ":",
                 "gosu_path": "/usr/local/bin/gosu",
             }
-            
+
             runtime = create_test_runtime(
-                user_name="developer", user_id=1001, user_home="/home/developer",
-                group_name="developers", group_id=1001
+                user_name="developer",
+                user_id=1001,
+                user_home="/home/developer",
+                group_name="developers",
+                group_id=1001,
             )
-            
+
             container_spec = parse_container_config(config_dict, runtime)
             # Create a test script path for build_run_args
             test_script_path = "/tmp/test_entrypoint.sh"
@@ -275,7 +292,7 @@ def test_new_cli_options():
 @pytest.mark.unit
 def test_sudo_entrypoint_script():
     """Test entrypoint script generation with sudo support."""
-    
+
     config_dict_with_sudo = {
         "image": "ubuntu:latest",
         "command": "bash",
@@ -293,9 +310,11 @@ def test_sudo_entrypoint_script():
     }
 
     runtime = create_test_runtime()
-    
+
     container_spec_with_sudo = parse_container_config(config_dict_with_sudo, runtime)
-    container_spec_without_sudo = parse_container_config(config_dict_without_sudo, runtime)
+    container_spec_without_sudo = parse_container_config(
+        config_dict_without_sudo, runtime
+    )
 
     script_with_sudo = build_entrypoint_script(
         container_spec_with_sudo, verbose=False, quiet=False
@@ -335,7 +354,7 @@ def test_docker_command_construction(mock_run):
         "gosu_path": "/test/gosu",
         "container_name": "test-container",
     }
-    
+
     runtime = create_test_runtime()
     container_spec = parse_container_config(config_dict, runtime)
 
@@ -369,7 +388,7 @@ def test_docker_not_available(mock_run, mock_which):
         "workspace": ":",
         "gosu_path": "/test/gosu",
     }
-    
+
     runtime = create_test_runtime()
     container_spec = parse_container_config(config_dict, runtime)
 
@@ -398,7 +417,7 @@ def test_container_failure_handling(mock_run):
             "gosu_path": "/test/gosu",
             "container_name": "test-container",
         }
-        
+
         runtime = create_test_runtime()
         container_spec = parse_container_config(config_dict, runtime)
 
@@ -419,8 +438,10 @@ def test_tty_detection():
     }
 
     runtime_with_tty = create_test_runtime(tty=True)
-    container_spec_with_tty = parse_container_config(config_dict_with_tty, runtime_with_tty)
-    
+    container_spec_with_tty = parse_container_config(
+        config_dict_with_tty, runtime_with_tty
+    )
+
     test_script_path = "/tmp/test_entrypoint.sh"
     args = ContainerRunner.build_run_args(container_spec_with_tty, test_script_path)
     assert "-t" in args and "-i" in args
@@ -434,8 +455,10 @@ def test_tty_detection():
     }
 
     runtime_without_tty = create_test_runtime(tty=False)
-    container_spec_without_tty = parse_container_config(config_dict_without_tty, runtime_without_tty)
-    
+    container_spec_without_tty = parse_container_config(
+        config_dict_without_tty, runtime_without_tty
+    )
+
     args = ContainerRunner.build_run_args(container_spec_without_tty, test_script_path)
     assert "-t" not in args and "-i" not in args
 
@@ -493,7 +516,9 @@ def test_volume_chown_option():
             assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
-            _, chown_paths = ContainerRunner.process_volume_specs(container_spec.volumes)
+            _, chown_paths = ContainerRunner.process_volume_specs(
+                container_spec.volumes
+            )
             script_content = build_entrypoint_script(
                 container_spec, chown_paths, verbose=False, quiet=False
             )
@@ -539,7 +564,9 @@ def test_post_start_commands():
         container_spec = parse_container_config(config_dict, runtime)
 
         # Generate entrypoint script content directly
-        script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
+        script_content = build_entrypoint_script(
+            container_spec, verbose=False, quiet=False
+        )
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
         assert "POST_START_COMMANDS=" in script_content

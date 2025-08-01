@@ -300,7 +300,9 @@ network = "bridge"
 
         # Should merge builtin default with user default
         assert config["image"] == "ubuntu:latest"  # From builtin default
-        assert config["sudo"] is True  # From user default container (overrides defaults)
+        assert (
+            config["sudo"] is True
+        )  # From user default container (overrides defaults)
         assert config["network"] == "bridge"  # From user default container
 
 
@@ -468,14 +470,16 @@ env = ["NODE_ENV=development"]
         from ctenv.ctenv import CtenvConfig, config_resolve_relative_paths
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        
+
         # CLI overrides need to be resolved relative to current working directory
         cli_overrides = {
             "volumes": ["./data:/data", "./cache:/cache"],
             "env": ["DEBUG=true", "LOG_LEVEL=info"],
         }
-        resolved_cli_overrides = config_resolve_relative_paths(cli_overrides, Path.cwd())
-        
+        resolved_cli_overrides = config_resolve_relative_paths(
+            cli_overrides, Path.cwd()
+        )
+
         config = ctenv_config.get_container_config(
             container="dev",
             cli_overrides=resolved_cli_overrides,
@@ -529,11 +533,13 @@ image = "alpine:latest"
         from ctenv.ctenv import CtenvConfig, config_resolve_relative_paths
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
-        
+
         # CLI overrides need to be resolved relative to current working directory
         cli_overrides = {"volumes": ["./data:/data"], "env": ["TEST=true"]}
-        resolved_cli_overrides = config_resolve_relative_paths(cli_overrides, Path.cwd())
-        
+        resolved_cli_overrides = config_resolve_relative_paths(
+            cli_overrides, Path.cwd()
+        )
+
         config = ctenv_config.get_container_config(
             container="test",
             cli_overrides=resolved_cli_overrides,
@@ -552,7 +558,6 @@ image = "alpine:latest"
 def test_config_file_resolve_container_with_templating():
     """Test template variable substitution in container resolution."""
     import tempfile
-    import getpass
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
@@ -576,7 +581,7 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         # Check that templates are preserved in the raw config dict (not yet resolved)
         assert config["volumes"] == ["cache-${user_name}:/cache"]
         assert config["env"] == ["CACHE_DIR=/cache/${image|slug}"]
-        
+
         # Templates will be resolved later in parse_container_config() when creating ContainerSpec
 
 
@@ -767,7 +772,7 @@ gosu_path = "{fake_gosu}"
         ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
         config = ctenv_config.get_container_config(container="test")
 
-        # Check that gosu_path is in the raw config dict  
+        # Check that gosu_path is in the raw config dict
         assert config["gosu_path"] == str(fake_gosu)
 
         # Test CLI override
@@ -798,11 +803,11 @@ def test_volume_options_preserved():
 
     for spec_str, expected_host, expected_container, expected_options in test_cases:
         vol_spec = VolumeSpec.parse_as_volume(spec_str)
-        
+
         assert vol_spec.host_path == expected_host
         assert vol_spec.container_path == expected_container
         assert vol_spec.options == expected_options
-        
+
         # Test that it can be converted back to string
         reconstructed = vol_spec.to_string()
         # Note: to_string() might reorder or normalize, so we just check key components
@@ -840,8 +845,9 @@ def test_docker_args_volume_options():
         from ctenv.ctenv import parse_container_config, RuntimeContext
         import os
         import getpass
-        
+
         import grp
+
         runtime = RuntimeContext(
             user_name=getpass.getuser(),
             user_id=os.getuid(),
@@ -849,12 +855,10 @@ def test_docker_args_volume_options():
             group_name=grp.getgrgid(os.getgid()).gr_name,
             group_id=os.getgid(),
             cwd=Path.cwd(),
-            tty=False
+            tty=False,
         )
-        
-        resolved_config = parse_container_config(
-            config, runtime
-        )
+
+        resolved_config = parse_container_config(config, runtime)
 
         # Create temporary entrypoint script
         script_path = tmpdir / "entrypoint.sh"
@@ -873,11 +877,15 @@ def test_docker_args_volume_options():
 
         # Verify volume options are properly merged with :z
         volume_args_str = " ".join(volume_args)
-        
+
         # Check that :z is properly added to existing options
-        assert "--volume=./src:/app/src:ro,z" in volume_args_str  # :ro preserved, :z added
+        assert (
+            "--volume=./src:/app/src:ro,z" in volume_args_str
+        )  # :ro preserved, :z added
         assert "--volume=./data:/data:z" in volume_args_str  # only :z added
-        assert "--volume=./cache:/cache:rw,z" in volume_args_str  # :rw preserved, :z added
+        assert (
+            "--volume=./cache:/cache:rw,z" in volume_args_str
+        )  # :rw preserved, :z added
 
 
 @pytest.mark.unit

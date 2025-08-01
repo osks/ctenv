@@ -3,7 +3,11 @@
 import pytest
 import tempfile
 
-from ctenv.ctenv import build_entrypoint_script, ContainerSpec, RuntimeContext, parse_container_config, ContainerRunner
+from ctenv.ctenv import (
+    build_entrypoint_script,
+    RuntimeContext,
+    parse_container_config,
+)
 
 
 @pytest.mark.unit
@@ -31,7 +35,7 @@ def test_post_start_commands_shell_functionality():
         import getpass
         import grp
         from pathlib import Path
-        
+
         runtime = RuntimeContext(
             user_name=getpass.getuser(),
             user_id=os.getuid(),
@@ -39,9 +43,9 @@ def test_post_start_commands_shell_functionality():
             group_name=grp.getgrgid(os.getgid()).gr_name,
             group_id=os.getgid(),
             cwd=Path.cwd(),
-            tty=False
+            tty=False,
         )
-        
+
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
@@ -76,7 +80,7 @@ def test_volume_chown_path_injection_prevention():
         import getpass
         import grp
         from pathlib import Path
-        
+
         runtime = RuntimeContext(
             user_name=getpass.getuser(),
             user_id=os.getuid(),
@@ -84,9 +88,9 @@ def test_volume_chown_path_injection_prevention():
             group_name=grp.getgrgid(os.getgid()).gr_name,
             group_id=os.getgid(),
             cwd=Path.cwd(),
-            tty=False
+            tty=False,
         )
-        
+
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
@@ -144,7 +148,7 @@ def test_complex_shell_scenarios():
         import getpass
         import grp
         from pathlib import Path
-        
+
         runtime = RuntimeContext(
             user_name=getpass.getuser(),
             user_id=os.getuid(),
@@ -152,9 +156,9 @@ def test_complex_shell_scenarios():
             group_name=grp.getgrgid(os.getgid()).gr_name,
             group_id=os.getgid(),
             cwd=Path.cwd(),
-            tty=False
+            tty=False,
         )
-        
+
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
@@ -188,7 +192,7 @@ def test_safe_commands_work_normally():
         import getpass
         import grp
         from pathlib import Path
-        
+
         runtime = RuntimeContext(
             user_name=getpass.getuser(),
             user_id=os.getuid(),
@@ -196,9 +200,9 @@ def test_safe_commands_work_normally():
             group_name=grp.getgrgid(os.getgid()).gr_name,
             group_id=os.getgid(),
             cwd=Path.cwd(),
-            tty=False
+            tty=False,
         )
-        
+
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
@@ -215,7 +219,7 @@ def test_safe_commands_work_normally():
 def test_parse_volumes_with_malicious_paths():
     """Test that volume parsing handles malicious paths safely."""
     from ctenv.ctenv import VolumeSpec
-    
+
     # Test various malicious volume specifications
     test_cases = [
         # (volume_spec, should_raise)
