@@ -88,7 +88,7 @@ class TestWorkspaceAutoDetection:
         )
 
         assert result.returncode == 0
-        # When no project is detected, mounts cwd (src directory) to itself  
+        # When no project is detected, mounts cwd (src directory) to itself
         assert ":z" in result.stdout and "src:" in result.stdout
         assert "--workdir=" in result.stdout and "src" in result.stdout
 

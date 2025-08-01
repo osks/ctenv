@@ -138,7 +138,7 @@ class VolumeSpec:
                 # HOST:CONTAINER format - preserve empty container_path if specified
                 options_str = ""
             case [host_path, container_path, options_str]:
-                # HOST:CONTAINER:options format - preserve empty container_path if specified  
+                # HOST:CONTAINER:options format - preserve empty container_path if specified
                 pass  # options_str is already set
             case _:
                 # Fallback for malformed cases (too many colons, etc.)
@@ -577,7 +577,9 @@ class CtenvConfig:
         return cls(defaults=defaults, containers=containers)
 
 
-def _substitute_variables_in_dict(config_dict: Dict[str, Any], runtime: RuntimeContext) -> Dict[str, Any]:
+def _substitute_variables_in_dict(
+    config_dict: Dict[str, Any], runtime: RuntimeContext
+) -> Dict[str, Any]:
     """Substitute template variables in all string fields."""
     result = config_dict.copy()
 
@@ -585,7 +587,7 @@ def _substitute_variables_in_dict(config_dict: Dict[str, Any], runtime: RuntimeC
     variables = {}
     if result.get("image"):
         variables["image"] = result["image"]
-    
+
     # Add runtime variables
     variables["user_home"] = runtime.user_home
     variables["user_name"] = runtime.user_name
@@ -644,25 +646,27 @@ def _expand_tilde_in_volumespec(
 def _resolve_workspace(workspace_str: str, runtime: RuntimeContext) -> VolumeSpec:
     """Resolve workspace specification to VolumeSpec with project root expansion."""
     spec = VolumeSpec.parse_as_workspace(workspace_str)
-    
+
     # Fill in empty host path with project root
     if not spec.host_path:
         project_root = find_project_root(runtime.cwd) or runtime.cwd
         spec.host_path = str(project_root)
-        
+
         # If container path is also empty, use the same as host
         if not spec.container_path:
             spec.container_path = spec.host_path
-    
+
     return spec
 
 
-def _resolve_workdir(explicit_workdir: str | None, workspace_spec: VolumeSpec, runtime: RuntimeContext) -> str:
+def _resolve_workdir(
+    explicit_workdir: str | None, workspace_spec: VolumeSpec, runtime: RuntimeContext
+) -> str:
     """Resolve working directory, preserving relative position within workspace."""
     if explicit_workdir:
         # Explicit workdir specified - use as is
         return explicit_workdir
-    
+
     # Calculate relative position within workspace and translate
     try:
         rel_path = os.path.relpath(str(runtime.cwd), workspace_spec.host_path)
@@ -671,7 +675,9 @@ def _resolve_workdir(explicit_workdir: str | None, workspace_spec: VolumeSpec, r
             return workspace_spec.container_path
         else:
             # Inside workspace - preserve relative position
-            return os.path.join(workspace_spec.container_path, rel_path).replace("\\", "/")
+            return os.path.join(workspace_spec.container_path, rel_path).replace(
+                "\\", "/"
+            )
     except (ValueError, OSError):
         # Fallback if path calculation fails
         return workspace_spec.container_path
@@ -777,9 +783,7 @@ def parse_container_config(
 
     # Resolve gosu_path with tilde expansion
     gosu_path_raw = substituted_dict.get("gosu_path") or ""
-    gosu_path = _resolve_gosu_path(
-        expand_tilde_in_path(gosu_path_raw, runtime)
-    )
+    gosu_path = _resolve_gosu_path(expand_tilde_in_path(gosu_path_raw, runtime))
 
     # Generate container name if not specified
     container_name = substituted_dict.get("container_name")
