@@ -1,7 +1,7 @@
 ---
 id: task-33
 title: Add default_container configuration support
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-23'
 labels: []

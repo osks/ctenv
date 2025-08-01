@@ -1,6 +1,16 @@
-# Task 37: Dict-based Config System Refactoring
+---
+id: task-37
+title: Dict-based config system refactoring
+status: Done
+assignee: []
+created_date: '2025-07-31'
+updated_date: '2025-08-01'
+labels: []
+dependencies: []
+priority: high
+---
 
-## Overview
+## Description
 
 Refactor the configuration system to use raw dicts throughout the loading/merging process, with ContainerSpec representing fully resolved, ready-to-run specifications (replacing the current ContainerConfig).
 
