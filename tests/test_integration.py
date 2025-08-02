@@ -9,7 +9,7 @@ def test_basic_container_execution(test_images, temp_workspace):
     """Test basic container execution with ubuntu."""
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "run",
@@ -30,7 +30,7 @@ def test_working_directory_is_mounted_path(test_images, temp_workspace):
     """Test that working directory inside container matches workspace mount."""
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "run",
@@ -43,8 +43,9 @@ def test_working_directory_is_mounted_path(test_images, temp_workspace):
     )
 
     assert result.returncode == 0
-    # With new workspace system, container working directory matches host path
-    expected_path = os.path.realpath(temp_workspace)
+    # With workspace "auto", the working directory matches the host directory path
+    # (resolve symlinks for macOS compatibility where /var -> /private/var)
+    expected_path = str(Path(temp_workspace).resolve())
     assert result.stdout.strip() == expected_path
 
 
@@ -56,7 +57,7 @@ def test_file_permission_preservation(test_images, temp_workspace):
     # Create file in container
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "run",
@@ -97,7 +98,7 @@ def test_environment_variables_passed(test_images, temp_workspace):
     """Test that user environment is correctly set up."""
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "run",
@@ -119,7 +120,7 @@ def test_error_handling_invalid_image(temp_workspace):
     """Test error handling for invalid image."""
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "run",
@@ -151,7 +152,7 @@ def test_volume_mounting(test_images, temp_workspace):
     # Access the file from within the container
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "run",
@@ -173,7 +174,7 @@ def test_config_command(temp_workspace):
     """Test that config command runs without errors."""
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "config",
@@ -194,7 +195,7 @@ def test_config_show_command(temp_workspace):
     """Test that config show command runs without errors."""
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "config",
@@ -238,7 +239,7 @@ image = "alpine:latest"
 
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "config",
@@ -275,7 +276,7 @@ env = ["DEBUG=1"]
 
     result = subprocess.run(
         [
-            "python",
+            "python3",
             "-m",
             "ctenv",
             "config",
@@ -291,3 +292,69 @@ env = ["DEBUG=1"]
     assert "bash" in result.stdout
     assert "node:18" in result.stdout  # Should show project config default
     assert "test_project" in result.stdout  # Should show project config container
+
+
+@pytest.mark.integration
+def test_post_start_commands_execution(test_images, temp_workspace):
+    """Test that post-start commands work correctly in shell environments."""
+    # Create a test file to verify post-start command execution
+    test_file = Path(temp_workspace) / "post_start_test.txt"
+    
+    result = subprocess.run(
+        [
+            "python3",
+            "-m",
+            "ctenv",
+            "run",
+            "--post-start-command",
+            "echo 'post-start executed' > post_start_test.txt",
+            "--",
+            "cat",
+            "post_start_test.txt",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=temp_workspace,
+    )
+    
+    # This should reproduce the "read: Illegal option -d" error
+    if result.returncode != 0:
+        print(f"STDERR: {result.stderr}")
+        print(f"STDOUT: {result.stdout}")
+    
+    assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
+    assert "post-start executed" in result.stdout
+
+
+@pytest.mark.integration 
+def test_multiple_post_start_commands(test_images, temp_workspace):
+    """Test multiple post-start commands to stress test the parsing."""
+    result = subprocess.run(
+        [
+            "python3",
+            "-m", 
+            "ctenv",
+            "run",
+            "--post-start-command",
+            "echo 'first command'",
+            "--post-start-command", 
+            "echo 'second command'",
+            "--post-start-command",
+            "touch /tmp/marker_file",
+            "--",
+            "sh",
+            "-c",
+            "echo 'Commands completed' && ls -la /tmp/marker_file",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=temp_workspace,
+    )
+    
+    if result.returncode != 0:
+        print(f"STDERR: {result.stderr}")
+        print(f"STDOUT: {result.stdout}")
+    
+    assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
+    assert "Commands completed" in result.stdout
+    assert "/tmp/marker_file" in result.stdout

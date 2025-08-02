@@ -43,7 +43,8 @@ def run_ctenv(workspace_dir, args, cwd=None):
 
     cmd = [
         "python3",
-        str(Path(__file__).parent.parent / "ctenv" / "ctenv.py"),
+        "-m",
+        "ctenv",
         "run",
         "-v",
         "--dry-run",

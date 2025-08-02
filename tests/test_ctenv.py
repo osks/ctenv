@@ -35,8 +35,10 @@ def test_config_user_detection():
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config_dict = ctenv_config.get_container_config(
-            cli_overrides={"image": "ubuntu:latest"}
+        from ctenv.ctenv import ContainerConfig
+
+        config_dict = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict({"image": "ubuntu:latest"})
         )
 
         # Create runtime context and parse to ContainerSpec
@@ -71,18 +73,24 @@ def test_config_with_mock_runtime():
             group_id=1000,
             cwd=Path.cwd(),
             tty=False,
+            project_root=Path.cwd(),
         )
 
-        # Create config dict with basic settings
-        config_dict = {
+        # Create config dict with basic settings to override defaults
+        config_overrides = {
             "image": "ubuntu:latest",
             "command": "bash",
-            "workspace": "auto",
             "gosu_path": "/test/gosu",
         }
 
-        # Parse to ContainerSpec
-        resolved_spec = parse_container_config(config_dict, mock_runtime)
+        # Use CtenvConfig to get complete configuration with defaults
+        from ctenv.ctenv import CtenvConfig, ContainerConfig
+
+        ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
+        config = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(config_overrides)
+        )
+        resolved_spec = parse_container_config(config, mock_runtime)
 
         assert resolved_spec.user_name == "testuser"
         assert resolved_spec.user_id == 1000
@@ -101,7 +109,12 @@ def test_container_name_generation():
     from pathlib import Path
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+        from ctenv.ctenv import (
+            CtenvConfig,
+            RuntimeContext,
+            parse_container_config,
+            ContainerConfig,
+        )
 
         # Create mock runtime
         mock_runtime = RuntimeContext(
@@ -112,17 +125,24 @@ def test_container_name_generation():
             group_id=1000,
             cwd=Path.cwd(),
             tty=False,
+            project_root=Path.cwd(),
         )
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config_dict1 = ctenv_config.get_container_config(
-            cli_overrides={"workspace": "/path/to/project", "image": "ubuntu:latest"}
+        config_dict1 = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(
+                {"workspace": "/path/to/project", "image": "ubuntu:latest"}
+            )
         )
-        config_dict2 = ctenv_config.get_container_config(
-            cli_overrides={"workspace": "/path/to/project", "image": "ubuntu:latest"}
+        config_dict2 = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(
+                {"workspace": "/path/to/project", "image": "node:18"}
+            )
         )
-        config_dict3 = ctenv_config.get_container_config(
-            cli_overrides={"workspace": "/different/path", "image": "ubuntu:latest"}
+        config_dict3 = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(
+                {"workspace": "/different/path", "image": "alpine:latest"}
+            )
         )
 
         # Parse to ContainerSpecs
@@ -130,10 +150,13 @@ def test_container_name_generation():
         spec2 = parse_container_config(config_dict2, mock_runtime)
         spec3 = parse_container_config(config_dict3, mock_runtime)
 
-    assert spec1.container_name == spec2.container_name  # Consistent naming
-    assert (
-        spec1.container_name != spec3.container_name
-    )  # Different paths produce different names
+    # Container names are now based on project_root (with variable substitution)
+    expected_name = (
+        f"ctenv-{str(mock_runtime.project_root).replace('/', '-').replace(':', '-')}"
+    )
+    assert spec1.container_name == expected_name
+    assert spec2.container_name == expected_name  # Same project_root
+    assert spec3.container_name == expected_name  # Same project_root
     assert spec1.container_name.startswith("ctenv-")
 
 
@@ -151,25 +174,36 @@ def test_entrypoint_script_generation():
         group_id=1000,
         cwd=Path.cwd(),
         tty=False,
+        project_root=Path.cwd(),
     )
 
-    # Create config dict
-    config_dict = {
+    # Create config with overrides
+    config_overrides = {
         "image": "ubuntu:latest",
         "command": "bash",
         "workspace": "/test/workspace",
+        "workdir": "auto",
+        "tty": "auto",
         "gosu_path": "/test/gosu",
     }
 
+    # Use CtenvConfig to get complete configuration
+    from ctenv.ctenv import CtenvConfig, ContainerConfig
+
+    ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
+    config = ctenv_config.get_default(
+        overrides=ContainerConfig.from_dict(config_overrides)
+    )
+
     # Parse to ContainerSpec
-    spec = parse_container_config(config_dict, mock_runtime)
+    spec = parse_container_config(config, mock_runtime)
 
     script = spec.build_entrypoint_script(verbose=False, quiet=False)
 
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
     assert 'USER_ID="1000"' in script
-    assert 'exec "$GOSU_MOUNT" "$USER_NAME" $COMMAND' in script
+    assert 'exec "$GOSU_MOUNT" "$USER_NAME" sh -c "$COMMAND"' in script
     assert 'export PS1="[ctenv] $ "' in script
 
 
@@ -189,11 +223,14 @@ def test_entrypoint_script_examples():
                 group_id=20,
                 cwd=Path.cwd(),
                 tty=False,
+                project_root=Path.cwd(),
             ),
             "config_dict": {
                 "image": "ubuntu:latest",
                 "command": "bash",
                 "workspace": "/test/workspace",
+                "workdir": "auto",
+                "tty": "auto",
                 "gosu_path": "/test/gosu",
             },
         },
@@ -207,11 +244,14 @@ def test_entrypoint_script_examples():
                 group_id=1000,
                 cwd=Path.cwd(),
                 tty=False,
+                project_root=Path.cwd(),
             ),
             "config_dict": {
                 "image": "ubuntu:latest",
                 "command": "python3 main.py --verbose",
                 "workspace": "/test/workspace",
+                "workdir": "auto",
+                "tty": "auto",
                 "gosu_path": "/test/gosu",
             },
         },
@@ -222,8 +262,14 @@ def test_entrypoint_script_examples():
     print(f"{'=' * 50}")
 
     for scenario in scenarios:
-        # Parse to ContainerSpec
-        spec = parse_container_config(scenario["config_dict"], scenario["runtime"])
+        # Parse to ContainerSpec using CtenvConfig for complete configuration
+        from ctenv.ctenv import CtenvConfig, ContainerConfig
+
+        ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
+        config = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(scenario["config_dict"])
+        )
+        spec = parse_container_config(config, scenario["runtime"])
         script = spec.build_entrypoint_script(verbose=False, quiet=False)
 
         print(f"\n{scenario['name']}:")
@@ -310,17 +356,19 @@ def test_post_start_cmd_cli_option():
 
     # Test that CLI post-start extra commands are included in the config
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig
+        from ctenv.ctenv import CtenvConfig, ContainerConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config_dict = ctenv_config.get_container_config(
-            cli_overrides={"post_start_commands": ["npm install", "npm run build"]}
+        config_dict = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(
+                {"post_start_commands": ["npm install", "npm run build"]}
+            )
         )
 
     # Should contain the CLI post-start extra commands
-    assert "npm install" in config_dict["post_start_commands"]
-    assert "npm run build" in config_dict["post_start_commands"]
+    assert "npm install" in config_dict.post_start_commands
+    assert "npm run build" in config_dict.post_start_commands
 
 
 @pytest.mark.unit
@@ -339,22 +387,24 @@ post_start_commands = ["echo config-cmd"]
 
     try:
         # Test that both config file and CLI commands are included
-        from ctenv.ctenv import CtenvConfig
+        from ctenv.ctenv import CtenvConfig, ContainerConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
-        config_dict = ctenv_config.get_container_config(
+        config_dict = ctenv_config.get_container(
             container="test",
-            cli_overrides={"post_start_commands": ["echo cli-cmd1", "echo cli-cmd2"]},
+            overrides=ContainerConfig.from_dict(
+                {"post_start_commands": ["echo cli-cmd1", "echo cli-cmd2"]}
+            ),
         )
 
         # Should contain both config file and CLI commands
-        assert "echo config-cmd" in config_dict["post_start_commands"]
-        assert "echo cli-cmd1" in config_dict["post_start_commands"]
-        assert "echo cli-cmd2" in config_dict["post_start_commands"]
+        assert "echo config-cmd" in config_dict.post_start_commands
+        assert "echo cli-cmd1" in config_dict.post_start_commands
+        assert "echo cli-cmd2" in config_dict.post_start_commands
 
         # Config file command should come first, then CLI commands
-        commands = list(config_dict["post_start_commands"])
+        commands = list(config_dict.post_start_commands)
         assert commands.index("echo config-cmd") < commands.index("echo cli-cmd1")
 
     finally:
@@ -368,15 +418,22 @@ def test_post_start_cmd_in_generated_script():
     """Test that post-start extra commands appear in generated script."""
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+        from ctenv.ctenv import (
+            CtenvConfig,
+            RuntimeContext,
+            parse_container_config,
+            ContainerConfig,
+        )
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(start_dir=Path(tmpdir))  # Empty directory
-        config_dict = ctenv_config.get_container_config(
-            cli_overrides={
-                "post_start_commands": ["npm install", "npm run test"],
-                "image": "ubuntu:latest",
-            }
+        config_dict = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(
+                {
+                    "post_start_commands": ["npm install", "npm run test"],
+                    "image": "ubuntu:latest",
+                }
+            )
         )
 
         # Create runtime context and parse to ContainerSpec
@@ -467,7 +524,12 @@ def test_cli_volume_template_expansion():
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+            from ctenv.ctenv import (
+                CtenvConfig,
+                RuntimeContext,
+                parse_container_config,
+                ContainerConfig,
+            )
 
             # Create mock runtime context
             mock_runtime = RuntimeContext(
@@ -478,6 +540,7 @@ def test_cli_volume_template_expansion():
                 group_id=1000,
                 cwd=Path.cwd(),
                 tty=False,
+                project_root=Path.cwd(),
             )
 
             # Test CLI volume processing directly
@@ -486,12 +549,14 @@ def test_cli_volume_template_expansion():
             # CLI volumes with tilde and template variables
             cli_volumes = ["~/.docker", "${user_home}/.cache::ro"]
 
-            config_dict = ctenv_config.get_container_config(
-                cli_overrides={"image": "ubuntu:latest", "volumes": cli_volumes}
+            config_dict = ctenv_config.get_default(
+                overrides=ContainerConfig.from_dict(
+                    {"image": "ubuntu:latest", "volumes": cli_volumes}
+                )
             )
 
             # Check that raw volumes are preserved in config dict
-            assert config_dict["volumes"] == cli_volumes
+            assert config_dict.volumes == cli_volumes
 
             # Parse and resolve to ContainerSpec
             spec = parse_container_config(config_dict, mock_runtime)
@@ -533,7 +598,12 @@ volumes = ["~/.docker", "~/config:/container/config"]
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+            from ctenv.ctenv import (
+                CtenvConfig,
+                RuntimeContext,
+                parse_container_config,
+                ContainerConfig,
+            )
 
             # Create mock runtime context
             mock_runtime = RuntimeContext(
@@ -544,12 +614,15 @@ volumes = ["~/.docker", "~/config:/container/config"]
                 group_id=1000,
                 cwd=Path.cwd(),
                 tty=False,
+                project_root=Path.cwd(),
             )
 
             ctenv_config = CtenvConfig.load(explicit_config_files=[Path(config_file)])
-            config_dict = ctenv_config.get_container_config(
+            config_dict = ctenv_config.get_container(
                 container="test",
-                cli_overrides={"image": "ubuntu:latest"},  # Provide required image
+                overrides=ContainerConfig.from_dict(
+                    {"image": "ubuntu:latest"}
+                ),  # Provide required image
             )
 
             # Check that raw volumes are preserved in config dict before parsing
@@ -559,7 +632,7 @@ volumes = ["~/.docker", "~/config:/container/config"]
                 "~/.docker:~/.docker",  # Smart defaulting applied
                 "~/config:/container/config",
             ]
-            assert config_dict["volumes"] == expected_processed
+            assert config_dict.volumes == expected_processed
 
             # Parse and resolve to ContainerSpec with runtime context
             spec = parse_container_config(config_dict, mock_runtime)
