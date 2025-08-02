@@ -6,6 +6,8 @@ import tempfile
 from ctenv.ctenv import (
     RuntimeContext,
     parse_container_config,
+    CtenvConfig,
+    ContainerConfig,
 )
 
 
@@ -43,10 +45,15 @@ def test_post_start_commands_shell_functionality():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
+            project_root=Path.cwd(),
         )
 
-        # Parse config to get ContainerSpec
-        container_spec = parse_container_config(config_dict, runtime)
+        # Parse config to get ContainerSpec using complete configuration
+        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        config = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(config_dict)
+        )
+        container_spec = parse_container_config(config, runtime)
 
         script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
@@ -88,10 +95,15 @@ def test_volume_chown_path_injection_prevention():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
+            project_root=Path.cwd(),
         )
 
-        # Parse config to get ContainerSpec
-        container_spec = parse_container_config(config_dict, runtime)
+        # Parse config to get ContainerSpec using complete configuration
+        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        config = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(config_dict)
+        )
+        container_spec = parse_container_config(config, runtime)
 
         # Malicious paths with injection attempts
         malicious_paths = [
@@ -157,10 +169,15 @@ def test_complex_shell_scenarios():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
+            project_root=Path.cwd(),
         )
 
-        # Parse config to get ContainerSpec
-        container_spec = parse_container_config(config_dict, runtime)
+        # Parse config to get ContainerSpec using complete configuration
+        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        config = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(config_dict)
+        )
+        container_spec = parse_container_config(config, runtime)
 
         script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
@@ -201,10 +218,15 @@ def test_safe_commands_work_normally():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
+            project_root=Path.cwd(),
         )
 
-        # Parse config to get ContainerSpec
-        container_spec = parse_container_config(config_dict, runtime)
+        # Parse config to get ContainerSpec using complete configuration
+        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        config = ctenv_config.get_default(
+            overrides=ContainerConfig.from_dict(config_dict)
+        )
+        container_spec = parse_container_config(config, runtime)
 
         script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 

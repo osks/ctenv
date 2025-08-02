@@ -52,12 +52,36 @@ except ImportError:
     # For python < 3.11
     import tomli as tomllib
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from dataclasses import dataclass, field, asdict, replace, fields
+from typing import Optional, Dict, Any, List, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing_extensions import TypeAlias
+
+
+# Sentinel object for "not configured" values
+class _NotSetType:
+    """Sentinel type for not configured values."""
+
+    def __repr__(self) -> str:
+        return "NOTSET"
+
+    def __deepcopy__(self, memo):
+        """Always return the same singleton instance."""
+        return self
+
+
+NOTSET = _NotSetType()
+
+# Type alias for clean type hints
+if TYPE_CHECKING:
+    NotSetType: TypeAlias = _NotSetType
+else:
+    NotSetType = _NotSetType
 
 
 # Volume specification: (host_path, container_path, options)
-@dataclass
+@dataclass(kw_only=True)
 class RuntimeContext:
     """Runtime context for container execution."""
 
@@ -68,20 +92,23 @@ class RuntimeContext:
     group_id: int
     cwd: Path
     tty: bool
+    project_root: Path
 
     @classmethod
     def current(cls) -> "RuntimeContext":
         """Get current runtime context."""
         user_info = pwd.getpwuid(os.getuid())
         group_info = grp.getgrgid(os.getgid())
+        current_cwd = Path.cwd()
         return cls(
             user_name=user_info.pw_name,
             user_id=user_info.pw_uid,
             user_home=user_info.pw_dir,
             group_name=group_info.gr_name,
             group_id=group_info.gr_gid,
-            cwd=Path.cwd(),
+            cwd=current_cwd,
             tty=sys.stdin.isatty(),
+            project_root=(find_project_root(current_cwd) or current_cwd).resolve(),
         )
 
 
@@ -172,54 +199,23 @@ class VolumeSpec:
         return workspace_spec
 
 
-def config_resolve_relative_paths(
-    config_dict: Dict[str, Any], base_dir: Path
-) -> Dict[str, Any]:
-    """
-    Resolve relative paths in container configuration dictionary.
+def resolve_relative_path(path: str, base_dir: Path) -> str:
+    """Resolve relative paths (./, ../, . or ..) relative to base_dir."""
+    if path in (".", "..") or path.startswith(("./", "../")):
+        return str((base_dir / path).resolve())
+    return path
 
-    Handles:
-    - Relative paths: ./ and ../ paths relative to base_dir
 
-    Args:
-        config_dict: Container configuration dictionary
-        base_dir: Base directory for resolving relative paths
+def resolve_relative_volume_spec(vol_spec: str, base_dir: Path) -> str:
+    """Resolve relative paths in volume specification relative to base_dir."""
+    spec = VolumeSpec.parse(vol_spec)  # Use base parse for both
 
-    Returns:
-        New dict with paths resolved
-    """
-    result = config_dict.copy()
+    # Only resolve relative paths in host path if it's not empty
+    if spec.host_path:
+        spec.host_path = resolve_relative_path(spec.host_path, base_dir)
+    # Container paths are not resolved (they're paths inside the container)
 
-    def resolve_relative(path: str) -> str:
-        """Resolve relative paths (./, ../, . or ..)"""
-        if path in (".", "..") or path.startswith(("./", "../")):
-            return str((base_dir / path).resolve())
-        return path
-
-    # Process volume-like strings (workspace and volumes)
-    def process_volume_spec(vol_spec: str) -> str:
-        spec = VolumeSpec.parse(vol_spec)  # Use base parse for both
-
-        # Only resolve relative paths in host path if it's not empty
-        if spec.host_path:
-            spec.host_path = resolve_relative(spec.host_path)
-        # Container paths are not resolved (they're paths inside the container)
-
-        return spec.to_string()
-
-    # Process workspace
-    if result.get("workspace"):
-        result["workspace"] = process_volume_spec(result["workspace"])
-
-    # Process volumes
-    if result.get("volumes"):
-        result["volumes"] = [process_volume_spec(vol) for vol in result["volumes"]]
-
-    # Process gosu_path
-    if result.get("gosu_path"):
-        result["gosu_path"] = resolve_relative(result["gosu_path"])
-
-    return result
+    return spec.to_string()
 
 
 def find_project_root(start_dir: Path) -> Optional[Path]:
@@ -289,31 +285,24 @@ def is_installed_package():
         return False
 
 
-def get_builtin_defaults() -> Dict[str, Any]:
-    """Get default configuration values as a dict.
+def convert_notset_strings(container_config_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert "NOTSET" strings to NOTSET sentinel in container configuration.
 
-    Note: User identity and cwd are now runtime context, not configuration.
+    Processes a container configuration dictionary, converting any top-level
+    values that are exactly "NOTSET" to the NOTSET sentinel object.
+
+    "NOTSET" strings in nested structures (lists, nested dicts) are left
+    unchanged and will cause validation errors later - this is intended
+    behavior as nested "NOTSET" usage is invalid.
+
+    Args:
+        container_config_dict: Container configuration dictionary from CLI args or TOML
+
+    Returns:
+        Dictionary with top-level "NOTSET" strings converted to NOTSET sentinel
     """
     return {
-        # Required paths
-        "workspace": ":",  # Default to auto-detection (empty host:empty container)
-        "workdir": None,  # Default to None (preserve relative position)
-        "gosu_path": None,  # Will be resolved later with platform consideration
-        # Container settings
-        "image": "ubuntu:latest",
-        "command": "bash",
-        "container_name": None,
-        "env": [],
-        "volumes": [],
-        "post_start_commands": [],
-        "ulimits": None,
-        "sudo": False,
-        "network": None,
-        "tty": None,  # Will be resolved from stdin at runtime
-        "platform": None,
-        "run_args": [],
-        # Metadata fields for resolution context
-        "_config_file_path": None,  # No config file for defaults
+        k: (NOTSET if v == "NOTSET" else v) for k, v in container_config_dict.items()
     }
 
 
@@ -356,22 +345,146 @@ def find_project_config(start_dir: Path) -> Optional[Path]:
     return None
 
 
+@dataclass(kw_only=True)
+class ContainerConfig:
+    """Parsed configuration object with NOTSET sentinel support.
+
+    This represents configuration AFTER parsing from TOML/CLI but BEFORE
+    final resolution. Raw TOML cannot contain NOTSET objects, but this
+    parsed representation can.
+
+    All fields default to NOTSET (meaning "not configured") to distinguish
+    between explicit configuration and missing values. This allows
+    ContainerConfig to represent partial configurations (e.g., from CLI
+    overrides or individual config files) that can be merged together.
+
+    Note: NOTSET fields do not indicate what is required by downstream
+    consumers - they simply mean "not configured in this source".
+    """
+
+    # Container settings
+    image: Union[str, NotSetType] = NOTSET
+    command: Union[str, NotSetType] = NOTSET
+    workspace: Union[str, NotSetType] = NOTSET
+    workdir: Union[str, NotSetType] = NOTSET
+    gosu_path: Union[str, NotSetType] = NOTSET
+    container_name: Union[str, NotSetType] = NOTSET
+    tty: Union[str, bool, NotSetType] = NOTSET
+    sudo: Union[bool, NotSetType] = NOTSET
+
+    # Network and platform settings
+    network: Union[str, NotSetType] = NOTSET
+    platform: Union[str, NotSetType] = NOTSET
+    ulimits: Union[Dict[str, Any], NotSetType] = NOTSET
+
+    # Lists (use NOTSET to distinguish from empty list)
+    env: Union[List[str], NotSetType] = NOTSET
+    volumes: Union[List[str], NotSetType] = NOTSET
+    post_start_commands: Union[List[str], NotSetType] = NOTSET
+    run_args: Union[List[str], NotSetType] = NOTSET
+
+    # Metadata fields for resolution context
+    _config_file_path: Union[str, NotSetType] = NOTSET
+
+    def to_dict(self, include_notset: bool = False) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Args:
+            include_notset: If True, include NOTSET values. If False, filter out NOTSET and None values.
+                          Default False for clean external representation.
+        """
+        result = asdict(self)
+
+        if not include_notset:
+            # Filter out None and NOTSET values for display/config files
+            return {
+                k: v for k, v in result.items() if v is not None and v is not NOTSET
+            }
+
+        return result
+
+    @classmethod
+    def from_dict(
+        cls, data: Dict[str, Any], ignore_unknown: bool = True
+    ) -> "ContainerConfig":
+        """Create ContainerConfig from dictionary.
+
+        Args:
+            data: Dictionary to convert
+            ignore_unknown: If True, filter out unknown fields. If False, pass all fields to constructor.
+        """
+        # Get field names if filtering unknown fields
+        if ignore_unknown:
+            field_names = {f.name for f in fields(cls)}
+            filtered_data = {k: v for k, v in data.items() if k in field_names}
+        else:
+            filtered_data = data
+
+        # Convert None to NOTSET and create instance in one step
+        return cls(
+            **{k: (NOTSET if v is None else v) for k, v in filtered_data.items()}
+        )
+
+    @classmethod
+    def builtin_defaults(cls) -> "ContainerConfig":
+        """Get built-in default configuration values.
+
+        Note: User identity and cwd are runtime context, not configuration.
+        """
+        return cls(
+            # Auto-detect behaviors
+            workspace="auto",  # Auto-detect project root
+            workdir="auto",  # Preserve relative position
+            gosu_path="auto",  # Auto-detect bundled binary
+            tty="auto",  # Auto-detect from stdin
+            # Container settings with defaults
+            image="ubuntu:latest",
+            command="bash",
+            container_name="ctenv-${project_root|slug}",
+            sudo=False,
+            # Lists with empty defaults
+            env=[],
+            volumes=[],
+            post_start_commands=[],
+            run_args=[],
+            # Fields that remain unset (NOTSET)
+            network=NOTSET,  # No network specified
+            platform=NOTSET,  # No platform specified
+            ulimits=NOTSET,  # No limits specified
+            # Metadata fields
+            _config_file_path=NOTSET,  # No config file for defaults
+        )
+
+
+def resolve_relative_paths_in_container_config(
+    config: ContainerConfig, base_dir: Path
+) -> ContainerConfig:
+    """Return new ContainerConfig with relative paths resolved."""
+    updates = {}
+
+    # Only update fields that need path resolution
+    if config.workspace is not NOTSET:
+        updates["workspace"] = resolve_relative_volume_spec(config.workspace, base_dir)
+
+    if config.volumes is not NOTSET:
+        updates["volumes"] = [
+            resolve_relative_volume_spec(vol, base_dir) for vol in config.volumes
+        ]
+
+    if config.gosu_path is not NOTSET:
+        updates["gosu_path"] = resolve_relative_path(config.gosu_path, base_dir)
+
+    # Return new ContainerConfig with only the changed fields
+    return replace(config, **updates)
+
+
 @dataclass
 class ConfigFile:
     """Represents a single configuration file with containers and defaults."""
 
-    containers: Dict[str, Dict[str, Any]]
-    defaults: Optional[Dict[str, Any]]
+    containers: Dict[str, ContainerConfig]
+    defaults: Optional[ContainerConfig]
     path: Optional[Path]  # None for built-in defaults
-
-    @classmethod
-    def builtin(cls) -> "ConfigFile":
-        """Create a ConfigFile with built-in defaults."""
-        return cls(
-            containers={},
-            defaults=None,
-            path=None,
-        )
 
     @classmethod
     def load(cls, config_path: Path) -> "ConfigFile":
@@ -382,48 +495,77 @@ class ConfigFile:
         config_data = _load_config_file(config_path)
 
         raw_containers = config_data.get("containers", {})
-        raw_defaults = config_data.get("defaults")  # None if not present
+        raw_defaults = config_data.get("defaults")
 
-        # Resolve relative paths in config relative to config file directory
         config_dir = config_path.parent
 
-        # Process defaults dict if present
-        defaults_dict = None
+        # Process defaults to ContainerConfig if present
+        defaults_config = None
         if raw_defaults:
-            # Add metadata before resolving paths
-            raw_defaults = raw_defaults.copy()
-            raw_defaults["_config_file_path"] = str(config_path.resolve())
-            # Resolve paths (relative and tilde expansion)
-            defaults_dict = config_resolve_relative_paths(raw_defaults, config_dir)
+            defaults_config = ContainerConfig.from_dict(
+                convert_notset_strings(raw_defaults)
+            )
+            defaults_config._config_file_path = str(config_path.resolve())
+            defaults_config = resolve_relative_paths_in_container_config(
+                defaults_config, config_dir
+            )
 
-        # Process containers to raw dicts with resolved paths
-        container_dicts = {}
+        # Process containers to ContainerConfig objects
+        container_configs = {}
         for name, container_dict in raw_containers.items():
-            # Add metadata before resolving paths
-            container_dict = container_dict.copy()
-            container_dict["_config_file_path"] = str(config_path.resolve())
-            # Resolve paths (relative and tilde expansion)
-            resolved_dict = config_resolve_relative_paths(container_dict, config_dir)
-            container_dicts[name] = resolved_dict
+            container_config = ContainerConfig.from_dict(
+                convert_notset_strings(container_dict)
+            )
+            container_config._config_file_path = str(config_path.resolve())
+            container_config = resolve_relative_paths_in_container_config(
+                container_config, config_dir
+            )
+            container_configs[name] = container_config
 
         logging.debug(f"Loaded config from {config_path}")
         return cls(
-            containers=container_dicts,
-            defaults=defaults_dict,
+            containers=container_configs,
+            defaults=defaults_config,
             path=config_path,
         )
 
 
 def merge_dict(config, overrides):
-    result = copy.deepcopy(config)
+    # Handle NOTSET config by starting with empty dict
+    if config is NOTSET:
+        result = {}
+    else:
+        result = copy.deepcopy(config)
+    
     for k, v in overrides.items():
-        if isinstance(v, collections.abc.Mapping):
-            result[k] = merge_dict(result.get(k, {}), v)
+        # Skip NOTSET values - they should not override existing config
+        if v is NOTSET:
+            continue
+        elif isinstance(v, collections.abc.Mapping):
+            base_value = result.get(k, {}) if result else {}
+            result[k] = merge_dict(base_value, v)
         elif isinstance(v, list):
             result[k] = result.get(k, []) + v
         else:
             result[k] = copy.deepcopy(v)
     return result
+
+
+def merge_container_configs(
+    base: ContainerConfig, override: ContainerConfig
+) -> ContainerConfig:
+    """Merge two ContainerConfig objects, with override taking precedence.
+
+    Uses the same logic as merge_dict:
+    - NOTSET values in override don't replace base values
+    - Lists are concatenated
+    - Dicts are recursively merged
+    - Other values from override replace base values
+    """
+    base_dict = base.to_dict(include_notset=True)  # Includes NOTSET values
+    override_dict = override.to_dict(include_notset=True)  # Includes NOTSET values
+    merged_dict = merge_dict(base_dict, override_dict)
+    return ContainerConfig.from_dict(merged_dict)
 
 
 @dataclass
@@ -438,51 +580,65 @@ class CtenvConfig:
     - ctenv defaults
     """
 
-    defaults: Dict[str, Any]  # Raw dict (merged system + file defaults)
-    containers: Dict[str, Dict[str, Any]]  # Raw dicts from all files
+    defaults: ContainerConfig  # System + file defaults as ContainerConfig
+    containers: Dict[str, ContainerConfig]  # Container configs from all files
 
-    def get_container_config(
+    def get_default(
+        self, overrides: Optional[ContainerConfig] = None
+    ) -> ContainerConfig:
+        """Get default configuration with optional overrides.
+
+        Args:
+            overrides: Optional ContainerConfig overrides to merge
+
+        Returns:
+            Merged ContainerConfig ready for parse_container_config()
+        """
+        # Start with precomputed defaults
+        result_config = self.defaults
+
+        # Apply overrides if provided
+        if overrides:
+            result_config = merge_container_configs(result_config, overrides)
+
+        return result_config
+
+    def get_container(
         self,
-        container: Optional[str] = None,
-        cli_overrides: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Get merged configuration dictionary for the given container with CLI overrides.
+        container: str,
+        overrides: Optional[ContainerConfig] = None,
+    ) -> ContainerConfig:
+        """Get merged ContainerConfig for the specified container.
 
         Priority order:
         1. Precomputed defaults
-        2. Container config (if specified)
-        3. CLI overrides (highest priority)
+        2. Container config
+        3. Overrides (highest priority)
+
+        Args:
+            container: Container name (required)
+            overrides: Optional ContainerConfig overrides to merge
 
         Returns:
-            Merged configuration dictionary ready for ContainerSpec.from_dict()
+            Merged ContainerConfig ready for parse_container_config()
+
+        Raises:
+            ValueError: If container name is unknown
         """
-        # Start with precomputed defaults
-        result_dict = self.defaults.copy()
+        # Get container config
+        container_config = self.containers.get(container)
+        if container_config is None:
+            available = sorted(self.containers.keys())
+            raise ValueError(f"Unknown container '{container}'. Available: {available}")
 
-        # Layer 2: Container config (if specified)
-        if container is not None:
-            container_dict = self.containers.get(container)
-            if container_dict is None:
-                available = sorted(self.containers.keys())
-                raise ValueError(
-                    f"Unknown container '{container}'. Available: {available}"
-                )
+        # Start with precomputed defaults and merge container config
+        result_config = merge_container_configs(self.defaults, container_config)
 
-            # Filter out None values to avoid overwriting defaults with None
-            filtered_dict = {k: v for k, v in container_dict.items() if v is not None}
-            result_dict = merge_dict(result_dict, filtered_dict)
-        else:
-            logging.debug("No container specified")
+        # Apply overrides if provided
+        if overrides:
+            result_config = merge_container_configs(result_config, overrides)
 
-        # Layer 3: CLI overrides
-        if cli_overrides:
-            # Filter out None values from CLI overrides
-            filtered_overrides = {
-                k: v for k, v in cli_overrides.items() if v is not None
-            }
-            result_dict = merge_dict(result_dict, filtered_overrides)
-
-        return result_dict
+        return result_config
 
     @classmethod
     def load(
@@ -523,25 +679,25 @@ class CtenvConfig:
         if user_config_path:
             config_files.append(ConfigFile.load(user_config_path))
 
-        # Compute defaults (system defaults + first file defaults
-        # found) We don't merge defaults sections from different
-        # files, because it could be complicated to understand where
-        # overridden values come from otherwise.
-        defaults = get_builtin_defaults()
+        # Compute defaults (system defaults + first file defaults found)
+        defaults = ContainerConfig.builtin_defaults()
         for config_file in config_files:
             if config_file.defaults:
-                # defaults is already a dict, filter out None values
-                defaults_dict = {
-                    k: v for k, v in config_file.defaults.items() if v is not None
-                }
-                defaults = merge_dict(defaults, defaults_dict)
+                defaults = merge_container_configs(defaults, config_file.defaults)
                 break  # Stop after first (= highest prio) [defaults] section found
 
         # Compute containers (merge all containers, higher priority wins)
         containers = {}
         # Process in reverse order so higher priority overrides
         for config_file in reversed(config_files):
-            containers.update(config_file.containers)
+            for name, container_config in config_file.containers.items():
+                if name in containers:
+                    # Merge with existing (higher priority wins)
+                    containers[name] = merge_container_configs(
+                        containers[name], container_config
+                    )
+                else:
+                    containers[name] = container_config
 
         return cls(defaults=defaults, containers=containers)
 
@@ -572,35 +728,43 @@ def _substitute_variables(
     return re.sub(pattern, replace_match, text)
 
 
-def _substitute_variables_in_dict(
-    config_dict: Dict[str, Any], runtime: RuntimeContext, environ: Dict[str, str]
-) -> Dict[str, Any]:
-    """Substitute template variables in all string fields."""
-    result = config_dict.copy()
-
+def _substitute_variables_in_container_config(
+    config: ContainerConfig, runtime: RuntimeContext, environ: Dict[str, str]
+) -> ContainerConfig:
+    """Substitute template variables in all string fields of ContainerConfig."""
     # Build variables dictionary
     variables = {
-        "image": result.get("image", ""),
+        "image": config.image if config.image is not NOTSET else "",
         "user_home": runtime.user_home,
         "user_name": runtime.user_name,
+        "project_root": str(runtime.project_root),
     }
 
-    def substitute_string(text: str) -> str:
-        if not isinstance(text, str):
-            return text
-        return _substitute_variables(text, variables, environ)
-
-    # Process all string fields
-    for key, value in result.items():
-        if isinstance(value, str):
-            result[key] = substitute_string(value)
+    def substitute_field(value):
+        """Substitute variables in a field, handling NOTSET and different types."""
+        if value is NOTSET:
+            return NOTSET
+        elif isinstance(value, str):
+            return _substitute_variables(value, variables, environ)
         elif isinstance(value, list):
-            result[key] = [
-                substitute_string(item) if isinstance(item, str) else item
+            return [
+                _substitute_variables(item, variables, environ)
+                if isinstance(item, str)
+                else item
                 for item in value
             ]
+        else:
+            return value
 
-    return result
+    # Use replace() to create new instance with substituted fields
+    updates = {}
+    for field in fields(config):
+        original_value = getattr(config, field.name)
+        substituted_value = substitute_field(original_value)
+        if substituted_value != original_value:
+            updates[field.name] = substituted_value
+
+    return replace(config, **updates)
 
 
 def expand_tilde_in_path(path: str, runtime: RuntimeContext) -> str:
@@ -637,23 +801,29 @@ def _expand_tilde_in_volumespec(
 
 
 def _parse_workspace(
-    workspace_str: Optional[str], runtime: RuntimeContext
+    workspace_config: Union[str, NotSetType, None], runtime: RuntimeContext
 ) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
-    Handles default to 'auto', project root expansion, tilde expansion, and SELinux options.
+    Handles auto-detection, project root expansion, tilde expansion, and SELinux options.
     """
-    workspace_str = workspace_str or "auto"
+    # Resolve workspace configuration
+    if workspace_config == "auto":
+        workspace_str = f"{runtime.project_root}:{runtime.project_root}"
+    elif isinstance(workspace_config, str) and workspace_config != "auto":
+        workspace_str = workspace_config
+    else:
+        raise ValueError(f"Invalid workspace value: {workspace_config}")
+
     spec = VolumeSpec.parse_as_workspace(workspace_str)
 
-    # Fill in empty host path with project root
+    # Fill in empty host path with project root (for ":" syntax)
     if not spec.host_path:
-        project_root = find_project_root(runtime.cwd) or runtime.cwd
-        spec.host_path = str(project_root)
+        spec.host_path = str(runtime.project_root)
 
-        # If container path is also empty, use the same as host
+        # If container path is also empty, use same path as default
         if not spec.container_path:
-            spec.container_path = spec.host_path
+            spec.container_path = str(runtime.project_root)
 
     # Apply tilde expansion
     spec = _expand_tilde_in_volumespec(spec, runtime)
@@ -665,14 +835,8 @@ def _parse_workspace(
     return spec
 
 
-def _resolve_workdir(
-    explicit_workdir: str | None, workspace_spec: VolumeSpec, runtime: RuntimeContext
-) -> str:
-    """Resolve working directory, preserving relative position within workspace."""
-    if explicit_workdir:
-        # Explicit workdir specified - use as is
-        return explicit_workdir
-
+def _resolve_workdir_auto(workspace_spec: VolumeSpec, runtime: RuntimeContext) -> str:
+    """Auto-resolve working directory, preserving relative position within workspace."""
     # Calculate relative position within workspace and translate
     try:
         rel_path = os.path.relpath(str(runtime.cwd), workspace_spec.host_path)
@@ -687,6 +851,20 @@ def _resolve_workdir(
     except (ValueError, OSError):
         # Fallback if path calculation fails
         return workspace_spec.container_path
+
+
+def _resolve_workdir(
+    workdir_config: Union[str, NotSetType, None],
+    workspace_spec: VolumeSpec,
+    runtime: RuntimeContext,
+) -> str:
+    """Resolve working directory based on configuration value."""
+    if workdir_config == "auto":
+        return _resolve_workdir_auto(workspace_spec, runtime)
+    elif isinstance(workdir_config, str) and workdir_config != "auto":
+        return workdir_config
+    else:
+        raise ValueError(f"Invalid workdir value: {workdir_config}")
 
 
 def _find_bundled_gosu_path() -> str:
@@ -710,17 +888,23 @@ def _find_bundled_gosu_path() -> str:
     raise FileNotFoundError(f"gosu binary not found at {binary_path}")
 
 
+def _resolve_gosu_path_auto() -> str:
+    """Auto-resolve gosu path by finding bundled binary."""
+    return _find_bundled_gosu_path()
+
+
 def _parse_gosu_spec(
-    gosu_path_raw: Optional[str], runtime: RuntimeContext
+    gosu_path_config: Union[str, NotSetType, None], runtime: RuntimeContext
 ) -> VolumeSpec:
     """Parse gosu configuration and return VolumeSpec for gosu binary mount."""
-    # Resolve gosu_path with tilde expansion
-    if gosu_path_raw:
+    # Resolve gosu_path based on configuration value
+    if gosu_path_config == "auto":
+        gosu_path = _resolve_gosu_path_auto()
+    elif isinstance(gosu_path_config, str) and gosu_path_config != "auto":
         # User provided a path - expand tilde and use it
-        gosu_path = expand_tilde_in_path(gosu_path_raw, runtime)
+        gosu_path = expand_tilde_in_path(gosu_path_config, runtime)
     else:
-        # Auto-detect bundled gosu binary
-        gosu_path = _find_bundled_gosu_path()
+        raise ValueError(f"Invalid gosu_path value: {gosu_path_config}")
 
     # Hard-coded mount point to avoid collisions
     gosu_mount = "/ctenv/gosu"
@@ -732,13 +916,16 @@ def _parse_gosu_spec(
     )
 
 
-def _generate_container_name(workspace_path: str) -> str:
-    """Generate container name based on workspace path."""
-    # Create hash of the path for uniqueness
-    path_hash = hashlib.md5(workspace_path.encode()).hexdigest()[:8]
-    # Use the last part of the path as readable component
-    path_name = Path(workspace_path).name or "root"
-    return f"ctenv-{path_name}-{path_hash}"
+def _resolve_tty(
+    tty_config: Union[str, bool, NotSetType, None], runtime: RuntimeContext
+) -> bool:
+    """Resolve TTY setting based on configuration value."""
+    if tty_config == "auto":
+        return runtime.tty
+    elif isinstance(tty_config, bool):
+        return tty_config
+    else:
+        raise ValueError(f"Invalid TTY value: {tty_config}")
 
 
 @dataclass(kw_only=True)
@@ -790,21 +977,21 @@ class ContainerSpec:
     ) -> str:
         """Generate bash script for container entrypoint."""
 
-        # Build chown paths value using null-separated string
+        # Build chown paths value using a rare delimiter
         chown_paths_value = ""
         if self.chown_paths:
-            # Use null character as separator - guaranteed not to appear in paths
-            chown_paths_value = shlex.quote(chr(0).join(self.chown_paths))
+            # Use a rare delimiter sequence unlikely to appear in paths
+            delimiter = "|||CTENV_DELIMITER|||"
+            chown_paths_value = shlex.quote(delimiter.join(self.chown_paths))
         else:
             chown_paths_value = "''"
 
-        # Build post-start commands value using null-separated string
+        # Build post-start commands as newline-separated string
         post_start_commands_value = ""
         if self.post_start_commands:
-            # Use null character as separator
-            post_start_commands_value = shlex.quote(
-                chr(0).join(self.post_start_commands)
-            )
+            # Join commands with actual newlines and quote the result
+            commands_text = "\n".join(self.post_start_commands)
+            post_start_commands_value = shlex.quote(commands_text)
         else:
             post_start_commands_value = "''"
 
@@ -826,7 +1013,7 @@ ADD_SUDO={1 if self.sudo else 0}
 
 # Container configuration
 GOSU_MOUNT="{self.gosu.container_path}"
-COMMAND="{self.command}"
+COMMAND={shlex.quote(self.command)}
 
 # Variables for chown paths and post-start commands (null-separated)
 CHOWN_PATHS={chown_paths_value}
@@ -855,8 +1042,16 @@ fix_chown_volumes() {{
         return
     fi
     
-    # Use printf to split on null characters
-    printf '%s\0' "$CHOWN_PATHS" | while IFS= read -r -d '' path; do
+    # Use POSIX-compatible approach to split on delimiter
+    # Save original IFS and use delimiter approach for reliability
+    OLD_IFS="$IFS"
+    IFS='|||CTENV_DELIMITER|||'
+    set -- $CHOWN_PATHS
+    IFS="$OLD_IFS"
+    
+    # Process each path
+    for path in "$@"; do
+        [ -n "$path" ] || continue  # Skip empty paths
         log_debug "Checking chown volume: $path"
         if [ -d "$path" ]; then
             log_debug "Fixing ownership of volume: $path"
@@ -875,8 +1070,9 @@ run_post_start_commands() {{
         return
     fi
     
-    # Use printf to split on null characters
-    printf '%s\0' "$POST_START_COMMANDS" | while IFS= read -r -d '' cmd; do
+    # Use printf and read loop for reliable line-by-line processing
+    printf '%s\\n' "$POST_START_COMMANDS" | while IFS= read -r cmd || [ -n "$cmd" ]; do
+        [ -n "$cmd" ] || continue  # Skip empty commands
         log_debug "Executing post-start command: $cmd"
         eval "$cmd"
     done
@@ -982,44 +1178,70 @@ export PS1="[ctenv] $ "
 
 # Execute command as user
 log_info "Starting command as $USER_NAME: $COMMAND"
-exec "$GOSU_MOUNT" "$USER_NAME" $COMMAND
+exec "$GOSU_MOUNT" "$USER_NAME" sh -c "$COMMAND"
 """
         return script
 
 
 def parse_container_config(
-    config_dict: Dict[str, Any], runtime: RuntimeContext
+    config: ContainerConfig, runtime: RuntimeContext
 ) -> ContainerSpec:
-    """Create ContainerSpec from config dict and runtime context.
+    """Create ContainerSpec from complete ContainerConfig and runtime context.
+
+    This function expects a COMPLETE configuration with all required fields set.
+    It does not apply defaults - that should be done by the caller (e.g., CtenvConfig).
+    If any required fields are missing or invalid, this function will raise an exception
+    rather than trying to find fallback values.
 
     Args:
-        config_dict: Merged configuration dictionary
+        config: Complete merged ContainerConfig (no NOTSET values for required fields)
         runtime: Runtime context (user info, cwd, tty)
 
     Returns:
         ContainerSpec with all fields resolved and ready for execution
+
+    Raises:
+        ValueError: If required configuration fields are missing or invalid
     """
     # Apply variable substitution
-    substituted_dict = _substitute_variables_in_dict(config_dict, runtime, os.environ)
+    substituted_config = _substitute_variables_in_container_config(
+        config, runtime, os.environ
+    )
 
-    # Parse workspace configuration
-    workspace_spec = _parse_workspace(substituted_dict.get("workspace"), runtime)
+    # Validate required fields are not NOTSET
+    required_fields = {
+        "image": substituted_config.image,
+        "command": substituted_config.command,
+        "workspace": substituted_config.workspace,
+        "workdir": substituted_config.workdir,
+        "gosu_path": substituted_config.gosu_path,
+        "container_name": substituted_config.container_name,
+        "tty": substituted_config.tty,
+    }
 
-    # Resolve workdir
-    workdir = _resolve_workdir(substituted_dict.get("workdir"), workspace_spec, runtime)
+    missing_fields = [
+        name for name, value in required_fields.items() if value is NOTSET
+    ]
+    if missing_fields:
+        raise ValueError(
+            f"Required configuration fields not set: {', '.join(missing_fields)}"
+        )
 
-    # Parse gosu configuration
-    gosu_spec = _parse_gosu_spec(substituted_dict.get("gosu_path"), runtime)
+    # Validate platform if specified
+    if substituted_config.platform is not NOTSET and not validate_platform(
+        substituted_config.platform
+    ):
+        raise ValueError(
+            f"Unsupported platform '{substituted_config.platform}'. Supported platforms: linux/amd64, linux/arm64"
+        )
 
-    # Generate container name if not specified
-    container_name = substituted_dict.get("container_name")
-    if not container_name:
-        container_name = _generate_container_name(workspace_spec.host_path)
-
-    # Resolve volumes to VolumeSpec objects with tilde expansion and extract chown paths
+    # Process volumes (can't inline due to complexity and chown_paths extraction)
     volume_specs = []
     chown_paths = []
-    for vol_str in substituted_dict.get("volumes", []):
+    volumes = (
+        substituted_config.volumes if substituted_config.volumes is not NOTSET else []
+    )
+    for vol_str in volumes:
         vol_spec = VolumeSpec.parse_as_volume(vol_str)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
 
@@ -1035,39 +1257,48 @@ def parse_container_config(
 
         volume_specs.append(vol_spec)
 
-    # Get tty from config or use runtime context default
-    tty = substituted_dict.get("tty")
-    if tty is None:
-        tty = runtime.tty
+    # Build ContainerSpec systematically
+    RUNTIME_FIELDS = ["user_name", "user_id", "user_home", "group_name", "group_id"]
+    CONFIG_PASSTHROUGH_FIELDS = [
+        "image",
+        "command",
+        "container_name",
+        "sudo",
+        "env",
+        "post_start_commands",
+        "run_args",
+        "network",
+        "platform",
+        "ulimits",
+    ]
 
-    return ContainerSpec(
-        # User identity from runtime
-        user_name=runtime.user_name,
-        user_id=runtime.user_id,
-        user_home=runtime.user_home,
-        group_name=runtime.group_name,
-        group_id=runtime.group_id,
-        # Resolved paths
-        workspace=workspace_spec,
-        workdir=workdir,
-        gosu=gosu_spec,
-        # Container settings (required fields)
-        image=substituted_dict["image"],  # Required
-        command=substituted_dict.get("command", "bash"),
-        container_name=container_name,
-        tty=tty,
-        sudo=substituted_dict.get("sudo", False),
-        # Lists
-        env=substituted_dict.get("env", []),
-        volumes=volume_specs,
-        chown_paths=chown_paths,
-        post_start_commands=substituted_dict.get("post_start_commands", []),
-        run_args=substituted_dict.get("run_args", []),
-        # Optional fields
-        network=substituted_dict.get("network"),
-        platform=substituted_dict.get("platform"),
-        ulimits=substituted_dict.get("ulimits"),
-    )
+    # Parse workspace first since workdir depends on it
+    workspace_spec = _parse_workspace(substituted_config.workspace, runtime)
+
+    spec_dict = {
+        # Runtime fields (copied directly from RuntimeContext)
+        **{field: getattr(runtime, field) for field in RUNTIME_FIELDS},
+        # Config fields (copied from ContainerConfig, excluding NOTSET)
+        **{
+            field: getattr(substituted_config, field)
+            for field in CONFIG_PASSTHROUGH_FIELDS
+            if getattr(substituted_config, field) is not NOTSET
+        },
+        # Custom/resolved fields:
+        # 1. Parsed from config strings → structured objects
+        "workspace": workspace_spec,  # config.workspace (str) → VolumeSpec
+        "gosu": _parse_gosu_spec(substituted_config.gosu_path, runtime),  # Inlined
+        "volumes": volume_specs,  # config.volumes (List[str]) → List[VolumeSpec]
+        # 2. Resolved/computed values
+        "workdir": _resolve_workdir(
+            substituted_config.workdir, workspace_spec, runtime
+        ),  # Inlined
+        "tty": _resolve_tty(substituted_config.tty, runtime),  # Inlined
+        # 3. Extracted/derived values
+        "chown_paths": chown_paths,  # Extracted from volumes with "chown" option
+    }
+
+    return ContainerSpec(**spec_dict)
 
 
 class ContainerRunner:
@@ -1326,49 +1557,42 @@ def cmd_run(args, command):
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Parse container from args
-    container = args.container
-
     # Create config from loaded CtenvConfig and CLI options
     try:
-        # Pass through CLI arguments as-is - relative path resolution happens later
-        cli_overrides_dict = {
-            "image": args.image,
-            "command": command,
-            "workspace": args.workspace,
-            "workdir": args.workdir,
-            "env": args.env,
-            "volumes": args.volumes,
-            "sudo": args.sudo,
-            "network": args.network,
-            "gosu_path": args.gosu_path,
-            "platform": args.platform,
-            "post_start_commands": args.post_start_commands,
-            "run_args": args.run_args,
-        }
-
-        # Resolve paths (relative and tilde expansion) in CLI overrides relative to current working directory
-        resolved_cli_overrides = config_resolve_relative_paths(
-            cli_overrides_dict, runtime.cwd
+        # Convert CLI overrides to ContainerConfig and resolve paths
+        # convert "NOTSET" string to NOTSET sentinel
+        cli_overrides = resolve_relative_paths_in_container_config(
+            ContainerConfig.from_dict(
+                convert_notset_strings(
+                    {
+                        "image": args.image,
+                        "command": command,
+                        "workspace": args.workspace,
+                        "workdir": args.workdir,
+                        "env": args.env,
+                        "volumes": args.volumes,
+                        "sudo": args.sudo,
+                        "network": args.network,
+                        "gosu_path": args.gosu_path,
+                        "platform": args.platform,
+                        "post_start_commands": args.post_start_commands,
+                        "run_args": args.run_args,
+                    }
+                )
+            ),
+            runtime.cwd,
         )
 
-        # Get merged config dict
-        config_dict = ctenv_config.get_container_config(
-            container=container, cli_overrides=resolved_cli_overrides
-        )
-
-        # Validate platform if specified
-        if config_dict.get("platform") and not validate_platform(
-            config_dict["platform"]
-        ):
-            print(
-                f"Error: Unsupported platform '{config_dict['platform']}'. Supported platforms: linux/amd64, linux/arm64",
-                file=sys.stderr,
+        # Get merged ContainerConfig
+        if args.container is None:
+            container_config = ctenv_config.get_default(overrides=cli_overrides)
+        else:
+            container_config = ctenv_config.get_container(
+                container=args.container, overrides=cli_overrides
             )
-            sys.exit(1)
 
         # Parse and resolve to ContainerSpec with runtime context
-        spec = parse_container_config(config_dict, runtime)
+        spec = parse_container_config(container_config, runtime)
 
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
@@ -1424,7 +1648,8 @@ def cmd_config_show(args):
         # Show defaults section if present
         if ctenv_config.defaults:
             print("defaults:")
-            for key, value in sorted(ctenv_config.defaults.items()):
+            defaults_dict = ctenv_config.defaults.to_dict(include_notset=False)
+            for key, value in sorted(defaults_dict.items()):
                 if not key.startswith("_"):  # Skip metadata fields
                     print(f"  {key} = {repr(value)}")
             print()
@@ -1434,7 +1659,9 @@ def cmd_config_show(args):
         if ctenv_config.containers:
             for config_name in sorted(ctenv_config.containers.keys()):
                 print(f"  {config_name}:")
-                container_dict = ctenv_config.containers[config_name]
+                container_dict = ctenv_config.containers[config_name].to_dict(
+                    include_notset=False
+                )
                 for key, value in sorted(container_dict.items()):
                     if not key.startswith("_"):  # Skip metadata fields
                         print(f"    {key} = {repr(value)}")
@@ -1595,7 +1822,8 @@ def main(argv=None):
         separator_index = argv.index("--")
         ctenv_args = argv[:separator_index]
         command_args = argv[separator_index + 1 :]
-        command = " ".join(command_args)
+        # Use shlex.join to properly quote arguments
+        command = shlex.join(command_args)
     else:
         ctenv_args = argv
         command = None

@@ -10,7 +10,7 @@ from pathlib import Path
 def test_cli_run_basic():
     """Test basic CLI run command."""
     result = subprocess.run(
-        ["python", "-m", "ctenv", "run", "--dry-run", "--", "echo", "hello"],
+        ["python3", "-m", "ctenv", "run", "--dry-run", "--", "echo", "hello"],
         capture_output=True,
         text=True,
     )
@@ -82,7 +82,7 @@ command = "echo test"
 def test_cli_run_invalid_container():
     """Test CLI run command with invalid container name."""
     result = subprocess.run(
-        ["python", "-m", "ctenv", "run", "nonexistent", "--dry-run"],
+        ["python3", "-m", "ctenv", "run", "nonexistent", "--dry-run"],
         capture_output=True,
         text=True,
     )
@@ -96,7 +96,7 @@ def test_cli_run_invalid_container():
 def test_cli_config_command():
     """Test CLI config command."""
     result = subprocess.run(
-        ["python", "-m", "ctenv", "config"], capture_output=True, text=True
+        ["python3", "-m", "ctenv", "config"], capture_output=True, text=True
     )
 
     assert result.returncode == 0
@@ -109,7 +109,7 @@ def test_cli_config_command():
 def test_cli_help():
     """Test CLI help command."""
     result = subprocess.run(
-        ["python", "-m", "ctenv", "--help"], capture_output=True, text=True
+        ["python3", "-m", "ctenv", "--help"], capture_output=True, text=True
     )
 
     assert result.returncode == 0
