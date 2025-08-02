@@ -53,7 +53,7 @@ except ImportError:
     import tomli as tomllib
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List
 
 
 # Volume specification: (host_path, container_path, options)
@@ -119,11 +119,6 @@ class VolumeSpec:
         This handles pure structural parsing only - no smart defaulting or validation.
         Smart defaulting and validation should be done by the calling functions.
 
-        Args:
-            spec: Volume specification string
-
-        Returns:
-            VolumeSpec with parsed host_path, container_path, and options
         """
         if not spec:
             raise ValueError("Empty volume specification")
@@ -175,30 +170,6 @@ class VolumeSpec:
         # Workspace allows empty host path (for auto-detection)
         # Note: container_path defaults to host_path in parse() for single path format
         return workspace_spec
-
-
-def substitute_variables(text: str, variables: Dict[str, str]) -> str:
-    """Substitute ${var} and ${var|filter} patterns in text."""
-    pattern = r"\$\{([^}|]+)(?:\|([^}]+))?\}"
-
-    def replace_match(match):
-        var_name, filter_name = match.groups()
-
-        # Get value
-        if var_name.startswith("env."):
-            value = os.environ.get(var_name[4:], "")
-        else:
-            value = variables.get(var_name, "")
-
-        # Apply filter
-        if filter_name == "slug":
-            value = value.replace(":", "-").replace("/", "-")
-        elif filter_name is not None:
-            raise ValueError(f"Unknown filter: {filter_name}")
-
-        return value
-
-    return re.sub(pattern, replace_match, text)
 
 
 def config_resolve_relative_paths(
@@ -328,8 +299,6 @@ def get_builtin_defaults() -> Dict[str, Any]:
         "workspace": ":",  # Default to auto-detection (empty host:empty container)
         "workdir": None,  # Default to None (preserve relative position)
         "gosu_path": None,  # Will be resolved later with platform consideration
-        # Mount points
-        "gosu_mount": "/gosu",
         # Container settings
         "image": "ubuntu:latest",
         "command": "bash",
@@ -577,25 +546,49 @@ class CtenvConfig:
         return cls(defaults=defaults, containers=containers)
 
 
+def _substitute_variables(
+    text: str, variables: Dict[str, str], environ: Dict[str, str]
+) -> str:
+    """Substitute ${var} and ${var|filter} patterns in text."""
+    pattern = r"\$\{([^}|]+)(?:\|([^}]+))?\}"
+
+    def replace_match(match):
+        var_name, filter_name = match.groups()
+
+        # Get value
+        if var_name.startswith("env."):
+            value = environ.get(var_name[4:], "")
+        else:
+            value = variables.get(var_name, "")
+
+        # Apply filter
+        if filter_name == "slug":
+            value = value.replace(":", "-").replace("/", "-")
+        elif filter_name is not None:
+            raise ValueError(f"Unknown filter: {filter_name}")
+
+        return value
+
+    return re.sub(pattern, replace_match, text)
+
+
 def _substitute_variables_in_dict(
-    config_dict: Dict[str, Any], runtime: RuntimeContext
+    config_dict: Dict[str, Any], runtime: RuntimeContext, environ: Dict[str, str]
 ) -> Dict[str, Any]:
     """Substitute template variables in all string fields."""
     result = config_dict.copy()
 
     # Build variables dictionary
-    variables = {}
-    if result.get("image"):
-        variables["image"] = result["image"]
-
-    # Add runtime variables
-    variables["user_home"] = runtime.user_home
-    variables["user_name"] = runtime.user_name
+    variables = {
+        "image": result.get("image", ""),
+        "user_home": runtime.user_home,
+        "user_name": runtime.user_name,
+    }
 
     def substitute_string(text: str) -> str:
         if not isinstance(text, str):
             return text
-        return substitute_variables(text, variables)
+        return _substitute_variables(text, variables, environ)
 
     # Process all string fields
     for key, value in result.items():
@@ -643,8 +636,14 @@ def _expand_tilde_in_volumespec(
     return result
 
 
-def _resolve_workspace(workspace_str: str, runtime: RuntimeContext) -> VolumeSpec:
-    """Resolve workspace specification to VolumeSpec with project root expansion."""
+def _parse_workspace(
+    workspace_str: Optional[str], runtime: RuntimeContext
+) -> VolumeSpec:
+    """Parse workspace configuration and return VolumeSpec.
+
+    Handles default to 'auto', project root expansion, tilde expansion, and SELinux options.
+    """
+    workspace_str = workspace_str or "auto"
     spec = VolumeSpec.parse_as_workspace(workspace_str)
 
     # Fill in empty host path with project root
@@ -655,6 +654,13 @@ def _resolve_workspace(workspace_str: str, runtime: RuntimeContext) -> VolumeSpe
         # If container path is also empty, use the same as host
         if not spec.container_path:
             spec.container_path = spec.host_path
+
+    # Apply tilde expansion
+    spec = _expand_tilde_in_volumespec(spec, runtime)
+
+    # Add 'z' option if not already present (for SELinux)
+    if "z" not in spec.options:
+        spec.options.append("z")
 
     return spec
 
@@ -683,12 +689,9 @@ def _resolve_workdir(
         return workspace_spec.container_path
 
 
-def _resolve_gosu_path(gosu_path: Optional[str]) -> str:
-    """Resolve gosu binary path."""
-    if gosu_path:
-        return gosu_path
-
-    # Auto-detect gosu binary
+def _find_bundled_gosu_path() -> str:
+    """Find the bundled gosu binary for the current architecture."""
+    # Auto-detect gosu binary based on architecture
     arch = platform.machine().lower()
     if arch in ("x86_64", "amd64"):
         binary_name = "gosu-amd64"
@@ -705,6 +708,28 @@ def _resolve_gosu_path(gosu_path: Optional[str]) -> str:
         return str(binary_path)
 
     raise FileNotFoundError(f"gosu binary not found at {binary_path}")
+
+
+def _parse_gosu_spec(
+    gosu_path_raw: Optional[str], runtime: RuntimeContext
+) -> VolumeSpec:
+    """Parse gosu configuration and return VolumeSpec for gosu binary mount."""
+    # Resolve gosu_path with tilde expansion
+    if gosu_path_raw:
+        # User provided a path - expand tilde and use it
+        gosu_path = expand_tilde_in_path(gosu_path_raw, runtime)
+    else:
+        # Auto-detect bundled gosu binary
+        gosu_path = _find_bundled_gosu_path()
+
+    # Hard-coded mount point to avoid collisions
+    gosu_mount = "/ctenv/gosu"
+
+    return VolumeSpec(
+        host_path=gosu_path,
+        container_path=gosu_mount,
+        options=["z", "ro"],  # SELinux and read-only
+    )
 
 
 def _generate_container_name(workspace_path: str) -> str:
@@ -735,8 +760,7 @@ class ContainerSpec:
     # Paths (always resolved)
     workspace: VolumeSpec  # Fully resolved workspace mount
     workdir: str  # Always resolved (defaults to workspace root)
-    gosu_path: str  # Absolute path to gosu binary
-    gosu_mount: str  # Mount point (default "/gosu")
+    gosu: VolumeSpec  # Gosu binary mount
 
     # Container settings (always have defaults)
     image: str  # From defaults or config
@@ -748,6 +772,9 @@ class ContainerSpec:
     # Lists (use empty list as default instead of None)
     env: List[str] = field(default_factory=list)
     volumes: List[VolumeSpec] = field(default_factory=list)
+    chown_paths: List[str] = field(
+        default_factory=list
+    )  # Paths to chown inside container
     post_start_commands: List[str] = field(default_factory=list)
     run_args: List[str] = field(default_factory=list)
 
@@ -756,108 +783,32 @@ class ContainerSpec:
     platform: Optional[str] = None  # None = Docker default platform
     ulimits: Optional[Dict[str, Any]] = None  # None = no ulimits
 
+    def build_entrypoint_script(
+        self,
+        verbose: bool = False,
+        quiet: bool = False,
+    ) -> str:
+        """Generate bash script for container entrypoint."""
 
-def parse_container_config(
-    config_dict: Dict[str, Any], runtime: RuntimeContext
-) -> ContainerSpec:
-    """Create ContainerSpec from config dict and runtime context.
+        # Build chown paths value using null-separated string
+        chown_paths_value = ""
+        if self.chown_paths:
+            # Use null character as separator - guaranteed not to appear in paths
+            chown_paths_value = shlex.quote(chr(0).join(self.chown_paths))
+        else:
+            chown_paths_value = "''"
 
-    Args:
-        config_dict: Merged configuration dictionary
-        runtime: Runtime context (user info, cwd, tty)
+        # Build post-start commands value using null-separated string
+        post_start_commands_value = ""
+        if self.post_start_commands:
+            # Use null character as separator
+            post_start_commands_value = shlex.quote(
+                chr(0).join(self.post_start_commands)
+            )
+        else:
+            post_start_commands_value = "''"
 
-    Returns:
-        ContainerSpec with all fields resolved and ready for execution
-    """
-    # Apply variable substitution
-    substituted_dict = _substitute_variables_in_dict(config_dict, runtime)
-
-    # Resolve workspace with tilde expansion
-    workspace_spec = _resolve_workspace(
-        substituted_dict.get("workspace", "auto"), runtime
-    )
-    workspace_spec = _expand_tilde_in_volumespec(workspace_spec, runtime)
-
-    # Resolve workdir
-    workdir = _resolve_workdir(substituted_dict.get("workdir"), workspace_spec, runtime)
-
-    # Resolve gosu_path with tilde expansion
-    gosu_path_raw = substituted_dict.get("gosu_path") or ""
-    gosu_path = _resolve_gosu_path(expand_tilde_in_path(gosu_path_raw, runtime))
-
-    # Generate container name if not specified
-    container_name = substituted_dict.get("container_name")
-    if not container_name:
-        container_name = _generate_container_name(workspace_spec.host_path)
-
-    # Resolve volumes to VolumeSpec objects with tilde expansion
-    volume_specs = []
-    for vol_str in substituted_dict.get("volumes", []):
-        vol_spec = VolumeSpec.parse_as_volume(vol_str)
-        vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
-        volume_specs.append(vol_spec)
-
-    # Get tty from config or use runtime context default
-    tty = substituted_dict.get("tty")
-    if tty is None:
-        tty = runtime.tty
-
-    return ContainerSpec(
-        # User identity from runtime
-        user_name=runtime.user_name,
-        user_id=runtime.user_id,
-        user_home=runtime.user_home,
-        group_name=runtime.group_name,
-        group_id=runtime.group_id,
-        # Resolved paths
-        workspace=workspace_spec,
-        workdir=workdir,
-        gosu_path=gosu_path,
-        gosu_mount=substituted_dict.get("gosu_mount", "/gosu"),
-        # Container settings (required fields)
-        image=substituted_dict["image"],  # Required
-        command=substituted_dict.get("command", "bash"),
-        container_name=container_name,
-        tty=tty,
-        sudo=substituted_dict.get("sudo", False),
-        # Lists
-        env=substituted_dict.get("env", []),
-        volumes=volume_specs,
-        post_start_commands=substituted_dict.get("post_start_commands", []),
-        run_args=substituted_dict.get("run_args", []),
-        # Optional fields
-        network=substituted_dict.get("network"),
-        platform=substituted_dict.get("platform"),
-        ulimits=substituted_dict.get("ulimits"),
-    )
-
-
-def build_entrypoint_script(
-    spec: ContainerSpec,
-    chown_paths: List[str] = None,
-    verbose: bool = False,
-    quiet: bool = False,
-) -> str:
-    """Generate bash script for container entrypoint."""
-    chown_paths = chown_paths or []
-
-    # Build chown paths value using null-separated string
-    chown_paths_value = ""
-    if chown_paths:
-        # Use null character as separator - guaranteed not to appear in paths
-        chown_paths_value = shlex.quote(chr(0).join(chown_paths))
-    else:
-        chown_paths_value = "''"
-
-    # Build post-start commands value using null-separated string
-    post_start_commands_value = ""
-    if spec.post_start_commands:
-        # Use null character as separator
-        post_start_commands_value = shlex.quote(chr(0).join(spec.post_start_commands))
-    else:
-        post_start_commands_value = "''"
-
-    script = f"""#!/bin/sh
+        script = f"""#!/bin/sh
 # Use POSIX shell for compatibility with BusyBox/Alpine Linux
 set -e
 
@@ -866,16 +817,16 @@ VERBOSE={1 if verbose else 0}
 QUIET={1 if quiet else 0}
 
 # User and group configuration
-USER_NAME="{spec.user_name}"
-USER_ID="{spec.user_id}"
-GROUP_NAME="{spec.group_name}"
-GROUP_ID="{spec.group_id}"
-USER_HOME="{spec.user_home}"
-ADD_SUDO={1 if spec.sudo else 0}
+USER_NAME="{self.user_name}"
+USER_ID="{self.user_id}"
+GROUP_NAME="{self.group_name}"
+GROUP_ID="{self.group_id}"
+USER_HOME="{self.user_home}"
+ADD_SUDO={1 if self.sudo else 0}
 
 # Container configuration
-GOSU_MOUNT="{spec.gosu_mount}"
-COMMAND="{spec.command}"
+GOSU_MOUNT="{self.gosu.container_path}"
+COMMAND="{self.command}"
 
 # Variables for chown paths and post-start commands (null-separated)
 CHOWN_PATHS={chown_paths_value}
@@ -1033,45 +984,103 @@ export PS1="[ctenv] $ "
 log_info "Starting command as $USER_NAME: $COMMAND"
 exec "$GOSU_MOUNT" "$USER_NAME" $COMMAND
 """
-    return script
+        return script
+
+
+def parse_container_config(
+    config_dict: Dict[str, Any], runtime: RuntimeContext
+) -> ContainerSpec:
+    """Create ContainerSpec from config dict and runtime context.
+
+    Args:
+        config_dict: Merged configuration dictionary
+        runtime: Runtime context (user info, cwd, tty)
+
+    Returns:
+        ContainerSpec with all fields resolved and ready for execution
+    """
+    # Apply variable substitution
+    substituted_dict = _substitute_variables_in_dict(config_dict, runtime, os.environ)
+
+    # Parse workspace configuration
+    workspace_spec = _parse_workspace(substituted_dict.get("workspace"), runtime)
+
+    # Resolve workdir
+    workdir = _resolve_workdir(substituted_dict.get("workdir"), workspace_spec, runtime)
+
+    # Parse gosu configuration
+    gosu_spec = _parse_gosu_spec(substituted_dict.get("gosu_path"), runtime)
+
+    # Generate container name if not specified
+    container_name = substituted_dict.get("container_name")
+    if not container_name:
+        container_name = _generate_container_name(workspace_spec.host_path)
+
+    # Resolve volumes to VolumeSpec objects with tilde expansion and extract chown paths
+    volume_specs = []
+    chown_paths = []
+    for vol_str in substituted_dict.get("volumes", []):
+        vol_spec = VolumeSpec.parse_as_volume(vol_str)
+        vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
+
+        # Check for chown option and extract it
+        if "chown" in vol_spec.options:
+            chown_paths.append(vol_spec.container_path)
+            # Remove chown from options as it's not a Docker option
+            vol_spec.options = [opt for opt in vol_spec.options if opt != "chown"]
+
+        # Add 'z' option if not already present (for SELinux)
+        if "z" not in vol_spec.options:
+            vol_spec.options.append("z")
+
+        volume_specs.append(vol_spec)
+
+    # Get tty from config or use runtime context default
+    tty = substituted_dict.get("tty")
+    if tty is None:
+        tty = runtime.tty
+
+    return ContainerSpec(
+        # User identity from runtime
+        user_name=runtime.user_name,
+        user_id=runtime.user_id,
+        user_home=runtime.user_home,
+        group_name=runtime.group_name,
+        group_id=runtime.group_id,
+        # Resolved paths
+        workspace=workspace_spec,
+        workdir=workdir,
+        gosu=gosu_spec,
+        # Container settings (required fields)
+        image=substituted_dict["image"],  # Required
+        command=substituted_dict.get("command", "bash"),
+        container_name=container_name,
+        tty=tty,
+        sudo=substituted_dict.get("sudo", False),
+        # Lists
+        env=substituted_dict.get("env", []),
+        volumes=volume_specs,
+        chown_paths=chown_paths,
+        post_start_commands=substituted_dict.get("post_start_commands", []),
+        run_args=substituted_dict.get("run_args", []),
+        # Optional fields
+        network=substituted_dict.get("network"),
+        platform=substituted_dict.get("platform"),
+        ulimits=substituted_dict.get("ulimits"),
+    )
 
 
 class ContainerRunner:
     """Manages Docker container operations."""
 
     @staticmethod
-    def process_volume_specs(
-        volumes: List[VolumeSpec],
-    ) -> Tuple[List[str], List[str]]:
-        """Process VolumeSpec objects and extract chown paths.
-
-        Args:
-            volumes: List of VolumeSpec objects
-
-        Returns:
-            tuple of (processed_volumes, chown_paths)
-        """
-        chown_paths = []
-        processed_volumes = []
-
-        for spec in volumes:
-            # Extract chown options
-            filtered_options = []
-            for opt in spec.options:
-                if opt == "chown":
-                    chown_paths.append(spec.container_path)
-                else:
-                    filtered_options.append(opt)
-
-            # Build volume string without chown option
-            if filtered_options:
-                volume_arg = f"{spec.host_path}:{spec.container_path}:{','.join(filtered_options)}"
-            else:
-                volume_arg = f"{spec.host_path}:{spec.container_path}"
-
-            processed_volumes.append(volume_arg)
-
-        return processed_volumes, chown_paths
+    def _safe_unlink(path: str) -> None:
+        """Safely remove a file, ignoring errors."""
+        try:
+            os.unlink(path)
+            logging.debug(f"Cleaned up temporary script: {path}")
+        except OSError:
+            pass
 
     @staticmethod
     def build_run_args(
@@ -1093,55 +1102,44 @@ class ContainerRunner:
 
         args.append(f"--name={spec.container_name}")
 
-        # Process volume options from VolumeSpec objects
-        if spec.volumes:
-            processed_volumes, chown_paths = ContainerRunner.process_volume_specs(
-                spec.volumes
-            )
-        else:
-            processed_volumes, chown_paths = [], []
-
-        # Use resolved workspace and workdir from spec
-        workspace_options = (
-            ",".join(spec.workspace.options) if spec.workspace.options else "z"
+        # Add ctenv labels for container identification and management
+        args.extend(
+            [
+                "--label=se.osd.ctenv.managed=true",
+                f"--label=se.osd.ctenv.version={__version__}",
+            ]
         )
+
+        # Process volume options from VolumeSpec objects (chown already handled in parse_container_config)
 
         # Volume mounts
         volume_args = [
-            f"--volume={spec.workspace.host_path}:{spec.workspace.container_path}:{workspace_options}",
-            f"--volume={spec.gosu_path}:{spec.gosu_mount}:z,ro",
-            f"--volume={entrypoint_script_path}:/entrypoint.sh:z,ro",
+            f"--volume={spec.workspace.to_string()}",
+            f"--volume={spec.gosu.to_string()}",
+            f"--volume={entrypoint_script_path}:/ctenv/entrypoint.sh:z,ro",
             f"--workdir={spec.workdir}",
         ]
         args.extend(volume_args)
 
         logging.debug("Volume mounts:")
-        logging.debug(
-            f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path} (options: {workspace_options})"
-        )
+        logging.debug(f"  Workspace: {spec.workspace.to_string()}")
         logging.debug(f"  Working directory: {spec.workdir}")
-        logging.debug(f"  Gosu binary: {spec.gosu_path} -> {spec.gosu_mount}")
+        logging.debug(f"  Gosu binary: {spec.gosu.to_string()}")
         logging.debug(
-            f"  Entrypoint script: {entrypoint_script_path} -> /entrypoint.sh"
+            f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh"
         )
 
         # Additional volume mounts
-        if processed_volumes:
+        if spec.volumes:
             logging.debug("Additional volume mounts:")
-            for volume in processed_volumes:
-                # Add :z option, merging with existing options if present
-                if ":" in volume and len(volume.split(":")) > 2:
-                    # Volume already has options, append z
-                    volume_with_z = f"{volume},z"
-                else:
-                    # Volume has no options, add z
-                    volume_with_z = f"{volume}:z"
-                args.extend([f"--volume={volume_with_z}"])
-                logging.debug(f"  {volume_with_z}")
+            for vol_spec in spec.volumes:
+                volume_arg = f"--volume={vol_spec.to_string()}"
+                args.append(volume_arg)
+                logging.debug(f"  {vol_spec.to_string()}")
 
-        if chown_paths:
+        if spec.chown_paths:
             logging.debug("Volumes with chown enabled:")
-            for path in chown_paths:
+            for path in spec.chown_paths:
                 logging.debug(f"  {path}")
 
         # Environment variables
@@ -1188,7 +1186,7 @@ class ContainerRunner:
                 logging.debug(f"  {run_arg}")
 
         # Set entrypoint to our script
-        args.extend(["--entrypoint", "/entrypoint.sh"])
+        args.extend(["--entrypoint", "/ctenv/entrypoint.sh"])
 
         # Container image
         args.append(spec.image)
@@ -1213,15 +1211,15 @@ class ContainerRunner:
         logging.debug(f"Found Docker at: {docker_path}")
 
         # Verify gosu binary exists
-        logging.debug(f"Checking for gosu binary at: {spec.gosu_path}")
-        gosu_path = Path(spec.gosu_path)
+        logging.debug(f"Checking for gosu binary at: {spec.gosu.host_path}")
+        gosu_path = Path(spec.gosu.host_path)
         if not gosu_path.exists():
             raise FileNotFoundError(
-                f"gosu binary not found at {spec.gosu_path}. Please ensure gosu is available."
+                f"gosu binary not found at {spec.gosu.host_path}. Please ensure gosu is available."
             )
 
         if not gosu_path.is_file():
-            raise FileNotFoundError(f"gosu path {spec.gosu_path} is not a file.")
+            raise FileNotFoundError(f"gosu path {spec.gosu.host_path} is not a file.")
 
         # Verify workspace exists
         workspace_source = Path(spec.workspace.host_path)
@@ -1236,73 +1234,68 @@ class ContainerRunner:
                 f"Workspace path {workspace_source} is not a directory."
             )
 
-        # Process volumes to get chown paths for script generation
-        _, chown_paths = ContainerRunner.process_volume_specs(spec.volumes)
+        # Generate entrypoint script content (chown paths are already in spec)
+        script_content = spec.build_entrypoint_script(verbose, quiet)
 
-        # Generate entrypoint script content
-        script_content = build_entrypoint_script(spec, chown_paths, verbose, quiet)
-
+        # Handle script file creation
         if dry_run:
-            # Dry-run mode: don't create any files, use placeholder path
             entrypoint_script_path = "/tmp/entrypoint.sh"  # Placeholder for display
-            docker_args = ContainerRunner.build_run_args(
-                spec, entrypoint_script_path, verbose
-            )
-
-            logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
-
-            # Print the command that would be executed
-            print(" ".join(docker_args))
-
-            # Show entrypoint script in verbose mode
-            if verbose:
-                print("\n" + "=" * 60, file=sys.stderr)
-                print("Entrypoint script that would be executed:", file=sys.stderr)
-                print("=" * 60, file=sys.stderr)
-                print(script_content, file=sys.stderr)
-                print("=" * 60 + "\n", file=sys.stderr)
-
-            # Return a mock successful result
-            result = subprocess.CompletedProcess(docker_args, 0)
-            logging.debug("Dry-run mode: Docker command printed, not executed")
-            return result
+            script_cleanup = None
         else:
-            # Real execution: create temporary script file
             script_fd, entrypoint_script_path = tempfile.mkstemp(
                 suffix=".sh", text=True
             )
             logging.debug(
                 f"Created temporary entrypoint script: {entrypoint_script_path}"
             )
+            with os.fdopen(script_fd, "w") as f:
+                f.write(script_content)
+            os.chmod(entrypoint_script_path, 0o755)
+            script_cleanup = lambda: ContainerRunner._safe_unlink(
+                entrypoint_script_path
+            )
 
-            try:
-                with os.fdopen(script_fd, "w") as f:
-                    f.write(script_content)
-                os.chmod(entrypoint_script_path, 0o755)
+        try:
+            # Build Docker arguments (same for both modes)
+            docker_args = ContainerRunner.build_run_args(
+                spec, entrypoint_script_path, verbose
+            )
+            logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
-                # Build Docker arguments with actual script path
-                docker_args = ContainerRunner.build_run_args(
-                    spec, entrypoint_script_path, verbose
+            # Show what will be executed
+            if dry_run:
+                print(" ".join(docker_args))
+
+            # Show entrypoint script in verbose mode
+            if verbose:
+                print("\n" + "=" * 60, file=sys.stderr)
+                print(
+                    "Entrypoint script"
+                    + (" that would be executed:" if dry_run else ":"),
+                    file=sys.stderr,
                 )
+                print("=" * 60, file=sys.stderr)
+                print(script_content, file=sys.stderr)
+                print("=" * 60 + "\n", file=sys.stderr)
 
-                logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
-
+            # Execute or mock execution
+            if dry_run:
+                logging.debug("Dry-run mode: Docker command printed, not executed")
+                return subprocess.CompletedProcess(docker_args, 0)
+            else:
                 result = subprocess.run(docker_args, check=False)
                 if result.returncode != 0:
                     logging.debug(f"Container exited with code: {result.returncode}")
                 return result
-            except subprocess.CalledProcessError as e:
+
+        except subprocess.CalledProcessError as e:
+            if not dry_run:
                 logging.error(f"Container execution failed: {e}")
                 raise RuntimeError(f"Container execution failed: {e}")
-            finally:
-                # Clean up temporary script file
-                try:
-                    os.unlink(entrypoint_script_path)
-                    logging.debug(
-                        f"Cleaned up temporary script: {entrypoint_script_path}"
-                    )
-                except OSError:
-                    pass
+            raise
+        finally:
+            if script_cleanup:
+                script_cleanup()
 
 
 def setup_logging(verbose, quiet):
@@ -1402,7 +1395,7 @@ def cmd_run(args, command):
         logging.debug(f"  Sudo: {spec.sudo}")
         logging.debug(f"  TTY: {spec.tty}")
         logging.debug(f"  Platform: {spec.platform or 'default'}")
-        logging.debug(f"  Gosu binary: {spec.gosu_path}")
+        logging.debug(f"  Gosu binary: {spec.gosu.to_string()}")
 
     if not quiet:
         print("[ctenv] run", file=sys.stderr)
@@ -1423,62 +1416,31 @@ def cmd_run(args, command):
 
 def cmd_config_show(args):
     """Show configuration or container details."""
-    container = getattr(args, "container", None)
-
     try:
         # Load configuration early
         explicit_configs = [Path(c) for c in getattr(args, "config", None) or []]
         ctenv_config = CtenvConfig.load(explicit_config_files=explicit_configs)
 
-        if container:
-            # Show specific container
-            if container not in ctenv_config.containers:
-                available = list(ctenv_config.containers.keys())
-                print(
-                    f"Container '{container}' not found. Available: {available}",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-            # Show container name and raw config
-            print(f"Container '{container}':")
-
-            # Get the raw container config dict
-            container_dict = ctenv_config.containers[container]
-
-            # Display each config option
-            for key, value in sorted(container_dict.items()):
+        # Show defaults section if present
+        if ctenv_config.defaults:
+            print("defaults:")
+            for key, value in sorted(ctenv_config.defaults.items()):
                 if not key.startswith("_"):  # Skip metadata fields
-                    print(f"  {key}: {value}")
+                    print(f"  {key} = {repr(value)}")
+            print()
+
+        # Show containers sorted by config name
+        print("containers:")
+        if ctenv_config.containers:
+            for config_name in sorted(ctenv_config.containers.keys()):
+                print(f"  {config_name}:")
+                container_dict = ctenv_config.containers[config_name]
+                for key, value in sorted(container_dict.items()):
+                    if not key.startswith("_"):  # Skip metadata fields
+                        print(f"    {key} = {repr(value)}")
+                print()  # Empty line between containers
         else:
-            # Show all configuration
-            print("Configuration:")
-
-            # Show defaults section if present
-            if ctenv_config.defaults:
-                print("\nDefaults:")
-                defaults_config = ctenv_config.defaults
-                print(f"  image: {defaults_config.get('image')}")
-                print(f"  command: {defaults_config.get('command')}")
-                print(f"  network: {defaults_config.get('network')}")
-                print(f"  sudo: {defaults_config.get('sudo')}")
-                if defaults_config.get("env"):
-                    print(f"  env: {list(defaults_config['env'])}")
-                if defaults_config.get("volumes"):
-                    print(f"  volumes: {list(defaults_config['volumes'])}")
-
-            # Show containers
-            if ctenv_config.containers:
-                print("\nContainers:")
-                for cnt_name in sorted(ctenv_config.containers.keys()):
-                    print(f"  {cnt_name}:")
-                    container_dict = ctenv_config.containers[cnt_name]
-                    for key, value in sorted(container_dict.items()):
-                        if not key.startswith("_"):  # Skip metadata fields
-                            print(f"    {key}: {value}")
-                    print()  # Empty line between containers
-            else:
-                print("\nNo containers defined")
+            print("# No containers defined")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1517,10 +1479,9 @@ def create_parser():
 
     parser.add_argument("--version", action="version", version=f"ctenv {__version__}")
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Suppress non-essential output"
+        "--config",
+        action="append",
+        help="Path to configuration file (can be used multiple times, order matters)",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
@@ -1545,19 +1506,21 @@ Note: Use '--' to separate commands from container/options.""",
     )
 
     run_parser.add_argument(
-        "container", nargs="?", help="Container to use (default: 'default')"
+        "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
-    run_parser.add_argument("--image", help="Container image to use")
+    run_parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress non-essential output"
+    )
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show Docker command without running container",
+        help="Show commands without running container",
     )
+
     run_parser.add_argument(
-        "--config",
-        action="append",
-        help="Path to configuration file (can be used multiple times, order matters)",
+        "container", nargs="?", help="Container to use (default: 'default')"
     )
+    run_parser.add_argument("--image", help="Container image to use")
     run_parser.add_argument(
         "--env",
         action="append",
@@ -1587,12 +1550,12 @@ Note: Use '--' to separate commands from container/options.""",
         help="Working directory inside container (where to cd)",
     )
     run_parser.add_argument(
-        "--gosu-path",
-        help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
-    )
-    run_parser.add_argument(
         "--platform",
         help="Container platform (e.g., linux/amd64, linux/arm64)",
+    )
+    run_parser.add_argument(
+        "--gosu-path",
+        help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
     )
     run_parser.add_argument(
         "--run-arg",
@@ -1616,17 +1579,7 @@ Note: Use '--' to separate commands from container/options.""",
     )
 
     # config show
-    config_show_parser = config_subparsers.add_parser(
-        "show", help="Show configuration or container details"
-    )
-    config_show_parser.add_argument(
-        "container", nargs="?", help="Container to show (default: show all)"
-    )
-    config_show_parser.add_argument(
-        "--config",
-        action="append",
-        help="Path to configuration file (can be used multiple times, order matters)",
-    )
+    config_subparsers.add_parser("show", help="Show configuration or container details")
 
     return parser
 
@@ -1651,13 +1604,14 @@ def main(argv=None):
     parser = create_parser()
     args = parser.parse_args(ctenv_args)
 
-    # Setup logging
-    setup_logging(args.verbose, args.quiet)
-
     # Route to appropriate command handler
     if args.subcommand == "run":
+        # Setup logging for run command (which has verbose/quiet flags)
+        setup_logging(args.verbose, args.quiet)
         cmd_run(args, command)
     elif args.subcommand == "config":
+        # Setup basic logging for config command (no verbose/quiet flags)
+        setup_logging(verbose=False, quiet=False)
         if args.config_command == "show" or args.config_command is None:
             cmd_config_show(args)
         else:

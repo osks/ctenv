@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from ctenv.ctenv import (
     _load_config_file,
-    substitute_variables,
+    _substitute_variables,
     find_project_config,
     find_user_config,
     ConfigFile,
@@ -352,12 +352,14 @@ network = "bridge"
 @pytest.mark.unit
 def test_substitute_variables_basic():
     """Test basic variable substitution."""
+    import os
+
     variables = {"USER": "alice", "image": "test:latest"}
 
-    result = substitute_variables("Hello ${USER}", variables)
+    result = _substitute_variables("Hello ${USER}", variables, os.environ)
     assert result == "Hello alice"
 
-    result = substitute_variables("Image: ${image}", variables)
+    result = _substitute_variables("Image: ${image}", variables, os.environ)
     assert result == "Image: test:latest"
 
 
@@ -369,11 +371,11 @@ def test_substitute_variables_env():
     os.environ["TEST_VAR"] = "test_value"
 
     variables = {"USER": "alice"}
-    result = substitute_variables("Value: ${env.TEST_VAR}", variables)
+    result = _substitute_variables("Value: ${env.TEST_VAR}", variables, os.environ)
     assert result == "Value: test_value"
 
     # Test missing env var
-    result = substitute_variables("Missing: ${env.NONEXISTENT}", variables)
+    result = _substitute_variables("Missing: ${env.NONEXISTENT}", variables, os.environ)
     assert result == "Missing: "
 
     # Clean up
@@ -383,19 +385,23 @@ def test_substitute_variables_env():
 @pytest.mark.unit
 def test_substitute_variables_slug_filter():
     """Test slug filter for filesystem-safe strings."""
+    import os
+
     variables = {"image": "docker.example.com:5000/app:v1.0"}
 
-    result = substitute_variables("Cache: ${image|slug}", variables)
+    result = _substitute_variables("Cache: ${image|slug}", variables, os.environ)
     assert result == "Cache: docker.example.com-5000-app-v1.0"
 
 
 @pytest.mark.unit
 def test_substitute_variables_unknown_filter():
     """Test error handling for unknown filters."""
+    import os
+
     variables = {"image": "test:latest"}
 
     with pytest.raises(ValueError, match="Unknown filter: unknown"):
-        substitute_variables("Bad: ${image|unknown}", variables)
+        _substitute_variables("Bad: ${image|unknown}", variables, os.environ)
 
 
 # Test removed - substitute_in_container was replaced by ContainerConfig.resolve()
@@ -663,8 +669,8 @@ env = ["NODE_ENV=development"]
         expected_data = str((tmpdir / "data").resolve())
 
         assert captured_config["volumes"] == [
-            f"{expected_node_modules}:/app/node_modules",
-            f"{expected_data}:/data",
+            f"{expected_node_modules}:/app/node_modules:z",
+            f"{expected_data}:/data:z",
         ]
         assert captured_config["env"] == ["NODE_ENV=development"]
         assert captured_config["image"] == "node:18"

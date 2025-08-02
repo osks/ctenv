@@ -63,9 +63,9 @@ command = "echo test"
                 "python",
                 "-m",
                 "ctenv",
-                "run",
                 "--config",
                 str(config_file),
+                "run",
                 "test",
                 "--dry-run",
             ],
@@ -100,7 +100,9 @@ def test_cli_config_command():
     )
 
     assert result.returncode == 0
-    assert "Configuration:" in result.stdout
+    # Check that config shows default values (format-agnostic)
+    assert "ubuntu:latest" in result.stdout  # Default image
+    assert "bash" in result.stdout  # Default command
 
 
 @pytest.mark.integration
