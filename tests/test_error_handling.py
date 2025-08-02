@@ -52,8 +52,8 @@ def test_volume_spec_malformed_formats():
 
 
 @pytest.mark.integration
-def test_config_show_invalid_container():
-    """Test config show command with invalid container name."""
+def test_config_show_success():
+    """Test config show command shows all configuration."""
     import subprocess
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -67,26 +67,27 @@ image = "alpine:latest"
 """
         config_file.write_text(config_content)
 
-        # Try to show invalid container
+        # Run config show (no longer accepts container argument)
         result = subprocess.run(
             [
                 "python",
                 "-m",
                 "ctenv",
-                "config",
-                "show",
-                "nonexistent",
                 "--config",
                 str(config_file),
+                "config",
+                "show",
             ],
             capture_output=True,
             text=True,
             cwd=tmpdir,
         )
 
-        assert result.returncode != 0
-        assert "Container 'nonexistent' not found" in result.stderr
-        assert "Available: ['valid']" in result.stderr
+        assert result.returncode == 0
+        assert "defaults:" in result.stdout
+        assert "containers:" in result.stdout
+        assert "valid:" in result.stdout  # Container should be shown
+        assert "alpine:latest" in result.stdout
 
 
 @pytest.mark.integration
@@ -106,9 +107,9 @@ def test_config_invalid_toml_file():
                 "python",
                 "-m",
                 "ctenv",
-                "run",
                 "--config",
                 str(config_file),
+                "run",
                 "--dry-run",
                 "--",
                 "echo",

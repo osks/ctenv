@@ -44,8 +44,8 @@ def run_ctenv(workspace_dir, args, cwd=None):
     cmd = [
         "python3",
         str(Path(__file__).parent.parent / "ctenv" / "ctenv.py"),
-        "-v",
         "run",
+        "-v",
         "--dry-run",
         "--gosu-path",
         str(Path(__file__).parent.parent / "ctenv" / "binaries" / "gosu-amd64"),

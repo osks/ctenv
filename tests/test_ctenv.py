@@ -11,7 +11,6 @@ from ctenv.ctenv import (
     create_parser,
     RuntimeContext,
     parse_container_config,
-    build_entrypoint_script,
 )
 
 
@@ -165,7 +164,7 @@ def test_entrypoint_script_generation():
     # Parse to ContainerSpec
     spec = parse_container_config(config_dict, mock_runtime)
 
-    script = build_entrypoint_script(spec, verbose=False, quiet=False)
+    script = spec.build_entrypoint_script(verbose=False, quiet=False)
 
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
@@ -225,7 +224,7 @@ def test_entrypoint_script_examples():
     for scenario in scenarios:
         # Parse to ContainerSpec
         spec = parse_container_config(scenario["config_dict"], scenario["runtime"])
-        script = build_entrypoint_script(spec, verbose=False, quiet=False)
+        script = spec.build_entrypoint_script(verbose=False, quiet=False)
 
         print(f"\n{scenario['name']}:")
         print(f"  User: {spec.user_name} (UID: {spec.user_id})")
@@ -272,13 +271,8 @@ def test_verbose_mode():
     """Test verbose logging output."""
     parser = create_parser()
 
-    # Test that verbose flag is accepted and doesn't break anything
-    with pytest.raises(SystemExit) as exc_info:
-        parser.parse_args(["--verbose", "--version"])
-    assert exc_info.value.code == 0
-
-    # Test verbose with run --dry-run
-    args = parser.parse_args(["--verbose", "run", "--dry-run"])
+    # Test that verbose flag is accepted and doesn't break anything with run
+    args = parser.parse_args(["run", "--verbose", "--dry-run"])
     assert args.verbose is True
     assert args.subcommand == "run"
 
@@ -287,7 +281,7 @@ def test_verbose_mode():
 def test_quiet_mode():
     """Test quiet mode suppresses output."""
     parser = create_parser()
-    args = parser.parse_args(["--quiet", "run", "--dry-run"])
+    args = parser.parse_args(["run", "--quiet", "--dry-run"])
 
     assert args.quiet is True
     assert args.subcommand == "run"
@@ -304,8 +298,8 @@ def test_stdout_stderr_separation():
     assert args.dry_run is True
     assert args.subcommand == "run"
 
-    # Test quiet mode parsing
-    args = parser.parse_args(["--quiet", "run", "--dry-run"])
+    # Test quiet mode parsing (quiet flag now goes after run)
+    args = parser.parse_args(["run", "--quiet", "--dry-run"])
     assert args.quiet is True
     assert args.dry_run is True
 
@@ -389,7 +383,7 @@ def test_post_start_cmd_in_generated_script():
         runtime = RuntimeContext.current()
         spec = parse_container_config(config_dict, runtime)
 
-    script = build_entrypoint_script(spec, verbose=True, quiet=False)
+    script = spec.build_entrypoint_script(verbose=True, quiet=False)
 
     # Should contain the post-start commands in the script variables
     assert (
@@ -405,7 +399,7 @@ def test_post_start_cmd_in_generated_script():
 @pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
-    from ctenv.ctenv import VolumeSpec, ContainerRunner
+    from ctenv.ctenv import VolumeSpec
 
     # Test single path format - smart defaulting
     vol_spec = VolumeSpec.parse_as_volume("~/.docker")
@@ -413,21 +407,17 @@ def test_volume_parsing_smart_defaulting():
     assert vol_spec.container_path == "~/.docker"  # Smart defaulted
     assert vol_spec.options == []
 
-    # Test with process_volume_specs
-    volumes, chown_paths = ContainerRunner.process_volume_specs(
-        [
-            VolumeSpec.parse_as_volume("/host/path"),
-            VolumeSpec.parse_as_volume("~/config"),
-        ]
+    # Test to_string() works correctly for smart defaulted volumes
+    assert (
+        VolumeSpec.parse_as_volume("/host/path").to_string() == "/host/path:/host/path"
     )
-    assert volumes == ["/host/path:/host/path", "~/config:~/config"]
-    assert chown_paths == []
+    assert VolumeSpec.parse_as_volume("~/config").to_string() == "~/config:~/config"
 
 
 @pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
-    from ctenv.ctenv import VolumeSpec, ContainerRunner
+    from ctenv.ctenv import VolumeSpec
 
     # Test empty target with options
     vol_spec = VolumeSpec.parse_as_volume("~/.docker::ro")
@@ -435,25 +425,23 @@ def test_volume_parsing_empty_target_syntax():
     assert vol_spec.container_path == "~/.docker"  # Smart defaulted
     assert vol_spec.options == ["ro"]
 
-    # Test empty target with chown option
-    volumes, chown_paths = ContainerRunner.process_volume_specs(
-        [VolumeSpec.parse_as_volume("~/data::chown,rw")]
-    )
-    assert volumes == ["~/data:~/data:rw"]
-    assert chown_paths == ["~/data"]
+    # Test empty target with chown option - chown will be handled during parse_container_config
+    vol_spec = VolumeSpec.parse_as_volume("~/data::chown,rw")
+    assert vol_spec.host_path == "~/data"
+    assert vol_spec.container_path == "~/data"  # Smart defaulted
+    assert vol_spec.options == ["chown", "rw"]  # Options are preserved in VolumeSpec
 
     # Test empty target with multiple options
-    volumes, chown_paths = ContainerRunner.process_volume_specs(
-        [VolumeSpec.parse_as_volume("/path::ro,chown,z")]
-    )
-    assert volumes == ["/path:/path:ro,z"]
-    assert chown_paths == ["/path"]
+    vol_spec = VolumeSpec.parse_as_volume("/path::ro,chown,z")
+    assert vol_spec.host_path == "/path"
+    assert vol_spec.container_path == "/path"  # Smart defaulted
+    assert vol_spec.options == ["ro", "chown", "z"]  # All options preserved
 
 
 @pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
-    from ctenv.ctenv import VolumeSpec, ContainerRunner
+    from ctenv.ctenv import VolumeSpec
 
     # Test standard format still works
     vol_spec = VolumeSpec.parse_as_volume("/host:/container:ro")
@@ -461,12 +449,11 @@ def test_volume_parsing_backward_compatibility():
     assert vol_spec.container_path == "/container"
     assert vol_spec.options == ["ro"]
 
-    # Test chown option still works
-    volumes, chown_paths = ContainerRunner.process_volume_specs(
-        [VolumeSpec.parse_as_volume("/host:/container:chown")]
-    )
-    assert volumes == ["/host:/container"]
-    assert chown_paths == ["/container"]
+    # Test chown option still works - preserved in VolumeSpec
+    vol_spec = VolumeSpec.parse_as_volume("/host:/container:chown")
+    assert vol_spec.host_path == "/host"
+    assert vol_spec.container_path == "/container"
+    assert vol_spec.options == ["chown"]
 
 
 @pytest.mark.unit
@@ -517,13 +504,13 @@ def test_cli_volume_template_expansion():
             vol1 = volume_specs[0]
             assert vol1.host_path == f"{test_home}/.docker"
             assert vol1.container_path == f"{test_home}/.docker"  # Smart defaulted
-            assert vol1.options == []
+            assert vol1.options == ["z"]  # z is added automatically
 
             # Second volume: ${user_home}/.cache::ro should expand with options
             vol2 = volume_specs[1]
             assert vol2.host_path == f"{test_home}/.cache"
             assert vol2.container_path == f"{test_home}/.cache"  # Smart defaulted
-            assert vol2.options == ["ro"]
+            assert vol2.options == ["ro", "z"]  # z is added automatically
 
 
 @pytest.mark.unit

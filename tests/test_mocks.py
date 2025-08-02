@@ -9,7 +9,6 @@ from ctenv.ctenv import (
     ContainerRunner,
     RuntimeContext,
     parse_container_config,
-    build_entrypoint_script,
 )
 
 
@@ -71,10 +70,10 @@ def test_docker_command_examples():
         assert f"--volume={current_dir}:" in " ".join(
             args
         )  # Path will be in volume mount
-        assert "--volume=/test/gosu:" in " ".join(args)  # Gosu mount
+        assert "--volume=/test/gosu:/ctenv/gosu:" in " ".join(args)  # Gosu mount
         assert "--workdir=" in " ".join(args)  # Working directory set
         assert "--entrypoint" in args
-        assert "/entrypoint.sh" in args
+        assert "/ctenv/entrypoint.sh" in args
         assert "ubuntu:latest" in args
 
         # Print the command for documentation purposes
@@ -316,11 +315,11 @@ def test_sudo_entrypoint_script():
         config_dict_without_sudo, runtime
     )
 
-    script_with_sudo = build_entrypoint_script(
-        container_spec_with_sudo, verbose=False, quiet=False
+    script_with_sudo = container_spec_with_sudo.build_entrypoint_script(
+        verbose=False, quiet=False
     )
-    script_without_sudo = build_entrypoint_script(
-        container_spec_without_sudo, verbose=False, quiet=False
+    script_without_sudo = container_spec_without_sudo.build_entrypoint_script(
+        verbose=False, quiet=False
     )
 
     # Test sudo setup is properly configured with ADD_SUDO variable
@@ -516,11 +515,8 @@ def test_volume_chown_option():
             assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
-            _, chown_paths = ContainerRunner.process_volume_specs(
-                container_spec.volumes
-            )
-            script_content = build_entrypoint_script(
-                container_spec, chown_paths, verbose=False, quiet=False
+            script_content = container_spec.build_entrypoint_script(
+                verbose=False, quiet=False
             )
 
             # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
@@ -564,8 +560,8 @@ def test_post_start_commands():
         container_spec = parse_container_config(config_dict, runtime)
 
         # Generate entrypoint script content directly
-        script_content = build_entrypoint_script(
-            container_spec, verbose=False, quiet=False
+        script_content = container_spec.build_entrypoint_script(
+            verbose=False, quiet=False
         )
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
@@ -631,3 +627,49 @@ def test_ulimits_configuration():
         assert "--ulimit=nofile=1024" in ulimit_args
         assert "--ulimit=nproc=2048" in ulimit_args
         assert "--ulimit=core=0" in ulimit_args
+
+
+@pytest.mark.unit
+def test_container_labels_added():
+    """Test that ctenv adds identifying labels to containers."""
+    from ctenv.ctenv import ContainerRunner, __version__, parse_container_config
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create fake gosu
+        gosu_path = Path(tmpdir) / "gosu"
+        gosu_path.write_text('#!/bin/sh\nexec "$@"')
+        gosu_path.chmod(0o755)
+
+        # Test config with minimal settings
+        config_dict = {
+            "image": "test:latest",
+            "command": "bash",
+            "workspace": ":",
+            "gosu_path": str(gosu_path),
+        }
+
+        runtime = create_test_runtime()
+        container_spec = parse_container_config(config_dict, runtime)
+
+        # Build Docker run arguments
+        args = ContainerRunner.build_run_args(container_spec, "/tmp/entrypoint.sh")
+
+        # Check that ctenv labels are present
+        labels_found = []
+        for arg in args:
+            if arg.startswith("--label=se.osd.ctenv."):
+                labels_found.append(arg)
+
+        # Verify expected labels
+        expected_labels = [
+            "--label=se.osd.ctenv.managed=true",
+            f"--label=se.osd.ctenv.version={__version__}",
+        ]
+
+        assert len(labels_found) == 2, (
+            f"Expected 2 labels, found {len(labels_found)}: {labels_found}"
+        )
+        for expected_label in expected_labels:
+            assert expected_label in labels_found, f"Missing label: {expected_label}"

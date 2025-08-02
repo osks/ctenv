@@ -4,7 +4,6 @@ import pytest
 import tempfile
 
 from ctenv.ctenv import (
-    build_entrypoint_script,
     RuntimeContext,
     parse_container_config,
 )
@@ -49,7 +48,7 @@ def test_post_start_commands_shell_functionality():
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
-        script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
+        script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
         # Commands should be stored and executed normally with shell interpretation
         # Check for the key content rather than exact format due to shell escaping
@@ -104,9 +103,10 @@ def test_volume_chown_path_injection_prevention():
             "/tmp > /tmp/redirect",  # Redirect injection
         ]
 
-        script = build_entrypoint_script(
-            container_spec, malicious_paths, verbose=False, quiet=False
-        )
+        # Add malicious paths to the spec
+        container_spec.chown_paths = malicious_paths
+
+        script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
         # Paths should be safely quoted in the CHOWN_PATHS variable to prevent command injection
         # The malicious path should be quoted and null-separated
@@ -162,7 +162,7 @@ def test_complex_shell_scenarios():
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
-        script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
+        script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
         # All commands should execute normally with shell interpretation
         assert 'echo "$(echo' in script
@@ -206,7 +206,7 @@ def test_safe_commands_work_normally():
         # Parse config to get ContainerSpec
         container_spec = parse_container_config(config_dict, runtime)
 
-        script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
+        script = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
         # Commands should be present (unquoted for normal execution)
         assert "npm install" in script

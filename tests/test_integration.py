@@ -184,7 +184,9 @@ def test_config_command(temp_workspace):
     )
 
     assert result.returncode == 0
-    assert "Configuration:" in result.stdout
+    # Check that config shows expected values (format-agnostic)
+    assert "image" in result.stdout and "ubuntu" in result.stdout
+    assert "bash" in result.stdout
 
 
 @pytest.mark.integration
@@ -204,7 +206,9 @@ def test_config_show_command(temp_workspace):
     )
 
     assert result.returncode == 0
-    assert "Configuration:" in result.stdout
+    # Check that config shows expected values (format-agnostic)
+    assert "image" in result.stdout and "ubuntu" in result.stdout
+    assert "bash" in result.stdout
 
 
 @pytest.mark.integration
@@ -246,9 +250,11 @@ image = "alpine:latest"
     )
 
     assert result.returncode == 0
-    assert "Configuration:" in result.stdout
-    assert "python:3.12" in result.stdout  # Should show user config default
+    # Check that config shows expected values (format-agnostic)
+    assert "python:3.12" in result.stdout  # Should show user config default image
+    assert "bash" in result.stdout  # Default command
     assert "test_user" in result.stdout  # Should show user config container
+    assert "alpine:latest" in result.stdout  # Container image
 
 
 @pytest.mark.integration
@@ -280,6 +286,8 @@ env = ["DEBUG=1"]
     )
 
     assert result.returncode == 0
-    assert "Configuration:" in result.stdout
+    # Check that config shows expected values (format-agnostic)
+    assert "image" in result.stdout and "ubuntu" in result.stdout
+    assert "bash" in result.stdout
     assert "node:18" in result.stdout  # Should show project config default
     assert "test_project" in result.stdout  # Should show project config container
