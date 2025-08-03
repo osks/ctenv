@@ -536,7 +536,7 @@ def merge_dict(config, overrides):
         result = {}
     else:
         result = copy.deepcopy(config)
-    
+
     for k, v in overrides.items():
         # Skip NOTSET values - they should not override existing config
         if v is NOTSET:
@@ -758,11 +758,11 @@ def _substitute_variables_in_container_config(
 
     # Use replace() to create new instance with substituted fields
     updates = {}
-    for field in fields(config):
-        original_value = getattr(config, field.name)
+    for field_info in fields(config):
+        original_value = getattr(config, field_info.name)
         substituted_value = substitute_field(original_value)
         if substituted_value != original_value:
-            updates[field.name] = substituted_value
+            updates[field_info.name] = substituted_value
 
     return replace(config, **updates)
 

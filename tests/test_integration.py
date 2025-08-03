@@ -297,9 +297,6 @@ env = ["DEBUG=1"]
 @pytest.mark.integration
 def test_post_start_commands_execution(test_images, temp_workspace):
     """Test that post-start commands work correctly in shell environments."""
-    # Create a test file to verify post-start command execution
-    test_file = Path(temp_workspace) / "post_start_test.txt"
-    
     result = subprocess.run(
         [
             "python3",
@@ -316,28 +313,28 @@ def test_post_start_commands_execution(test_images, temp_workspace):
         text=True,
         cwd=temp_workspace,
     )
-    
+
     # This should reproduce the "read: Illegal option -d" error
     if result.returncode != 0:
         print(f"STDERR: {result.stderr}")
         print(f"STDOUT: {result.stdout}")
-    
+
     assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
     assert "post-start executed" in result.stdout
 
 
-@pytest.mark.integration 
+@pytest.mark.integration
 def test_multiple_post_start_commands(test_images, temp_workspace):
     """Test multiple post-start commands to stress test the parsing."""
     result = subprocess.run(
         [
             "python3",
-            "-m", 
+            "-m",
             "ctenv",
             "run",
             "--post-start-command",
             "echo 'first command'",
-            "--post-start-command", 
+            "--post-start-command",
             "echo 'second command'",
             "--post-start-command",
             "touch /tmp/marker_file",
@@ -350,11 +347,11 @@ def test_multiple_post_start_commands(test_images, temp_workspace):
         text=True,
         cwd=temp_workspace,
     )
-    
+
     if result.returncode != 0:
         print(f"STDERR: {result.stderr}")
         print(f"STDOUT: {result.stdout}")
-    
+
     assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
     assert "Commands completed" in result.stdout
     assert "/tmp/marker_file" in result.stdout
