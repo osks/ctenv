@@ -468,7 +468,6 @@ def test_container_failure_handling(mock_run):
         runtime = create_test_runtime()
         # Parse config using complete configuration
         from ctenv.ctenv import CtenvConfig, ContainerConfig
-        import tempfile
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(
