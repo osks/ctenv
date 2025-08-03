@@ -56,7 +56,7 @@ Under the hood, ctenv starts containers as root for file ownership setup, then d
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - Docker (tested on Linux/macOS)
 
 ## Features
