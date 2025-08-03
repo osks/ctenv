@@ -28,7 +28,7 @@
 # - Use .dev0 suffix during development
 # - Remove .dev0 for stable releases
 # - Increment MINOR for new features, MAJOR for breaking changes
-__version__ = "0.3.dev0"
+__version__ = "0.4"
 
 import argparse
 import collections.abc
