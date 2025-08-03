@@ -92,7 +92,5 @@ def mock_gosu_discovery(request):
 def pytest_configure(config):
     """Configure custom markers."""
     config.addinivalue_line("markers", "unit: Unit tests (fast)")
-    config.addinivalue_line(
-        "markers", "integration: Integration tests with containers (slow)"
-    )
+    config.addinivalue_line("markers", "integration: Integration tests with containers (slow)")
     config.addinivalue_line("markers", "slow: Slow tests requiring external resources")

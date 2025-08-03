@@ -95,9 +95,7 @@ def test_cli_run_invalid_container():
 @pytest.mark.integration
 def test_cli_config_command():
     """Test CLI config command."""
-    result = subprocess.run(
-        ["python3", "-m", "ctenv", "config"], capture_output=True, text=True
-    )
+    result = subprocess.run(["python3", "-m", "ctenv", "config"], capture_output=True, text=True)
 
     assert result.returncode == 0
     # Check that config shows default values (format-agnostic)
@@ -108,9 +106,7 @@ def test_cli_config_command():
 @pytest.mark.integration
 def test_cli_help():
     """Test CLI help command."""
-    result = subprocess.run(
-        ["python3", "-m", "ctenv", "--help"], capture_output=True, text=True
-    )
+    result = subprocess.run(["python3", "-m", "ctenv", "--help"], capture_output=True, text=True)
 
     assert result.returncode == 0
     assert "ctenv" in result.stdout

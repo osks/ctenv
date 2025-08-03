@@ -72,9 +72,7 @@ def test_docker_command_examples():
         assert f"--name={container_spec.container_name}" in args
         # With workspace=":", mounts current directory
         current_dir = str(Path.cwd())
-        assert f"--volume={current_dir}:" in " ".join(
-            args
-        )  # Path will be in volume mount
+        assert f"--volume={current_dir}:" in " ".join(args)  # Path will be in volume mount
         assert "--volume=/test/gosu:/ctenv/gosu:" in " ".join(args)  # Gosu mount
         assert "--workdir=" in " ".join(args)  # Working directory set
         assert "--entrypoint" in args
@@ -133,9 +131,7 @@ def test_platform_support():
         overrides=ContainerConfig.from_dict(config_dict_no_platform)
     )
     container_spec_no_platform = parse_container_config(config2, runtime)
-    args_no_platform = ContainerRunner.build_run_args(
-        container_spec_no_platform, test_script_path
-    )
+    args_no_platform = ContainerRunner.build_run_args(container_spec_no_platform, test_script_path)
 
     # Should not include platform flag when not specified
     platform_args = [arg for arg in args_no_platform if arg.startswith("--platform")]
@@ -215,9 +211,7 @@ def test_docker_command_scenarios():
             from ctenv.ctenv import CtenvConfig, ContainerConfig
 
             ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-            config = ctenv_config.get_default(
-                overrides=ContainerConfig.from_dict(config_dict)
-            )
+            config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
             container_spec = parse_container_config(config, runtime)
             # Create a test script path for build_run_args
             test_script_path = "/tmp/test_entrypoint.sh"
@@ -240,9 +234,7 @@ def test_docker_command_scenarios():
                     # Skip the temp script volume mount for readability
                     skip_next = True
                     continue
-                if arg.startswith("--volume=/tmp") or arg.startswith(
-                    "--volume=/var/folders"
-                ):
+                if arg.startswith("--volume=/tmp") or arg.startswith("--volume=/var/folders"):
                     # Skip temp script volume mount
                     continue
                 docker_cmd.append(arg)
@@ -340,9 +332,7 @@ def test_sudo_entrypoint_script():
     from ctenv.ctenv import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-    config = ctenv_config.get_default(
-        overrides=ContainerConfig.from_dict(config_dict_with_sudo)
-    )
+    config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict_with_sudo))
     container_spec_with_sudo = parse_container_config(config, runtime)
     # Parse config using complete configuration
     ctenv_config2 = CtenvConfig.load(start_dir=Path.cwd())
@@ -351,9 +341,7 @@ def test_sudo_entrypoint_script():
     )
     container_spec_without_sudo = parse_container_config(config2, runtime)
 
-    script_with_sudo = container_spec_with_sudo.build_entrypoint_script(
-        verbose=False, quiet=False
-    )
+    script_with_sudo = container_spec_with_sudo.build_entrypoint_script(verbose=False, quiet=False)
     script_without_sudo = container_spec_without_sudo.build_entrypoint_script(
         verbose=False, quiet=False
     )
@@ -470,9 +458,7 @@ def test_container_failure_handling(mock_run):
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
-        config = ctenv_config.get_default(
-            overrides=ContainerConfig.from_dict(config_dict)
-        )
+        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
         result = ContainerRunner.run_container(container_spec)
@@ -495,9 +481,7 @@ def test_tty_detection():
     from ctenv.ctenv import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-    config = ctenv_config.get_default(
-        overrides=ContainerConfig.from_dict(config_dict_with_tty)
-    )
+    config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict_with_tty))
     container_spec_with_tty = parse_container_config(config, runtime_with_tty)
 
     test_script_path = "/tmp/test_entrypoint.sh"
@@ -552,9 +536,7 @@ def test_volume_chown_option():
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-        config = ctenv_config.get_default(
-            overrides=ContainerConfig.from_dict(config_dict)
-        )
+        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
         # Test that build_run_args processes chown correctly
@@ -583,9 +565,7 @@ def test_volume_chown_option():
             assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
-            script_content = container_spec.build_entrypoint_script(
-                verbose=False, quiet=False
-            )
+            script_content = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
             # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
             assert "/var/cache" in script_content
@@ -629,23 +609,17 @@ def test_post_start_commands():
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-        config = ctenv_config.get_default(
-            overrides=ContainerConfig.from_dict(config_dict)
-        )
+        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
         # Generate entrypoint script content directly
-        script_content = container_spec.build_entrypoint_script(
-            verbose=False, quiet=False
-        )
+        script_content = container_spec.build_entrypoint_script(verbose=False, quiet=False)
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
         assert "POST_START_COMMANDS=" in script_content
         assert "source /bitbake-venv/bin/activate" in script_content
         assert "mkdir -p /var/cache/custom" in script_content
-        assert (
-            "Setup complete" in script_content
-        )  # Check for the content, not the exact quoting
+        assert "Setup complete" in script_content  # Check for the content, not the exact quoting
         # Should contain the function to execute post-start commands
         assert "run_post_start_commands()" in script_content
 
@@ -692,9 +666,7 @@ def test_ulimits_configuration():
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-        config = ctenv_config.get_default(
-            overrides=ContainerConfig.from_dict(config_dict)
-        )
+        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
         # Test that build_run_args generates ulimit flags
@@ -737,9 +709,7 @@ def test_container_labels_added():
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-        config = ctenv_config.get_default(
-            overrides=ContainerConfig.from_dict(config_dict)
-        )
+        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
         # Build Docker run arguments

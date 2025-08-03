@@ -100,9 +100,7 @@ class TestWorkspaceVolumesSyntax:
 
     def test_auto_syntax(self, workspace_with_config):
         """Test --workspace : (auto-detection)"""
-        result = run_ctenv(
-            workspace_with_config, ["--workspace", ":", "test", "--", "pwd"]
-        )
+        result = run_ctenv(workspace_with_config, ["--workspace", ":", "test", "--", "pwd"])
 
         assert result.returncode == 0
         # Handle macOS path normalization (/private prefix)
@@ -113,9 +111,7 @@ class TestWorkspaceVolumesSyntax:
 
     def test_auto_with_target(self, workspace_with_config):
         """Test --workspace :/repo"""
-        result = run_ctenv(
-            workspace_with_config, ["--workspace", ":/repo", "test", "--", "pwd"]
-        )
+        result = run_ctenv(workspace_with_config, ["--workspace", ":/repo", "test", "--", "pwd"])
 
         assert result.returncode == 0
         # Handle macOS path normalization (/private prefix)
@@ -124,9 +120,7 @@ class TestWorkspaceVolumesSyntax:
 
     def test_shorthand_syntax(self, workspace_with_config):
         """Test --workspace :/repo shorthand"""
-        result = run_ctenv(
-            workspace_with_config, ["--workspace", ":/repo", "test", "--", "pwd"]
-        )
+        result = run_ctenv(workspace_with_config, ["--workspace", ":/repo", "test", "--", "pwd"])
 
         assert result.returncode == 0
         # Handle macOS path normalization (/private prefix)

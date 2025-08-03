@@ -87,9 +87,7 @@ def test_config_with_mock_runtime():
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-        config = ctenv_config.get_default(
-            overrides=ContainerConfig.from_dict(config_overrides)
-        )
+        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
         resolved_spec = parse_container_config(config, mock_runtime)
 
         assert resolved_spec.user_name == "testuser"
@@ -151,9 +149,7 @@ def test_container_name_generation():
         spec3 = parse_container_config(config_dict3, mock_runtime)
 
     # Container names are now based on project_root (with variable substitution)
-    expected_name = (
-        f"ctenv-{str(mock_runtime.project_root).replace('/', '-').replace(':', '-')}"
-    )
+    expected_name = f"ctenv-{str(mock_runtime.project_root).replace('/', '-').replace(':', '-')}"
     assert spec1.container_name == expected_name
     assert spec2.container_name == expected_name  # Same project_root
     assert spec3.container_name == expected_name  # Same project_root
@@ -191,9 +187,7 @@ def test_entrypoint_script_generation():
     from ctenv.ctenv import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(start_dir=Path.cwd())
-    config = ctenv_config.get_default(
-        overrides=ContainerConfig.from_dict(config_overrides)
-    )
+    config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
 
     # Parse to ContainerSpec
     spec = parse_container_config(config, mock_runtime)
@@ -444,8 +438,7 @@ def test_post_start_cmd_in_generated_script():
 
     # Should contain the post-start commands in the script variables
     assert (
-        "POST_START_COMMANDS='npm install" in script
-        or 'POST_START_COMMANDS="npm install' in script
+        "POST_START_COMMANDS='npm install" in script or 'POST_START_COMMANDS="npm install' in script
     )
     assert "npm run test" in script
     # Should contain the function that executes post-start commands
@@ -465,9 +458,7 @@ def test_volume_parsing_smart_defaulting():
     assert vol_spec.options == []
 
     # Test to_string() works correctly for smart defaulted volumes
-    assert (
-        VolumeSpec.parse_as_volume("/host/path").to_string() == "/host/path:/host/path"
-    )
+    assert VolumeSpec.parse_as_volume("/host/path").to_string() == "/host/path:/host/path"
     assert VolumeSpec.parse_as_volume("~/config").to_string() == "~/config:~/config"
 
 
