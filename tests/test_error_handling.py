@@ -157,9 +157,7 @@ def test_help_and_invalid_commands():
     import subprocess
 
     # Test main help
-    result = subprocess.run(
-        ["python3", "-m", "ctenv", "--help"], capture_output=True, text=True
-    )
+    result = subprocess.run(["python3", "-m", "ctenv", "--help"], capture_output=True, text=True)
 
     assert result.returncode == 0
     assert "ctenv" in result.stdout

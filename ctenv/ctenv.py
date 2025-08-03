@@ -124,9 +124,7 @@ class VolumeSpec:
         """Convert volume spec back to Docker format string."""
         if self.container_path:
             if self.options:
-                return (
-                    f"{self.host_path}:{self.container_path}:{','.join(self.options)}"
-                )
+                return f"{self.host_path}:{self.container_path}:{','.join(self.options)}"
             else:
                 return f"{self.host_path}:{self.container_path}"
         else:
@@ -301,9 +299,7 @@ def convert_notset_strings(container_config_dict: Dict[str, Any]) -> Dict[str, A
     Returns:
         Dictionary with top-level "NOTSET" strings converted to NOTSET sentinel
     """
-    return {
-        k: (NOTSET if v == "NOTSET" else v) for k, v in container_config_dict.items()
-    }
+    return {k: (NOTSET if v == "NOTSET" else v) for k, v in container_config_dict.items()}
 
 
 def _load_config_file(config_path: Path) -> Dict[str, Any]:
@@ -397,16 +393,12 @@ class ContainerConfig:
 
         if not include_notset:
             # Filter out None and NOTSET values for display/config files
-            return {
-                k: v for k, v in result.items() if v is not None and v is not NOTSET
-            }
+            return {k: v for k, v in result.items() if v is not None and v is not NOTSET}
 
         return result
 
     @classmethod
-    def from_dict(
-        cls, data: Dict[str, Any], ignore_unknown: bool = True
-    ) -> "ContainerConfig":
+    def from_dict(cls, data: Dict[str, Any], ignore_unknown: bool = True) -> "ContainerConfig":
         """Create ContainerConfig from dictionary.
 
         Args:
@@ -421,9 +413,7 @@ class ContainerConfig:
             filtered_data = data
 
         # Convert None to NOTSET and create instance in one step
-        return cls(
-            **{k: (NOTSET if v is None else v) for k, v in filtered_data.items()}
-        )
+        return cls(**{k: (NOTSET if v is None else v) for k, v in filtered_data.items()})
 
     @classmethod
     def builtin_defaults(cls) -> "ContainerConfig":
@@ -467,9 +457,7 @@ def resolve_relative_paths_in_container_config(
         updates["workspace"] = resolve_relative_volume_spec(config.workspace, base_dir)
 
     if config.volumes is not NOTSET:
-        updates["volumes"] = [
-            resolve_relative_volume_spec(vol, base_dir) for vol in config.volumes
-        ]
+        updates["volumes"] = [resolve_relative_volume_spec(vol, base_dir) for vol in config.volumes]
 
     if config.gosu_path is not NOTSET:
         updates["gosu_path"] = resolve_relative_path(config.gosu_path, base_dir)
@@ -502,9 +490,7 @@ class ConfigFile:
         # Process defaults to ContainerConfig if present
         defaults_config = None
         if raw_defaults:
-            defaults_config = ContainerConfig.from_dict(
-                convert_notset_strings(raw_defaults)
-            )
+            defaults_config = ContainerConfig.from_dict(convert_notset_strings(raw_defaults))
             defaults_config._config_file_path = str(config_path.resolve())
             defaults_config = resolve_relative_paths_in_container_config(
                 defaults_config, config_dir
@@ -513,9 +499,7 @@ class ConfigFile:
         # Process containers to ContainerConfig objects
         container_configs = {}
         for name, container_dict in raw_containers.items():
-            container_config = ContainerConfig.from_dict(
-                convert_notset_strings(container_dict)
-            )
+            container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
             container_config._config_file_path = str(config_path.resolve())
             container_config = resolve_relative_paths_in_container_config(
                 container_config, config_dir
@@ -551,9 +535,7 @@ def merge_dict(config, overrides):
     return result
 
 
-def merge_container_configs(
-    base: ContainerConfig, override: ContainerConfig
-) -> ContainerConfig:
+def merge_container_configs(base: ContainerConfig, override: ContainerConfig) -> ContainerConfig:
     """Merge two ContainerConfig objects, with override taking precedence.
 
     Uses the same logic as merge_dict:
@@ -583,9 +565,7 @@ class CtenvConfig:
     defaults: ContainerConfig  # System + file defaults as ContainerConfig
     containers: Dict[str, ContainerConfig]  # Container configs from all files
 
-    def get_default(
-        self, overrides: Optional[ContainerConfig] = None
-    ) -> ContainerConfig:
+    def get_default(self, overrides: Optional[ContainerConfig] = None) -> ContainerConfig:
         """Get default configuration with optional overrides.
 
         Args:
@@ -663,9 +643,7 @@ class CtenvConfig:
                     loaded_config = ConfigFile.load(config_file)
                     config_files.append(loaded_config)
                 except Exception as e:
-                    raise ValueError(
-                        f"Failed to load explicit config file {config_file}: {e}"
-                    )
+                    raise ValueError(f"Failed to load explicit config file {config_file}: {e}")
 
         # Project config (if no explicit configs)
         if not explicit_config_files:
@@ -693,18 +671,14 @@ class CtenvConfig:
             for name, container_config in config_file.containers.items():
                 if name in containers:
                     # Merge with existing (higher priority wins)
-                    containers[name] = merge_container_configs(
-                        containers[name], container_config
-                    )
+                    containers[name] = merge_container_configs(containers[name], container_config)
                 else:
                     containers[name] = container_config
 
         return cls(defaults=defaults, containers=containers)
 
 
-def _substitute_variables(
-    text: str, variables: Dict[str, str], environ: Dict[str, str]
-) -> str:
+def _substitute_variables(text: str, variables: Dict[str, str], environ: Dict[str, str]) -> str:
     """Substitute ${var} and ${var|filter} patterns in text."""
     pattern = r"\$\{([^}|]+)(?:\|([^}]+))?\}"
 
@@ -748,9 +722,7 @@ def _substitute_variables_in_container_config(
             return _substitute_variables(value, variables, environ)
         elif isinstance(value, list):
             return [
-                _substitute_variables(item, variables, environ)
-                if isinstance(item, str)
-                else item
+                _substitute_variables(item, variables, environ) if isinstance(item, str) else item
                 for item in value
             ]
         else:
@@ -776,14 +748,10 @@ def expand_tilde_in_path(path: str, runtime: RuntimeContext) -> str:
     return path
 
 
-def _expand_tilde_in_volumespec(
-    vol_spec: VolumeSpec, runtime: RuntimeContext
-) -> VolumeSpec:
+def _expand_tilde_in_volumespec(vol_spec: VolumeSpec, runtime: RuntimeContext) -> VolumeSpec:
     """Expand tilde (~/) in VolumeSpec paths using the provided user_home value."""
     # Create a copy to avoid mutating the original
-    result = VolumeSpec(
-        vol_spec.host_path, vol_spec.container_path, vol_spec.options[:]
-    )
+    result = VolumeSpec(vol_spec.host_path, vol_spec.container_path, vol_spec.options[:])
 
     # Expand tildes in host path
     if result.host_path.startswith("~/"):
@@ -845,9 +813,7 @@ def _resolve_workdir_auto(workspace_spec: VolumeSpec, runtime: RuntimeContext) -
             return workspace_spec.container_path
         else:
             # Inside workspace - preserve relative position
-            return os.path.join(workspace_spec.container_path, rel_path).replace(
-                "\\", "/"
-            )
+            return os.path.join(workspace_spec.container_path, rel_path).replace("\\", "/")
     except (ValueError, OSError):
         # Fallback if path calculation fails
         return workspace_spec.container_path
@@ -916,9 +882,7 @@ def _parse_gosu_spec(
     )
 
 
-def _resolve_tty(
-    tty_config: Union[str, bool, NotSetType, None], runtime: RuntimeContext
-) -> bool:
+def _resolve_tty(tty_config: Union[str, bool, NotSetType, None], runtime: RuntimeContext) -> bool:
     """Resolve TTY setting based on configuration value."""
     if tty_config == "auto":
         return runtime.tty
@@ -959,9 +923,7 @@ class ContainerSpec:
     # Lists (use empty list as default instead of None)
     env: List[str] = field(default_factory=list)
     volumes: List[VolumeSpec] = field(default_factory=list)
-    chown_paths: List[str] = field(
-        default_factory=list
-    )  # Paths to chown inside container
+    chown_paths: List[str] = field(default_factory=list)  # Paths to chown inside container
     post_start_commands: List[str] = field(default_factory=list)
     run_args: List[str] = field(default_factory=list)
 
@@ -1183,9 +1145,7 @@ exec "$GOSU_MOUNT" "$USER_NAME" sh -c "$COMMAND"
         return script
 
 
-def parse_container_config(
-    config: ContainerConfig, runtime: RuntimeContext
-) -> ContainerSpec:
+def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> ContainerSpec:
     """Create ContainerSpec from complete ContainerConfig and runtime context.
 
     This function expects a COMPLETE configuration with all required fields set.
@@ -1204,9 +1164,7 @@ def parse_container_config(
         ValueError: If required configuration fields are missing or invalid
     """
     # Apply variable substitution
-    substituted_config = _substitute_variables_in_container_config(
-        config, runtime, os.environ
-    )
+    substituted_config = _substitute_variables_in_container_config(config, runtime, os.environ)
 
     # Validate required fields are not NOTSET
     required_fields = {
@@ -1219,13 +1177,9 @@ def parse_container_config(
         "tty": substituted_config.tty,
     }
 
-    missing_fields = [
-        name for name, value in required_fields.items() if value is NOTSET
-    ]
+    missing_fields = [name for name, value in required_fields.items() if value is NOTSET]
     if missing_fields:
-        raise ValueError(
-            f"Required configuration fields not set: {', '.join(missing_fields)}"
-        )
+        raise ValueError(f"Required configuration fields not set: {', '.join(missing_fields)}")
 
     # Validate platform if specified
     if substituted_config.platform is not NOTSET and not validate_platform(
@@ -1238,9 +1192,7 @@ def parse_container_config(
     # Process volumes (can't inline due to complexity and chown_paths extraction)
     volume_specs = []
     chown_paths = []
-    volumes = (
-        substituted_config.volumes if substituted_config.volumes is not NOTSET else []
-    )
+    volumes = substituted_config.volumes if substituted_config.volumes is not NOTSET else []
     for vol_str in volumes:
         vol_spec = VolumeSpec.parse_as_volume(vol_str)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
@@ -1290,9 +1242,7 @@ def parse_container_config(
         "gosu": _parse_gosu_spec(substituted_config.gosu_path, runtime),  # Inlined
         "volumes": volume_specs,  # config.volumes (List[str]) → List[VolumeSpec]
         # 2. Resolved/computed values
-        "workdir": _resolve_workdir(
-            substituted_config.workdir, workspace_spec, runtime
-        ),  # Inlined
+        "workdir": _resolve_workdir(substituted_config.workdir, workspace_spec, runtime),  # Inlined
         "tty": _resolve_tty(substituted_config.tty, runtime),  # Inlined
         # 3. Extracted/derived values
         "chown_paths": chown_paths,  # Extracted from volumes with "chown" option
@@ -1356,9 +1306,7 @@ class ContainerRunner:
         logging.debug(f"  Workspace: {spec.workspace.to_string()}")
         logging.debug(f"  Working directory: {spec.workdir}")
         logging.debug(f"  Gosu binary: {spec.gosu.to_string()}")
-        logging.debug(
-            f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh"
-        )
+        logging.debug(f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh")
 
         # Additional volume mounts
         if spec.volumes:
@@ -1456,14 +1404,10 @@ class ContainerRunner:
         workspace_source = Path(spec.workspace.host_path)
         logging.debug(f"Verifying workspace directory: {workspace_source}")
         if not workspace_source.exists():
-            raise FileNotFoundError(
-                f"Workspace directory {workspace_source} does not exist."
-            )
+            raise FileNotFoundError(f"Workspace directory {workspace_source} does not exist.")
 
         if not workspace_source.is_dir():
-            raise FileNotFoundError(
-                f"Workspace path {workspace_source} is not a directory."
-            )
+            raise FileNotFoundError(f"Workspace path {workspace_source} is not a directory.")
 
         # Generate entrypoint script content (chown paths are already in spec)
         script_content = spec.build_entrypoint_script(verbose, quiet)
@@ -1473,24 +1417,16 @@ class ContainerRunner:
             entrypoint_script_path = "/tmp/entrypoint.sh"  # Placeholder for display
             script_cleanup = None
         else:
-            script_fd, entrypoint_script_path = tempfile.mkstemp(
-                suffix=".sh", text=True
-            )
-            logging.debug(
-                f"Created temporary entrypoint script: {entrypoint_script_path}"
-            )
+            script_fd, entrypoint_script_path = tempfile.mkstemp(suffix=".sh", text=True)
+            logging.debug(f"Created temporary entrypoint script: {entrypoint_script_path}")
             with os.fdopen(script_fd, "w") as f:
                 f.write(script_content)
             os.chmod(entrypoint_script_path, 0o755)
-            script_cleanup = lambda: ContainerRunner._safe_unlink(
-                entrypoint_script_path
-            )
+            script_cleanup = lambda: ContainerRunner._safe_unlink(entrypoint_script_path)
 
         try:
             # Build Docker arguments (same for both modes)
-            docker_args = ContainerRunner.build_run_args(
-                spec, entrypoint_script_path, verbose
-            )
+            docker_args = ContainerRunner.build_run_args(spec, entrypoint_script_path, verbose)
             logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
 
             # Show what will be executed
@@ -1501,8 +1437,7 @@ class ContainerRunner:
             if verbose:
                 print("\n" + "=" * 60, file=sys.stderr)
                 print(
-                    "Entrypoint script"
-                    + (" that would be executed:" if dry_run else ":"),
+                    "Entrypoint script" + (" that would be executed:" if dry_run else ":"),
                     file=sys.stderr,
                 )
                 print("=" * 60, file=sys.stderr)
@@ -1532,9 +1467,7 @@ class ContainerRunner:
 def setup_logging(verbose, quiet):
     """Configure logging based on verbosity flags."""
     if verbose:
-        logging.basicConfig(
-            level=logging.DEBUG, format="%(message)s", stream=sys.stderr
-        )
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s", stream=sys.stderr)
     elif quiet:
         logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
     else:
@@ -1608,9 +1541,7 @@ def cmd_run(args, command):
         logging.debug(f"  Command: {spec.command}")
         logging.debug(f"  User: {spec.user_name} (UID: {spec.user_id})")
         logging.debug(f"  Group: {spec.group_name} (GID: {spec.group_id})")
-        logging.debug(
-            f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path}"
-        )
+        logging.debug(f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path}")
         logging.debug(f"  Working directory: {spec.workdir}")
         logging.debug(f"  Container name: {spec.container_name}")
         logging.debug(f"  Environment variables: {spec.env}")
@@ -1626,9 +1557,7 @@ def cmd_run(args, command):
 
     # Execute container (or dry-run)
     try:
-        result = ContainerRunner.run_container(
-            spec, verbose, dry_run=args.dry_run, quiet=quiet
-        )
+        result = ContainerRunner.run_container(spec, verbose, dry_run=args.dry_run, quiet=quiet)
         sys.exit(result.returncode)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1659,9 +1588,7 @@ def cmd_config_show(args):
         if ctenv_config.containers:
             for config_name in sorted(ctenv_config.containers.keys()):
                 print(f"  {config_name}:")
-                container_dict = ctenv_config.containers[config_name].to_dict(
-                    include_notset=False
-                )
+                container_dict = ctenv_config.containers[config_name].to_dict(include_notset=False)
                 for key, value in sorted(container_dict.items()):
                     if not key.startswith("_"):  # Skip metadata fields
                         print(f"    {key} = {repr(value)}")
@@ -1732,9 +1659,7 @@ Note: Use '--' to separate commands from container/options.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    run_parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
+    run_parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     run_parser.add_argument(
         "-q", "--quiet", action="store_true", help="Suppress non-essential output"
     )
@@ -1744,9 +1669,7 @@ Note: Use '--' to separate commands from container/options.""",
         help="Show commands without running container",
     )
 
-    run_parser.add_argument(
-        "container", nargs="?", help="Container to use (default: 'default')"
-    )
+    run_parser.add_argument("container", nargs="?", help="Container to use (default: 'default')")
     run_parser.add_argument("--image", help="Container image to use")
     run_parser.add_argument(
         "--env",
@@ -1798,9 +1721,7 @@ Note: Use '--' to separate commands from container/options.""",
     )
 
     # config subcommand group
-    config_parser = subparsers.add_parser(
-        "config", help="Configuration management commands"
-    )
+    config_parser = subparsers.add_parser("config", help="Configuration management commands")
     config_subparsers = config_parser.add_subparsers(
         dest="config_command", help="Config subcommands"
     )

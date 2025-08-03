@@ -106,9 +106,7 @@ def test_resolve_config_values_defaults():
         return CtenvConfig(defaults=defaults_config, containers=containers_config)
 
     ctenv_config = create_test_config(
-        containers={
-            "default": {"image": "ubuntu:latest", "network": "bridge", "sudo": True}
-        },
+        containers={"default": {"image": "ubuntu:latest", "network": "bridge", "sudo": True}},
         defaults={},
     )
 
@@ -185,9 +183,7 @@ def test_resolve_config_values_unknown_container():
 
         return CtenvConfig(defaults=defaults_config, containers=containers_config)
 
-    ctenv_config = create_test_config(
-        containers={"dev": {"image": "node:18"}}, defaults={}
-    )
+    ctenv_config = create_test_config(containers={"dev": {"image": "node:18"}}, defaults={})
 
     with pytest.raises(ValueError, match="Unknown container 'unknown'"):
         ctenv_config.get_container(container="unknown")
@@ -280,9 +276,7 @@ def test_empty_config_structure():
         tmpdir = Path(tmpdir)
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(
-            start_dir=tmpdir
-        )  # No config files in empty dir
+        ctenv_config = CtenvConfig.load(start_dir=tmpdir)  # No config files in empty dir
         assert len(ctenv_config.containers) == 0  # No containers should be present
         # Check that defaults still work (contains system defaults)
         defaults_dict = ctenv_config.defaults.to_dict()
@@ -518,12 +512,8 @@ env = ["NODE_ENV=development"]
 
         # Check that volumes are resolved strings
         expected_node_modules = str((tmpdir / "node_modules").resolve())
-        expected_data = str(
-            (Path.cwd() / "data").resolve()
-        )  # CLI paths resolved from cwd
-        expected_cache = str(
-            (Path.cwd() / "cache").resolve()
-        )  # CLI paths resolved from cwd
+        expected_data = str((Path.cwd() / "data").resolve())  # CLI paths resolved from cwd
+        expected_cache = str((Path.cwd() / "cache").resolve())  # CLI paths resolved from cwd
         expected_volumes = [
             f"{expected_node_modules}:/app/node_modules",  # From config file
             f"{expected_data}:/data",  # From CLI
@@ -909,21 +899,16 @@ def test_docker_args_volume_options():
         volume_args = [
             arg
             for arg in args
-            if arg.startswith("--volume=")
-            and ("src" in arg or "data" in arg or "cache" in arg)
+            if arg.startswith("--volume=") and ("src" in arg or "data" in arg or "cache" in arg)
         ]
 
         # Verify volume options are properly merged with :z
         volume_args_str = " ".join(volume_args)
 
         # Check that :z is properly added to existing options
-        assert (
-            "--volume=./src:/app/src:ro,z" in volume_args_str
-        )  # :ro preserved, :z added
+        assert "--volume=./src:/app/src:ro,z" in volume_args_str  # :ro preserved, :z added
         assert "--volume=./data:/data:z" in volume_args_str  # only :z added
-        assert (
-            "--volume=./cache:/cache:rw,z" in volume_args_str
-        )  # :rw preserved, :z added
+        assert "--volume=./cache:/cache:rw,z" in volume_args_str  # :rw preserved, :z added
 
 
 @pytest.mark.unit

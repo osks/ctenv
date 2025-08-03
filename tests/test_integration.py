@@ -136,10 +136,7 @@ def test_error_handling_invalid_image(temp_workspace):
     )
 
     assert result.returncode != 0
-    assert (
-        "Error response from daemon" in result.stderr
-        or "pull access denied" in result.stderr
-    )
+    assert "Error response from daemon" in result.stderr or "pull access denied" in result.stderr
 
 
 @pytest.mark.integration
