@@ -1652,6 +1652,7 @@ def create_parser():
     run_parser = subparsers.add_parser(
         "run",
         help="Run command in container",
+        usage="ctenv [global options] run [options] [container] [-- COMMAND ...]",
         description="""Run command in container
 
 Examples:
