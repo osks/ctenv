@@ -197,8 +197,9 @@ def test_entrypoint_script_generation():
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
     assert 'USER_ID="1000"' in script
-    assert 'exec "$GOSU_MOUNT" "$USER_NAME" sh -c "$COMMAND"' in script
-    assert 'export PS1="[ctenv] $ "' in script
+    assert 'exec "$GOSU_MOUNT" "$USER_NAME" /bin/sh $INTERACTIVE -c "$COMMAND"' in script
+    assert 'PS1_VALUE=' in script
+    assert 'TTY_MODE=' in script
 
 
 @pytest.mark.unit

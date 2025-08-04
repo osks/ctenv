@@ -21,7 +21,7 @@ $ uv tool install ctenv
 $ uv tool run ctenv --help
 ```
 
-I recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation/).
+Recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 
 ## Usage
@@ -43,7 +43,7 @@ $ ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude \
 When running containers with mounted directories, files created inside often have root ownership or wrong permissions. ctenv solves this by:
 
 - Creating a matching user (same UID/GID) dynamically in existing images at runtime
-- Mounting your current directory at `/repo` with correct permissions  
+- Mounting your current directory with correct permissions
 - Using `gosu` to drop privileges after container setup
 
 This works with any existing Docker image without modification - no custom Dockerfiles needed. Provides similar functionality to Podman's `--userns=keep-id` but works with Docker. Also similar to Development Containers but focused on running individual commands rather than persistent development environments.

@@ -687,7 +687,10 @@ env = ["NODE_ENV=development"]
             f"{expected_node_modules}:/app/node_modules:z",
             f"{expected_data}:/data:z",
         ]
-        assert captured_config["env"] == ["NODE_ENV=development"]
+        # Check env variables - now they are EnvVar objects
+        assert len(captured_config["env"]) == 1
+        assert captured_config["env"][0].name == "NODE_ENV"
+        assert captured_config["env"][0].value == "development"
         assert captured_config["image"] == "node:18"
 
 
