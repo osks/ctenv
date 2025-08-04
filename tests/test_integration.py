@@ -328,7 +328,7 @@ def test_relative_volume_path_handling(test_images, temp_workspace):
     test_dir.mkdir()
     test_file = test_dir / "test.txt"
     test_file.write_text("test content")
-    
+
     # Use relative path for volume (this should trigger the bug)
     # The container path should resolve to the absolute path of the temp workspace + test_volume
     expected_container_path = str(Path(temp_workspace).resolve() / "test_volume")
@@ -338,7 +338,8 @@ def test_relative_volume_path_handling(test_images, temp_workspace):
             "-m",
             "ctenv",
             "run",
-            "--volume", "./test_volume",
+            "--volume",
+            "./test_volume",
             "--",
             "cat",
             f"{expected_container_path}/test.txt",  # Expected absolute container path
@@ -347,11 +348,11 @@ def test_relative_volume_path_handling(test_images, temp_workspace):
         text=True,
         cwd=temp_workspace,
     )
-    
+
     if result.returncode != 0:
         print(f"STDERR: {result.stderr}")
         print(f"STDOUT: {result.stdout}")
-    
+
     # This should fail with the current bug showing "invalid mount path: './test_volume' mount path must be absolute"
     assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
     assert "test content" in result.stdout
