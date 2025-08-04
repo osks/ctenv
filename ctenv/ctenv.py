@@ -211,7 +211,7 @@ def resolve_relative_volume_spec(vol_spec: str, base_dir: Path) -> str:
     # Only resolve relative paths in host path if it's not empty
     if spec.host_path:
         spec.host_path = resolve_relative_path(spec.host_path, base_dir)
-    
+
     # For container paths: resolve relative paths to absolute paths
     # This handles cases where container path defaults to a relative host path
     if spec.container_path and not os.path.isabs(spec.container_path):
@@ -1637,9 +1637,7 @@ def create_parser():
 
     parser.add_argument("--version", action="version", version=f"ctenv {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Suppress non-essential output"
-    )
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential output")
     parser.add_argument(
         "--config",
         action="append",
@@ -1684,7 +1682,8 @@ Note: Use '--' to separate commands from container/options.""",
         help="Set environment variable (NAME=VALUE) or pass from host (NAME)",
     )
     run_parser.add_argument(
-        "-v", "--volume",
+        "-v",
+        "--volume",
         action="append",
         dest="volumes",
         help="Mount additional volume (HOST:CONTAINER format)",
@@ -1761,7 +1760,7 @@ def main(argv=None):
 
     # Setup logging based on global verbose/quiet flags
     setup_logging(args.verbose, args.quiet)
-    
+
     # Route to appropriate command handler
     if args.subcommand == "run":
         cmd_run(args, command)
