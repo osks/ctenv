@@ -21,6 +21,9 @@ $ uv tool install ctenv
 $ uv tool run ctenv --help
 ```
 
+I recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+
 ## Usage
 
 ```bash
@@ -98,20 +101,27 @@ $ ctenv run claude
 
 ## Common Use Cases
 
+### Claude Code
+Run Claude Code in a container for isolation:
+
+```shell
+$ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code"
+```
+
+Or write as config in `~/.ctenv.toml`:
+```toml
+[containers.claude]
+image = "node:20"
+volumes = ["~/.claude.json", "~/.claude/"]
+post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
+```
+And then use with: `ctenv run claude`
+
 ### Development Tools
 Run linters, formatters, or compilers from containers:
 ```bash
 $ ctenv run --image rust:latest -- cargo fmt
 $ ctenv run --image node:20 -- eslint src/
-```
-
-### Claude Code
-Run Claude Code in isolation:
-```toml
-[containers.claude]
-image = "node:20"
-post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
-volumes = ["~/.claude.json", "~/.claude"]
 ```
 
 ### Build Systems
