@@ -73,11 +73,29 @@ class _NotSetType:
 
 NOTSET = _NotSetType()
 
+# Default PS1 prompt for containers
+DEFAULT_PS1 = "[ctenv] $ "
+
 # Type alias for clean type hints
 if TYPE_CHECKING:
     NotSetType: TypeAlias = _NotSetType
 else:
     NotSetType = _NotSetType
+
+
+@dataclass
+class EnvVar:
+    """Environment variable specification with name and optional value."""
+    
+    name: str
+    value: Optional[str] = None  # None = pass from host environment
+    
+    def to_docker_arg(self) -> str:
+        """Convert to Docker --env argument format."""
+        if self.value is None:
+            return f"--env={self.name}"  # Pass from host
+        else:
+            return f"--env={self.name}={shlex.quote(self.value)}"
 
 
 # Volume specification: (host_path, container_path, options)
@@ -896,6 +914,29 @@ def _resolve_tty(tty_config: Union[str, bool, NotSetType, None], runtime: Runtim
         raise ValueError(f"Invalid TTY value: {tty_config}")
 
 
+def _parse_env(env_config: Union[List[str], NotSetType]) -> List[EnvVar]:
+    """Parse environment variable configuration into EnvVar objects.
+    
+    Args:
+        env_config: Environment variable configuration - either a list of strings
+                   in format ["NAME=value", "NAME"] or NOTSET
+    
+    Returns:
+        List of EnvVar objects (empty list if NOTSET)
+    """
+    if env_config is NOTSET:
+        return []
+    
+    env_vars = []
+    for env_str in env_config:
+        if "=" in env_str:
+            name, value = env_str.split("=", 1)
+            env_vars.append(EnvVar(name=name, value=value))
+        else:
+            env_vars.append(EnvVar(name=env_str, value=None))  # Pass from host
+    return env_vars
+
+
 @dataclass(kw_only=True)
 class ContainerSpec:
     """Resolved container specification ready for execution.
@@ -925,7 +966,7 @@ class ContainerSpec:
     sudo: bool  # From defaults (False) or config
 
     # Lists (use empty list as default instead of None)
-    env: List[str] = field(default_factory=list)
+    env: List[EnvVar] = field(default_factory=list)
     volumes: List[VolumeSpec] = field(default_factory=list)
     chown_paths: List[str] = field(default_factory=list)  # Paths to chown inside container
     post_start_commands: List[str] = field(default_factory=list)
@@ -942,6 +983,10 @@ class ContainerSpec:
         quiet: bool = False,
     ) -> str:
         """Generate bash script for container entrypoint."""
+
+        # Extract PS1 from environment variables
+        ps1_var = next((env for env in self.env if env.name == "PS1"), None) 
+        ps1_value = ps1_var.value if ps1_var else DEFAULT_PS1
 
         # Build chown paths value using a rare delimiter
         chown_paths_value = ""
@@ -980,6 +1025,8 @@ ADD_SUDO={1 if self.sudo else 0}
 # Container configuration
 GOSU_MOUNT="{self.gosu.container_path}"
 COMMAND={shlex.quote(self.command)}
+TTY_MODE={1 if self.tty else 0}
+PS1_VALUE={shlex.quote(ps1_value)}
 
 # Variables for chown paths and post-start commands (null-separated)
 CHOWN_PATHS={chown_paths_value}
@@ -1039,7 +1086,7 @@ run_post_start_commands() {{
     # Use printf and read loop for reliable line-by-line processing
     printf '%s\\n' "$POST_START_COMMANDS" | while IFS= read -r cmd || [ -n "$cmd" ]; do
         [ -n "$cmd" ] || continue  # Skip empty commands
-        log_debug "Executing post-start command: $cmd"
+        log_info "Executing post-start command: $cmd"
         eval "$cmd"
     done
 }}
@@ -1114,14 +1161,12 @@ if [ "$ADD_SUDO" = "1" ]; then
     if ! command -v sudo >/dev/null 2>&1; then
         log_debug "sudo not found, installing..."
         # Install sudo based on available package manager
+        log_info "Installing sudo..."
         if command -v apt-get >/dev/null 2>&1; then
-            log_info "Installing sudo..."
             apt-get update -qq && apt-get install -y -qq sudo
         elif command -v yum >/dev/null 2>&1; then
-            log_info "Installing sudo..."
             yum install -y -q sudo
         elif command -v apk >/dev/null 2>&1; then
-            log_info "Installing sudo..."
             apk add --no-cache sudo
         else
             echo "ERROR: sudo not installed and no supported package manager found (apt-get, yum, or apk)" >&2
@@ -1132,7 +1177,7 @@ if [ "$ADD_SUDO" = "1" ]; then
     fi
 
     # Add user to sudoers
-    log_debug "Adding $USER_NAME to sudoers"
+    log_info "Adding $USER_NAME to /etc/sudoers"
     echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 else
     log_debug "Sudo not requested"
@@ -1140,11 +1185,22 @@ fi
 
 # Set environment
 log_debug "Setting up shell environment"
-export PS1="[ctenv] $ "
+# PS1 environment variables are filtered out since this entrypoint script runs as 
+# non-interactive /bin/sh i the shebang, so we must explicitly set PS1 here for interactive sessions.
+if [ "$TTY_MODE" = "1" ]; then
+    export PS1="$PS1_VALUE"
+fi
 
 # Execute command as user
-log_info "Starting command as $USER_NAME: $COMMAND"
-exec "$GOSU_MOUNT" "$USER_NAME" sh -c "$COMMAND"
+log_info "Running command as $USER_NAME: $COMMAND"
+# Uses shell to execute the command in to handle shell quoting issues in commands.
+# Need to specify interactive shell (-i) when TTY is available for PS1 to be passed.
+if [ "$TTY_MODE" = "1" ]; then
+    INTERACTIVE="-i"
+else
+    INTERACTIVE=""
+fi
+exec "$GOSU_MOUNT" "$USER_NAME" /bin/sh $INTERACTIVE -c "$COMMAND"
 """
         return script
 
@@ -1220,7 +1276,6 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "command",
         "container_name",
         "sudo",
-        "env",
         "post_start_commands",
         "run_args",
         "network",
@@ -1250,6 +1305,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "tty": _resolve_tty(substituted_config.tty, runtime),  # Inlined
         # 3. Extracted/derived values
         "chown_paths": chown_paths,  # Extracted from volumes with "chown" option
+        "env": _parse_env(substituted_config.env),
     }
 
     return ContainerSpec(**spec_dict)
@@ -1329,15 +1385,12 @@ class ContainerRunner:
         if spec.env:
             logging.debug("Environment variables:")
             for env_var in spec.env:
-                if "=" in env_var:
-                    # Set specific value: NAME=VALUE
-                    args.extend([f"--env={env_var}"])
-                    logging.debug(f"  Setting: {env_var}")
+                args.append(env_var.to_docker_arg())
+                if env_var.value is None:
+                    host_value = os.environ.get(env_var.name, "")
+                    logging.debug(f"  Passing: {env_var.name}={host_value}")
                 else:
-                    # Pass from host: NAME
-                    args.extend([f"--env={env_var}"])
-                    value = os.environ.get(env_var, "<not set>")
-                    logging.debug(f"  Passing: {env_var}={value}")
+                    logging.debug(f"  Setting: {env_var.name}={env_var.value}")
 
         # Resource limits (ulimits)
         if spec.ulimits:
@@ -1750,6 +1803,7 @@ def main(argv=None):
         command_args = argv[separator_index + 1 :]
         # Use shlex.join to properly quote arguments
         command = shlex.join(command_args)
+        #command = ' '.join(command_args)
     else:
         ctenv_args = argv
         command = None
