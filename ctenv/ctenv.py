@@ -25,10 +25,10 @@
 # limitations under the License.
 
 # Version format: MAJOR.MINOR[.devN]
-# - Use .dev0 suffix during development
-# - Remove .dev0 for stable releases
+# - Use .devN suffix during development - add after making a release
+# - Remove .devN for stable releases
 # - Increment MINOR for new features, MAJOR for breaking changes
-__version__ = "0.4"
+__version__ = "0.4.dev0"
 
 import argparse
 import collections.abc
@@ -211,7 +211,11 @@ def resolve_relative_volume_spec(vol_spec: str, base_dir: Path) -> str:
     # Only resolve relative paths in host path if it's not empty
     if spec.host_path:
         spec.host_path = resolve_relative_path(spec.host_path, base_dir)
-    # Container paths are not resolved (they're paths inside the container)
+    
+    # For container paths: resolve relative paths to absolute paths
+    # This handles cases where container path defaults to a relative host path
+    if spec.container_path and not os.path.isabs(spec.container_path):
+        spec.container_path = resolve_relative_path(spec.container_path, base_dir)
 
     return spec.to_string()
 
@@ -1632,6 +1636,10 @@ def create_parser():
     )
 
     parser.add_argument("--version", action="version", version=f"ctenv {__version__}")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress non-essential output"
+    )
     parser.add_argument(
         "--config",
         action="append",
@@ -1649,20 +1657,17 @@ def create_parser():
 Examples:
     ctenv run                          # Interactive bash with defaults
     ctenv run dev                      # Use 'dev' container with default command
-    ctenv run dev -- npm test         # Use 'dev' container, run npm test
-    ctenv run -- ls -la               # Use defaults, run ls -la
-    ctenv run --image alpine dev      # Override image, use dev container
-    ctenv run --dry-run dev           # Show Docker command without running
+    ctenv run dev -- npm test          # Use 'dev' container, run npm test
+    ctenv run -- ls -la                # Use defaults, run ls -la
+    ctenv run --image alpine dev       # Override image, use dev container
+    ctenv --verbose run --dry-run dev # Show Docker command without running (verbose)
+    ctenv -q run dev                   # Run quietly
     ctenv run --post-start-command "npm install" --post-start-command "npm run build" # Run extra commands after container starts
 
 Note: Use '--' to separate commands from container/options.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    run_parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
-    run_parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Suppress non-essential output"
-    )
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -1678,7 +1683,7 @@ Note: Use '--' to separate commands from container/options.""",
         help="Set environment variable (NAME=VALUE) or pass from host (NAME)",
     )
     run_parser.add_argument(
-        "--volume",
+        "-v", "--volume",
         action="append",
         dest="volumes",
         help="Mount additional volume (HOST:CONTAINER format)",
@@ -1717,7 +1722,7 @@ Note: Use '--' to separate commands from container/options.""",
         "--post-start-command",
         action="append",
         dest="post_start_commands",
-        help="Add extra command to run after container starts (can be used multiple times)",
+        help="Add extra command to run after container starts, but before the COMMAND is executed (can be used multiple times)",
     )
 
     # config subcommand group
@@ -1753,14 +1758,13 @@ def main(argv=None):
     parser = create_parser()
     args = parser.parse_args(ctenv_args)
 
+    # Setup logging based on global verbose/quiet flags
+    setup_logging(args.verbose, args.quiet)
+    
     # Route to appropriate command handler
     if args.subcommand == "run":
-        # Setup logging for run command (which has verbose/quiet flags)
-        setup_logging(args.verbose, args.quiet)
         cmd_run(args, command)
     elif args.subcommand == "config":
-        # Setup basic logging for config command (no verbose/quiet flags)
-        setup_logging(verbose=False, quiet=False)
         if args.config_command == "show" or args.config_command is None:
             cmd_config_show(args)
         else:

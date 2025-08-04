@@ -311,8 +311,8 @@ def test_verbose_mode():
     """Test verbose logging output."""
     parser = create_parser()
 
-    # Test that verbose flag is accepted and doesn't break anything with run
-    args = parser.parse_args(["run", "--verbose", "--dry-run"])
+    # Test that verbose flag is accepted as global option
+    args = parser.parse_args(["--verbose", "run", "--dry-run"])
     assert args.verbose is True
     assert args.subcommand == "run"
 
@@ -321,7 +321,7 @@ def test_verbose_mode():
 def test_quiet_mode():
     """Test quiet mode suppresses output."""
     parser = create_parser()
-    args = parser.parse_args(["run", "--quiet", "--dry-run"])
+    args = parser.parse_args(["-q", "run", "--dry-run"])
 
     assert args.quiet is True
     assert args.subcommand == "run"
@@ -338,8 +338,8 @@ def test_stdout_stderr_separation():
     assert args.dry_run is True
     assert args.subcommand == "run"
 
-    # Test quiet mode parsing (quiet flag now goes after run)
-    args = parser.parse_args(["run", "--quiet", "--dry-run"])
+    # Test quiet mode parsing (quiet flag is now global)
+    args = parser.parse_args(["--quiet", "run", "--dry-run"])
     assert args.quiet is True
     assert args.dry_run is True
 
