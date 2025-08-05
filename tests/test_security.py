@@ -6,7 +6,6 @@ import tempfile
 from ctenv.ctenv import (
     RuntimeContext,
     parse_container_config,
-    _parse_volume,
     CtenvConfig,
     ContainerConfig,
 )

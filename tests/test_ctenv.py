@@ -450,7 +450,7 @@ def test_post_start_cmd_in_generated_script():
 @pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
-    from ctenv.ctenv import VolumeSpec, _parse_volume, _parse_volume
+    from ctenv.ctenv import _parse_volume
 
     # Test single path format - smart defaulting
     vol_spec = _parse_volume("~/.docker")
@@ -466,7 +466,7 @@ def test_volume_parsing_smart_defaulting():
 @pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
-    from ctenv.ctenv import VolumeSpec, _parse_volume
+    from ctenv.ctenv import _parse_volume
 
     # Test empty target with options
     vol_spec = _parse_volume("~/.docker::ro")
@@ -490,7 +490,7 @@ def test_volume_parsing_empty_target_syntax():
 @pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
-    from ctenv.ctenv import VolumeSpec, _parse_volume
+    from ctenv.ctenv import _parse_volume
 
     # Test standard format still works
     vol_spec = _parse_volume("/host:/container:ro")

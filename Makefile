@@ -1,3 +1,7 @@
+.PHONY: all
+all: lint typecheck test-all
+
+
 .PHONY: dev
 dev:
 	@echo "Setting up development environment with uv..."
