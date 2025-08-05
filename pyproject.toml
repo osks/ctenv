@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ctenv"
-description = "ctenv is a tool for running a program in a container as current user"
+description = "ctenv is a tool for running in containers as current user"
 readme = "README.md"
 authors = [{name = "Oskar Skoog", email = "oskar@osd.se"}]
 license = "Apache-2.0"
