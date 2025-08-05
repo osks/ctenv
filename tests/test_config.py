@@ -821,7 +821,7 @@ gosu_path = "{fake_gosu}"
 @pytest.mark.unit
 def test_volume_options_preserved():
     """Test that volume options are properly parsed and preserved."""
-    from ctenv.ctenv import VolumeSpec, _parse_volume
+    from ctenv.ctenv import _parse_volume
 
     # Test parsing various volume specification formats
     test_cases = [
