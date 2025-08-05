@@ -198,8 +198,8 @@ def test_entrypoint_script_generation():
     assert 'USER_NAME="testuser"' in script
     assert 'USER_ID="1000"' in script
     assert 'exec "$GOSU_MOUNT" "$USER_NAME" /bin/sh $INTERACTIVE -c "$COMMAND"' in script
-    assert 'PS1_VALUE=' in script
-    assert 'TTY_MODE=' in script
+    assert "PS1_VALUE=" in script
+    assert "TTY_MODE=" in script
 
 
 @pytest.mark.unit
@@ -450,38 +450,38 @@ def test_post_start_cmd_in_generated_script():
 @pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
-    from ctenv.ctenv import VolumeSpec
+    from ctenv.ctenv import VolumeSpec, _parse_volume, _parse_volume
 
     # Test single path format - smart defaulting
-    vol_spec = VolumeSpec.parse_as_volume("~/.docker")
+    vol_spec = _parse_volume("~/.docker")
     assert vol_spec.host_path == "~/.docker"
     assert vol_spec.container_path == "~/.docker"  # Smart defaulted
     assert vol_spec.options == []
 
     # Test to_string() works correctly for smart defaulted volumes
-    assert VolumeSpec.parse_as_volume("/host/path").to_string() == "/host/path:/host/path"
-    assert VolumeSpec.parse_as_volume("~/config").to_string() == "~/config:~/config"
+    assert _parse_volume("/host/path").to_string() == "/host/path:/host/path"
+    assert _parse_volume("~/config").to_string() == "~/config:~/config"
 
 
 @pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
-    from ctenv.ctenv import VolumeSpec
+    from ctenv.ctenv import VolumeSpec, _parse_volume
 
     # Test empty target with options
-    vol_spec = VolumeSpec.parse_as_volume("~/.docker::ro")
+    vol_spec = _parse_volume("~/.docker::ro")
     assert vol_spec.host_path == "~/.docker"
     assert vol_spec.container_path == "~/.docker"  # Smart defaulted
     assert vol_spec.options == ["ro"]
 
     # Test empty target with chown option - chown will be handled during parse_container_config
-    vol_spec = VolumeSpec.parse_as_volume("~/data::chown,rw")
+    vol_spec = _parse_volume("~/data::chown,rw")
     assert vol_spec.host_path == "~/data"
     assert vol_spec.container_path == "~/data"  # Smart defaulted
     assert vol_spec.options == ["chown", "rw"]  # Options are preserved in VolumeSpec
 
     # Test empty target with multiple options
-    vol_spec = VolumeSpec.parse_as_volume("/path::ro,chown,z")
+    vol_spec = _parse_volume("/path::ro,chown,z")
     assert vol_spec.host_path == "/path"
     assert vol_spec.container_path == "/path"  # Smart defaulted
     assert vol_spec.options == ["ro", "chown", "z"]  # All options preserved
@@ -490,16 +490,16 @@ def test_volume_parsing_empty_target_syntax():
 @pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
-    from ctenv.ctenv import VolumeSpec
+    from ctenv.ctenv import VolumeSpec, _parse_volume
 
     # Test standard format still works
-    vol_spec = VolumeSpec.parse_as_volume("/host:/container:ro")
+    vol_spec = _parse_volume("/host:/container:ro")
     assert vol_spec.host_path == "/host"
     assert vol_spec.container_path == "/container"
     assert vol_spec.options == ["ro"]
 
     # Test chown option still works - preserved in VolumeSpec
-    vol_spec = VolumeSpec.parse_as_volume("/host:/container:chown")
+    vol_spec = _parse_volume("/host:/container:chown")
     assert vol_spec.host_path == "/host"
     assert vol_spec.container_path == "/container"
     assert vol_spec.options == ["chown"]
@@ -621,7 +621,7 @@ volumes = ["~/.docker", "~/config:/container/config"]
             # Note: Volumes get parsed to VolumeSpec during parse_container_config(),
             # but the raw dict should still contain the original strings with smart defaulting applied
             expected_processed = [
-                "~/.docker:~/.docker",  # Smart defaulting applied
+                "~/.docker",
                 "~/config:/container/config",
             ]
             assert config_dict.volumes == expected_processed

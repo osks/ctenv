@@ -16,6 +16,8 @@
   the environment in the script, and hence not in the command (say
   bash, for interactive use). Now we handle this as a special case.
 
+- Fixed `--workspace auto` handling and several edge-cases.
+
 
 ### Changed
 
@@ -24,6 +26,9 @@
   `ctenv run` now has `-v` as short for `--volume`. This means `-v`
   has different meaning before and after the command. Example: `ctenv
   -v run -v foo:/bar` means verbose and mount volume.
+
+- Project root finding stops traversing at HOME and HOME is no longer
+  considered a project root.
 
 
 ## v0.4
