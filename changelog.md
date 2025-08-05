@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+
+## v0.5
+
 ### Fixed
 
 - Fix handling of relative volume path. `--volume ./foo` didn't work
