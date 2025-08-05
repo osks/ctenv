@@ -6,7 +6,7 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-Run commands in any container image while preserving your user identity and file permissions.
+Run commands in containers from any image as current user, preserving user identity and permissions.
 
 ## Install
 
