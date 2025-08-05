@@ -821,7 +821,7 @@ gosu_path = "{fake_gosu}"
 @pytest.mark.unit
 def test_volume_options_preserved():
     """Test that volume options are properly parsed and preserved."""
-    from ctenv.ctenv import VolumeSpec
+    from ctenv.ctenv import VolumeSpec, _parse_volume
 
     # Test parsing various volume specification formats
     test_cases = [
@@ -832,7 +832,7 @@ def test_volume_options_preserved():
     ]
 
     for spec_str, expected_host, expected_container, expected_options in test_cases:
-        vol_spec = VolumeSpec.parse_as_volume(spec_str)
+        vol_spec = _parse_volume(spec_str)
 
         assert vol_spec.host_path == expected_host
         assert vol_spec.container_path == expected_container
@@ -1043,7 +1043,7 @@ def test_resolve_relative_paths_with_notset_string():
     resolved_config = resolve_relative_paths_in_container_config(config, Path("/tmp"))
 
     # NOTSET string gets processed as literal volume spec
-    assert resolved_config.workspace == "NOTSET:NOTSET"  # Becomes invalid volume spec
+    assert resolved_config.workspace == "NOTSET"  # Becomes invalid volume spec (but symmetric)
 
     # NOTSET object is left unchanged
     assert resolved_config.volumes is NOTSET

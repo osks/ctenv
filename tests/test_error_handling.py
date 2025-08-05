@@ -36,7 +36,7 @@ def test_volume_spec_edge_cases():
     # Host path only (no colon) should set container_path = host_path
     spec = VolumeSpec.parse("/host/path")
     assert spec.host_path == "/host/path"
-    assert spec.container_path == "/host/path"
+    assert spec.container_path == ""
 
 
 @pytest.mark.unit

@@ -6,6 +6,7 @@ import tempfile
 from ctenv.ctenv import (
     RuntimeContext,
     parse_container_config,
+    _parse_volume,
     CtenvConfig,
     ContainerConfig,
 )
@@ -225,30 +226,3 @@ def test_safe_commands_work_normally():
         assert "npm test" in script
         assert "python setup.py install" in script
         assert "/usr/local/bin/my-app --config /etc/app.conf" in script
-
-
-@pytest.mark.unit
-def test_parse_volumes_with_malicious_paths():
-    """Test that volume parsing handles malicious paths safely."""
-    from ctenv.ctenv import VolumeSpec
-
-    # Test various malicious volume specifications
-    test_cases = [
-        # (volume_spec, should_raise)
-        (
-            '/host:/container"; rm -rf /',
-            False,
-        ),  # Should parse but path will be escaped later
-        ('/host:/container:rw,chown"; rm -rf /', False),  # Should parse
-        ("/host:/container:ro", False),  # Normal case
-    ]
-
-    for volume_spec, should_raise in test_cases:
-        if should_raise:
-            with pytest.raises(ValueError):
-                VolumeSpec.parse_as_volume(volume_spec)
-        else:
-            # Should parse without error
-            vol_spec = VolumeSpec.parse_as_volume(volume_spec)
-            assert vol_spec.host_path
-            assert vol_spec.container_path

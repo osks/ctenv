@@ -86,10 +86,10 @@ else:
 @dataclass
 class EnvVar:
     """Environment variable specification with name and optional value."""
-    
+
     name: str
     value: Optional[str] = None  # None = pass from host environment
-    
+
     def to_docker_arg(self) -> str:
         """Convert to Docker --env argument format."""
         if self.value is None:
@@ -170,7 +170,7 @@ class VolumeSpec:
         match spec.split(":"):
             case [host_path]:
                 # Single path format: container path defaults to host path
-                container_path = host_path
+                container_path = ""
                 options_str = ""
             case [host_path, container_path]:
                 # HOST:CONTAINER format - preserve empty container_path if specified
@@ -188,31 +188,6 @@ class VolumeSpec:
             options = [opt.strip() for opt in options_str.split(",") if opt.strip()]
 
         return cls(host_path, container_path, options)
-
-    @classmethod
-    def parse_as_volume(cls, spec: str) -> "VolumeSpec":
-        """Parse as volume specification with volume-specific defaulting and validation."""
-        vol_spec = cls.parse(spec)
-
-        # Volume validation: must have explicit host path
-        if not vol_spec.host_path:
-            raise ValueError(f"Volume host path cannot be empty: {spec}")
-
-        # Volume smart defaulting: empty container path defaults to host path
-        # (This handles :: syntax where container_path is explicitly empty)
-        if not vol_spec.container_path:
-            vol_spec.container_path = vol_spec.host_path
-
-        return vol_spec
-
-    @classmethod
-    def parse_as_workspace(cls, spec: str) -> "VolumeSpec":
-        """Parse as workspace specification with workspace-specific defaulting."""
-        workspace_spec = cls.parse(spec)
-
-        # Workspace allows empty host path (for auto-detection)
-        # Note: container_path defaults to host_path in parse() for single path format
-        return workspace_spec
 
 
 def resolve_relative_path(path: str, base_dir: Path) -> str:
@@ -236,23 +211,6 @@ def resolve_relative_volume_spec(vol_spec: str, base_dir: Path) -> str:
         spec.container_path = resolve_relative_path(spec.container_path, base_dir)
 
     return spec.to_string()
-
-
-def find_project_root(start_dir: Path) -> Optional[Path]:
-    """Find project root by searching for .ctenv.toml file.
-
-    Args:
-        start_dir: Directory to start search from
-
-    Returns:
-        Path to project root directory or None if not found
-    """
-    current = start_dir
-    while current != current.parent:
-        if (current / ".ctenv.toml").exists():
-            return current
-        current = current.parent
-    return None
 
 
 def validate_platform(platform: str) -> bool:
@@ -348,18 +306,38 @@ def find_user_config() -> Optional[Path]:
 
 
 def find_project_config(start_dir: Path) -> Optional[Path]:
-    """Find project configuration path (searched upward from start_dir)."""
+    project_root = find_project_root(start_dir)
+    if project_root:
+        return project_root / ".ctenv.toml"
+
+    return None
+
+
+def find_project_root(start_dir: Path) -> Optional[Path]:
+    """Find project root by searching for .ctenv.toml file.
+
+    Searches upward from start_dir but stops at the user's home directory
+    (without including it). This prevents treating $HOME as a project root
+    even if it contains .ctenv.toml, since $HOME/.ctenv.toml is intended
+    for user-wide configuration, not as a project workspace marker.
+
+    Args:
+        start_dir: Directory to start search from
+
+    Returns:
+        Path to project root directory or None if not found
+    """
     current = start_dir.resolve()
-    while True:
-        config_path = current / ".ctenv.toml"
-        if config_path.exists() and config_path.is_file():
-            return config_path
+    home_dir = Path.home().resolve()
 
-        parent = current.parent
-        if parent == current:  # Reached filesystem root
+    while current != current.parent:
+        # Stop before reaching home directory
+        if current == home_dir:
             break
-        current = parent
 
+        if (current / ".ctenv.toml").exists():
+            return current
+        current = current.parent
     return None
 
 
@@ -790,33 +768,44 @@ def _expand_tilde_in_volumespec(vol_spec: VolumeSpec, runtime: RuntimeContext) -
     return result
 
 
-def _parse_workspace(
-    workspace_config: Union[str, NotSetType, None], runtime: RuntimeContext
-) -> VolumeSpec:
+def _parse_volume(vol_str: str) -> VolumeSpec:
+    """Parse as volume specification with volume-specific defaulting and validation."""
+    if vol_str is NOTSET or vol_str is None:
+        raise ValueError(f"Invalid volume: {vol_str}")
+
+    spec = VolumeSpec.parse(vol_str)
+
+    # Volume validation: must have explicit host path
+    if not spec.host_path:
+        raise ValueError(f"Volume host path cannot be empty: {vol_str}")
+
+    # Volume smart defaulting: empty container path defaults to host path
+    # (This handles :: syntax where container_path is explicitly empty)
+    if not spec.container_path:
+        spec.container_path = spec.host_path
+
+    return spec
+
+
+def _parse_workspace(workspace_str: str, project_root: Path) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
     Handles auto-detection, project root expansion, tilde expansion, and SELinux options.
     """
-    # Resolve workspace configuration
-    if workspace_config == "auto":
-        workspace_str = f"{runtime.project_root}:{runtime.project_root}"
-    elif isinstance(workspace_config, str) and workspace_config != "auto":
-        workspace_str = workspace_config
-    else:
-        raise ValueError(f"Invalid workspace value: {workspace_config}")
+    if workspace_str is NOTSET or workspace_str is None:
+        raise ValueError(f"Invalid workspace: {workspace_str}")
 
-    spec = VolumeSpec.parse_as_workspace(workspace_str)
+    spec = VolumeSpec.parse(workspace_str)
 
-    # Fill in empty host path with project root (for ":" syntax)
     if not spec.host_path:
-        spec.host_path = str(runtime.project_root)
+        spec.host_path = "auto"
 
-        # If container path is also empty, use same path as default
-        if not spec.container_path:
-            spec.container_path = str(runtime.project_root)
-
-    # Apply tilde expansion
-    spec = _expand_tilde_in_volumespec(spec, runtime)
+    if spec.host_path == "auto":
+        spec.host_path = str(project_root)
+    if spec.container_path == "auto":
+        spec.container_path = str(project_root)
+    if not spec.container_path:
+        spec.container_path = spec.host_path
 
     # Add 'z' option if not already present (for SELinux)
     if "z" not in spec.options:
@@ -916,17 +905,17 @@ def _resolve_tty(tty_config: Union[str, bool, NotSetType, None], runtime: Runtim
 
 def _parse_env(env_config: Union[List[str], NotSetType]) -> List[EnvVar]:
     """Parse environment variable configuration into EnvVar objects.
-    
+
     Args:
         env_config: Environment variable configuration - either a list of strings
                    in format ["NAME=value", "NAME"] or NOTSET
-    
+
     Returns:
         List of EnvVar objects (empty list if NOTSET)
     """
     if env_config is NOTSET:
         return []
-    
+
     env_vars = []
     for env_str in env_config:
         if "=" in env_str:
@@ -985,7 +974,7 @@ class ContainerSpec:
         """Generate bash script for container entrypoint."""
 
         # Extract PS1 from environment variables
-        ps1_var = next((env for env in self.env if env.name == "PS1"), None) 
+        ps1_var = next((env for env in self.env if env.name == "PS1"), None)
         ps1_value = ps1_var.value if ps1_var else DEFAULT_PS1
 
         # Build chown paths value using a rare delimiter
@@ -1254,7 +1243,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     chown_paths = []
     volumes = substituted_config.volumes if substituted_config.volumes is not NOTSET else []
     for vol_str in volumes:
-        vol_spec = VolumeSpec.parse_as_volume(vol_str)
+        vol_spec = _parse_volume(vol_str)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
 
         # Check for chown option and extract it
@@ -1284,7 +1273,8 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     ]
 
     # Parse workspace first since workdir depends on it
-    workspace_spec = _parse_workspace(substituted_config.workspace, runtime)
+    workspace_spec = _parse_workspace(substituted_config.workspace, runtime.project_root)
+    workspace_spec = _expand_tilde_in_volumespec(workspace_spec, runtime)
 
     spec_dict = {
         # Runtime fields (copied directly from RuntimeContext)
@@ -1803,7 +1793,7 @@ def main(argv=None):
         command_args = argv[separator_index + 1 :]
         # Use shlex.join to properly quote arguments
         command = shlex.join(command_args)
-        #command = ' '.join(command_args)
+        # command = ' '.join(command_args)
     else:
         ctenv_args = argv
         command = None
