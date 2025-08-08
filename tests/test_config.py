@@ -7,11 +7,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from ctenv.ctenv import (
     _load_config_file,
     _substitute_variables,
-    find_project_config,
+    find_project_dir,
     find_user_config,
     ConfigFile,
     ContainerConfig,
 )
+
+
+# Helper function for tests
+def find_project_config(start_dir: Path):
+    """Helper function to find project config for tests."""
+    project_dir = find_project_dir(start_dir)
+    if project_dir:
+        return project_dir / ".ctenv.toml"
+    return None
 
 
 @pytest.mark.unit
@@ -213,7 +222,7 @@ sudo = true
         # Load config and resolve
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(
             container="default",  # Explicitly specify the container
             overrides=ContainerConfig.from_dict(
@@ -257,7 +266,7 @@ env = ["CI=true"]
 
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(container="test")
 
         # Should use container values
@@ -276,7 +285,7 @@ def test_empty_config_structure():
         tmpdir = Path(tmpdir)
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(start_dir=tmpdir)  # No config files in empty dir
+        ctenv_config = CtenvConfig.load(tmpdir)  # No config files in empty dir
         assert len(ctenv_config.containers) == 0  # No containers should be present
         # Check that defaults still work (contains system defaults)
         defaults_dict = ctenv_config.defaults.to_dict()
@@ -314,7 +323,7 @@ network = "bridge"
 
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(container="default")
 
         # Should merge builtin default with user default
@@ -350,7 +359,7 @@ network = "bridge"
 
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(
             container="dev",
             overrides=ContainerConfig.from_dict(
@@ -451,7 +460,7 @@ env = ["NODE_ENV=development", "DEBUG=true"]
         # Create config from dev container
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(container="dev")
 
         # Check that volumes are loaded correctly (paths should be resolved)
@@ -494,7 +503,7 @@ env = ["NODE_ENV=development"]
         # Create config with CLI additions
         from ctenv.ctenv import CtenvConfig, resolve_relative_paths_in_container_config
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
 
         # CLI overrides need to be resolved relative to current working directory
         cli_overrides = {
@@ -553,7 +562,7 @@ image = "alpine:latest"
         # Create config with only CLI volumes
         from ctenv.ctenv import CtenvConfig, resolve_relative_paths_in_container_config
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
 
         # CLI overrides need to be resolved relative to current working directory
         cli_overrides = {"volumes": ["./data:/data"], "env": ["TEST=true"]}
@@ -596,7 +605,7 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         # Load and resolve config
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(container="test")
 
         # Check that templates are preserved in the raw config dict (not yet resolved)
@@ -651,6 +660,7 @@ env = ["NODE_ENV=development"]
         args.post_start_commands = None
         args.platform = None
         args.run_args = None
+        args.project_dir = None  # Add project_dir attribute
 
         # Mock docker execution to capture the config
         captured_config = {}
@@ -678,10 +688,10 @@ env = ["NODE_ENV=development"]
             cmd_run(args, "echo test")
 
         # Verify config file volumes were preserved (not overridden by empty CLI list)
-        # Paths should be resolved to absolute paths relative to config file directory
+        # Paths should be resolved to absolute paths relative to project directory
         # Use Path.resolve() to handle potential symlinks on macOS
-        expected_node_modules = str((tmpdir / "node_modules").resolve())
-        expected_data = str((tmpdir / "data").resolve())
+        expected_node_modules = str((Path.cwd() / "node_modules").resolve())
+        expected_data = str((Path.cwd() / "data").resolve())
 
         assert captured_config["volumes"] == [
             f"{expected_node_modules}:/app/node_modules:z",
@@ -708,7 +718,7 @@ def test_get_builtin_defaults():
     # Check container settings defaults (user info is now in RuntimeContext)
     assert defaults["image"] == "ubuntu:latest"
     assert defaults["command"] == "bash"
-    assert defaults["container_name"] == "ctenv-${project_root|slug}"  # Updated default
+    assert defaults["container_name"] == "ctenv-${project_dir|slug}"  # Updated default
     assert defaults["workspace"] == "auto"  # Updated workspace field
     assert defaults["workdir"] == "auto"  # Updated workdir field
     assert defaults["env"] == []
@@ -749,7 +759,7 @@ workdir = "/custom/path"
         # Test config file workdir
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(container="test")
         assert config.workdir == "/custom/path"
 
@@ -761,7 +771,7 @@ workdir = "/custom/path"
         assert config_cli.workdir == "/cli/override"
 
         # Test default (no config file, no CLI)
-        ctenv_config_default = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
+        ctenv_config_default = CtenvConfig.load(tmpdir)  # Empty directory
         config_default = ctenv_config_default.get_default()
         # workdir should be "auto" by default
         assert config_default.workdir == "auto"
@@ -798,7 +808,7 @@ gosu_path = "{fake_gosu}"
         # Test config file gosu_path
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(explicit_config_files=[config_file])
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
         config = ctenv_config.get_container(container="test")
 
         # Check that gosu_path is in the raw config dict
@@ -864,7 +874,7 @@ def test_docker_args_volume_options():
         # Create config with volumes that have options
         from ctenv.ctenv import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(start_dir=tmpdir)  # Empty directory
+        ctenv_config = CtenvConfig.load(tmpdir)  # Empty directory
         config = ctenv_config.get_default(
             overrides=ContainerConfig.from_dict(
                 {"volumes": ["./src:/app/src:ro", "./data:/data", "./cache:/cache:rw"]}
@@ -886,7 +896,7 @@ def test_docker_args_volume_options():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
-            project_root=Path.cwd(),
+            project_dir=Path.cwd(),
         )
 
         resolved_config = parse_container_config(config, runtime)
@@ -934,7 +944,7 @@ image = "node:18"
         # Test loading from the directory
         config_path = find_project_config(tmpdir)
         assert config_path is not None
-        config = ConfigFile.load(config_path)
+        config = ConfigFile.load(config_path, tmpdir)
         assert config.defaults.image == "ubuntu:20.04"
         assert config.containers["test"].image == "node:18"
 
@@ -960,7 +970,8 @@ image = "python:3.11"
         # Test loading from the nested subdirectory
         config_path = find_project_config(subdir)
         assert config_path is not None
-        config = ConfigFile.load(config_path)
+        project_dir = find_project_dir(subdir)
+        config = ConfigFile.load(config_path, project_dir)
         assert config.containers["dev"].image == "python:3.11"
 
 
@@ -1000,7 +1011,7 @@ image = "ubuntu:22.04"
         # Test loading user config
         config_path = find_user_config()
         assert config_path is not None
-        config = ConfigFile.load(config_path)
+        config = ConfigFile.load(config_path, tmpdir)
         assert config.defaults.image == "alpine:latest"
         assert config.defaults.sudo is True
         assert config.containers["home"].image == "ubuntu:22.04"

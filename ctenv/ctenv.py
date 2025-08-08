@@ -110,23 +110,26 @@ class RuntimeContext:
     group_id: int
     cwd: Path
     tty: bool
-    project_root: Path
+    project_dir: Path
 
     @classmethod
-    def current(cls) -> "RuntimeContext":
+    def current(cls, *, cwd, project_dir=None) -> "RuntimeContext":
         """Get current runtime context."""
+        if project_dir is None:
+            project_dir = (find_project_dir(cwd) or cwd).resolve()
+        else:
+            project_dir = Path(project_dir).resolve()
         user_info = pwd.getpwuid(os.getuid())
         group_info = grp.getgrgid(os.getgid())
-        current_cwd = Path.cwd()
         return cls(
             user_name=user_info.pw_name,
             user_id=user_info.pw_uid,
             user_home=user_info.pw_dir,
             group_name=group_info.gr_name,
             group_id=group_info.gr_gid,
-            cwd=current_cwd,
+            cwd=cwd,
             tty=sys.stdin.isatty(),
-            project_root=(find_project_root(current_cwd) or current_cwd).resolve(),
+            project_dir=project_dir,
         )
 
 
@@ -305,15 +308,7 @@ def find_user_config() -> Optional[Path]:
     return user_config_path
 
 
-def find_project_config(start_dir: Path) -> Optional[Path]:
-    project_root = find_project_root(start_dir)
-    if project_root:
-        return project_root / ".ctenv.toml"
-
-    return None
-
-
-def find_project_root(start_dir: Path) -> Optional[Path]:
+def find_project_dir(start_dir: Path) -> Optional[Path]:
     """Find project root by searching for .ctenv.toml file.
 
     Searches upward from start_dir but stops at the user's home directory
@@ -430,7 +425,7 @@ class ContainerConfig:
             # Container settings with defaults
             image="ubuntu:latest",
             command="bash",
-            container_name="ctenv-${project_root|slug}",
+            container_name="ctenv-${project_dir|slug}",
             sudo=False,
             # Lists with empty defaults
             env=[],
@@ -475,7 +470,7 @@ class ConfigFile:
     path: Optional[Path]  # None for built-in defaults
 
     @classmethod
-    def load(cls, config_path: Path) -> "ConfigFile":
+    def load(cls, config_path: Path, project_dir: Path) -> "ConfigFile":
         """Load configuration from a specific file."""
         if not config_path.exists():
             raise ValueError(f"Config file not found: {config_path}")
@@ -485,15 +480,13 @@ class ConfigFile:
         raw_containers = config_data.get("containers", {})
         raw_defaults = config_data.get("defaults")
 
-        config_dir = config_path.parent
-
         # Process defaults to ContainerConfig if present
         defaults_config = None
         if raw_defaults:
             defaults_config = ContainerConfig.from_dict(convert_notset_strings(raw_defaults))
             defaults_config._config_file_path = str(config_path.resolve())
             defaults_config = resolve_relative_paths_in_container_config(
-                defaults_config, config_dir
+                defaults_config, project_dir
             )
 
         # Process containers to ContainerConfig objects
@@ -502,7 +495,7 @@ class ConfigFile:
             container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
             container_config._config_file_path = str(config_path.resolve())
             container_config = resolve_relative_paths_in_container_config(
-                container_config, config_dir
+                container_config, project_dir
             )
             container_configs[name] = container_config
 
@@ -623,8 +616,8 @@ class CtenvConfig:
     @classmethod
     def load(
         cls,
-        explicit_config_files: Optional[List[Path]] = None,
-        start_dir: Optional[Path] = None,
+        project_dir: Path,
+        explicit_config_files: Optional[List[Path]] = None
     ) -> "CtenvConfig":
         """Load and compute configuration from files in priority order.
 
@@ -640,22 +633,21 @@ class CtenvConfig:
         if explicit_config_files:
             for config_file in explicit_config_files:
                 try:
-                    loaded_config = ConfigFile.load(config_file)
+                    loaded_config = ConfigFile.load(config_file, project_dir)
                     config_files.append(loaded_config)
                 except Exception as e:
                     raise ValueError(f"Failed to load explicit config file {config_file}: {e}")
 
         # Project config (if no explicit configs)
         if not explicit_config_files:
-            search_dir = start_dir or Path.cwd()
-            project_config_path = find_project_config(search_dir)
-            if project_config_path:
-                config_files.append(ConfigFile.load(project_config_path))
+            project_config_path = project_dir / ".ctenv.toml"
+            if project_config_path.exists():
+                config_files.append(ConfigFile.load(project_config_path, project_dir))
 
         # User config
         user_config_path = find_user_config()
         if user_config_path:
-            config_files.append(ConfigFile.load(user_config_path))
+            config_files.append(ConfigFile.load(user_config_path, project_dir))
 
         # Compute defaults (system defaults + first file defaults found)
         defaults = ContainerConfig.builtin_defaults()
@@ -711,7 +703,7 @@ def _substitute_variables_in_container_config(
         "image": config.image if config.image is not NOTSET else "",
         "user_home": runtime.user_home,
         "user_name": runtime.user_name,
-        "project_root": str(runtime.project_root),
+        "project_dir": str(runtime.project_dir),
     }
 
     def substitute_field(value):
@@ -787,7 +779,7 @@ def _parse_volume(vol_str: str) -> VolumeSpec:
     return spec
 
 
-def _parse_workspace(workspace_str: str, project_root: Path) -> VolumeSpec:
+def _parse_workspace(workspace_str: str, project_dir: Path) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
     Handles auto-detection, project root expansion, tilde expansion, and SELinux options.
@@ -801,9 +793,9 @@ def _parse_workspace(workspace_str: str, project_root: Path) -> VolumeSpec:
         spec.host_path = "auto"
 
     if spec.host_path == "auto":
-        spec.host_path = str(project_root)
+        spec.host_path = str(project_dir)
     if spec.container_path == "auto":
-        spec.container_path = str(project_root)
+        spec.container_path = str(project_dir)
     if not spec.container_path:
         spec.container_path = spec.host_path
 
@@ -1273,7 +1265,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     ]
 
     # Parse workspace first since workdir depends on it
-    workspace_spec = _parse_workspace(substituted_config.workspace, runtime.project_root)
+    workspace_spec = _parse_workspace(substituted_config.workspace, runtime.project_dir)
     workspace_spec = _expand_tilde_in_volumespec(workspace_spec, runtime)
 
     spec_dict = {
@@ -1527,12 +1519,15 @@ def cmd_run(args, command):
     quiet = args.quiet
 
     # Get runtime context once at the start
-    runtime = RuntimeContext.current()
+    runtime = RuntimeContext.current(
+        cwd=Path.cwd(),
+        project_dir=args.project_dir,
+    )
 
     # Load configuration early
     try:
         explicit_configs = [Path(c) for c in args.config] if args.config else None
-        ctenv_config = CtenvConfig.load(explicit_config_files=explicit_configs)
+        ctenv_config = CtenvConfig.load(runtime.project_dir, explicit_config_files=explicit_configs)
     except Exception as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -1617,9 +1612,14 @@ def cmd_run(args, command):
 def cmd_config_show(args):
     """Show configuration or container details."""
     try:
+        runtime = RuntimeContext.current(
+            cwd=Path.cwd(),
+            project_dir=args.project_dir,
+        )
+
         # Load configuration early
         explicit_configs = [Path(c) for c in getattr(args, "config", None) or []]
-        ctenv_config = CtenvConfig.load(explicit_config_files=explicit_configs)
+        ctenv_config = CtenvConfig.load(runtime.project_dir, explicit_config_files=explicit_configs)
 
         # Show defaults section if present
         if ctenv_config.defaults:
@@ -1686,6 +1686,10 @@ def create_parser():
         action="append",
         help="Path to configuration file (can be used multiple times, order matters)",
     )
+    parser.add_argument(
+        "-p", "--project-dir",
+        help="Project directory, where .ctenv.toml is placed and the default workspace (default: dir with .ctenv.toml in, current or in parent tree (except HOME). Using cwd if no .ctenv.toml is found)",
+    )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
 
@@ -1716,7 +1720,6 @@ Note: Use '--' to separate commands from container/options.""",
         help="Show commands without running container",
     )
 
-    run_parser.add_argument("container", nargs="?", help="Container to use (default: 'default')")
     run_parser.add_argument("--image", help="Container image to use")
     run_parser.add_argument(
         "--env",
@@ -1744,8 +1747,8 @@ Note: Use '--' to separate commands from container/options.""",
         help="Workspace to mount (supports volume syntax: /path, /host:/container, auto:/repo)",
     )
     run_parser.add_argument(
-        "--workdir",
-        help="Working directory inside container (where to cd)",
+        "-w", "--workdir",
+        help="Working directory inside container (where to cd) (default: cwd)",
     )
     run_parser.add_argument(
         "--platform",
@@ -1767,6 +1770,7 @@ Note: Use '--' to separate commands from container/options.""",
         dest="post_start_commands",
         help="Add extra command to run after container starts, but before the COMMAND is executed (can be used multiple times)",
     )
+    run_parser.add_argument("container", nargs="?", help="Container to use (default: 'default')")
 
     # config subcommand group
     config_parser = subparsers.add_parser("config", help="Configuration management commands")
