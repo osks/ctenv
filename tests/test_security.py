@@ -45,11 +45,11 @@ def test_post_start_commands_shell_functionality():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
-            project_root=Path.cwd(),
+            project_dir=Path.cwd(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
-        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
@@ -91,11 +91,11 @@ def test_volume_chown_path_injection_prevention():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
-            project_root=Path.cwd(),
+            project_dir=Path.cwd(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
-        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
@@ -163,11 +163,11 @@ def test_complex_shell_scenarios():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
-            project_root=Path.cwd(),
+            project_dir=Path.cwd(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
-        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
@@ -210,11 +210,11 @@ def test_safe_commands_work_normally():
             group_id=os.getgid(),
             cwd=Path.cwd(),
             tty=False,
-            project_root=Path.cwd(),
+            project_dir=Path.cwd(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
-        ctenv_config = CtenvConfig.load(explicit_config_files=[])  # No config files
+        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 

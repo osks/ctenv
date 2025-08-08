@@ -65,8 +65,8 @@ def run_ctenv(workspace_dir, args, cwd=None):
 class TestWorkspaceAutoDetection:
     """Test workspace auto-detection functionality"""
 
-    def test_project_root_detection(self, workspace_with_config):
-        """Test that project root is detected from subdirectory"""
+    def test_project_dir_detection(self, workspace_with_config):
+        """Test that project dir is detected from subdirectory"""
         result = run_ctenv(
             workspace_with_config,
             ["test", "--", "pwd"],

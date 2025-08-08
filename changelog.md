@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+### Changed
+
+- There is now a command line argument for specifying the project dir:
+  `ctenv --project-dir PATH run ...`. The default is that project dir
+  is still that it's auto-detected by locating `.ctenv.toml`, starting
+  from current dir and traversing upwards. Note: HOME is not
+  considered a project dir, since it a `.ctenv.toml` there is not
+  meant to indicate a project.
+
+- Relative paths in config files are now resolved relative to the
+  project dir, instead of the directory where the config file is
+  in. This means you can have a config file with `workspace =
+  ./:/repo` to mount `.` to `/repo` in the container, and it adapts to
+  where you run ctenv. This is also more consistent with other tools.
+
 
 ## v0.5
 

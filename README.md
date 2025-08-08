@@ -171,3 +171,17 @@ post_start_commands = ["source /venv/bin/activate"]
 ```
 
 This setup ensures the build environment matches the user's environment while sharing caches between different repository clones.
+
+
+## History
+
+The background for ctenv was a bash script that I developed at work
+([Agama](https://www.agama.tv/)) for running our build system in a
+container. Besides running the build, it was useful to also be able to
+run and use the compiled code in the build system environment, which
+had older libraries than the modern OSes that was used by the
+developers.
+
+ctenv is a much more generic tool than that bash script and without
+the many hard-coded parts. Written i Python and support for config
+files and much more.
