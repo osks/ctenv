@@ -49,11 +49,18 @@ When running containers with mounted directories, files created inside often hav
 
 - Creating a matching user (same UID/GID) dynamically in existing images at runtime
 - Mounting your current directory with correct permissions
-- Using `gosu` to drop privileges after container setup
+- Using [`gosu`](https://github.com/tianon/gosu) to drop privileges after container setup
 
-This works with any existing Docker image without modification - no custom Dockerfiles needed. Provides similar functionality to Podman's `--userns=keep-id` but works with Docker. Also similar to Development Containers but focused on running individual commands rather than persistent development environments.
+This works with any existing Docker image without modification - no
+custom Dockerfiles needed. Provides similar functionality to Podman's
+`--userns=keep-id` but works with Docker. Also similar to Development
+Containers but focused on running individual commands rather than
+persistent development environments.
 
-Under the hood, ctenv starts containers as root for file ownership setup, then drops privileges using bundled `gosu` binaries before executing your command. It generates bash entrypoint scripts dynamically to handle user creation and environment setup.
+Under the hood, ctenv starts containers as root for file ownership
+setup, then drops privileges using bundled `gosu` binaries before
+executing your command. It generates bash entrypoint scripts
+dynamically to handle user creation and environment setup.
 
 ## Highlights
 
