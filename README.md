@@ -86,7 +86,7 @@ command = "zsh"
 image = "python:3.11"
 volumes = ["~/.cache/pip"]
 
-# Run Claude Code in isolation
+# For running Claude Code in container
 [containers.claude]
 image = "node:20"
 post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
@@ -105,7 +105,7 @@ $ ctenv run claude
 Run Claude Code in a container for isolation:
 
 ```shell
-$ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code"
+$ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code" -- claude
 ```
 
 Or write as config in `~/.ctenv.toml`:
@@ -114,8 +114,10 @@ Or write as config in `~/.ctenv.toml`:
 image = "node:20"
 volumes = ["~/.claude.json", "~/.claude/"]
 post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
+command = "claude"
 ```
-And then use with: `ctenv run claude`
+and use with: `ctenv run claude`
+
 
 ### Development Tools
 Run linters, formatters, or compilers from containers:
@@ -133,6 +135,54 @@ volumes = ["build-cache:/var/cache:rw,chown"]
 ```
 
 ## Detailed Examples
+
+### Claude Code without installing every time
+
+The most obvious way is to create a container image where you have installed Claude Code and run ctenv using that image.
+
+```toml
+[containers.claude]
+image = "my-dev-image"
+volumes = ["~/.claude.json", "~/.claude/"]
+post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
+command = "claude"
+```
+
+One alternative is to use NVM and store the installation in a
+volume. Below is example just to showcase the NVM "hack". For real
+use, you likely want an image with more development tools installed.
+
+```toml
+# Installing in volume called claude-nvm
+[containers.claude-install]
+image = "ubuntu:latest"
+volumes = ["~/.claude.json", "~/.claude/", "claude-nvm:/nvm"]
+env = ["NVM_DIR=/nvm"]
+post_start_commands = [
+    # Install curl (for nvm)
+    "apt update && apt install -y curl",
+    # Install nvm
+    "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash",
+    # node and claude code
+    "/bin/bash -c 'source /nvm/nvm.sh && nvm install 20 && npm install -g @anthropic-ai/claude-code'"
+]
+command = "exit 0"
+
+# Running
+[containers.claude-run]
+image = "ubuntu:latest"
+volumes = ["~/.claude.json", "~/.claude/", "claude-nvm:/nvm"]
+env = ["NVM_DIR=/nvm"]
+command = "/bin/bash -c 'source /nvm/nvm.sh && claude'"
+
+```shell
+# Install (once)
+$ ctenv run claude-install
+
+# Run without installing again
+$ ctenv run claude-run
+```
+
 
 ### Claude Code with Network Restrictions
 For running Claude Code in isolation with network limitations:
