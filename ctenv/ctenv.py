@@ -111,6 +111,7 @@ class RuntimeContext:
     cwd: Path
     tty: bool
     project_dir: Path
+    pid: int
 
     @classmethod
     def current(cls, *, cwd, project_dir=None) -> "RuntimeContext":
@@ -130,6 +131,7 @@ class RuntimeContext:
             cwd=cwd,
             tty=sys.stdin.isatty(),
             project_dir=project_dir,
+            pid=os.getpid(),
         )
 
 
@@ -425,7 +427,7 @@ class ContainerConfig:
             # Container settings with defaults
             image="ubuntu:latest",
             command="bash",
-            container_name="ctenv-${project_dir|slug}",
+            container_name="ctenv-${project_dir|slug}-${pid}",
             sudo=False,
             # Lists with empty defaults
             env=[],
@@ -615,9 +617,7 @@ class CtenvConfig:
 
     @classmethod
     def load(
-        cls,
-        project_dir: Path,
-        explicit_config_files: Optional[List[Path]] = None
+        cls, project_dir: Path, explicit_config_files: Optional[List[Path]] = None
     ) -> "CtenvConfig":
         """Load and compute configuration from files in priority order.
 
@@ -704,6 +704,7 @@ def _substitute_variables_in_container_config(
         "user_home": runtime.user_home,
         "user_name": runtime.user_name,
         "project_dir": str(runtime.project_dir),
+        "pid": str(runtime.pid),
     }
 
     def substitute_field(value):
@@ -1687,7 +1688,8 @@ def create_parser():
         help="Path to configuration file (can be used multiple times, order matters)",
     )
     parser.add_argument(
-        "-p", "--project-dir",
+        "-p",
+        "--project-dir",
         help="Project directory, where .ctenv.toml is placed and the default workspace (default: dir with .ctenv.toml in, current or in parent tree (except HOME). Using cwd if no .ctenv.toml is found)",
     )
 
@@ -1747,7 +1749,8 @@ Note: Use '--' to separate commands from container/options.""",
         help="Workspace to mount (supports volume syntax: /path, /host:/container, auto:/repo)",
     )
     run_parser.add_argument(
-        "-w", "--workdir",
+        "-w",
+        "--workdir",
         help="Working directory inside container (where to cd) (default: cwd)",
     )
     run_parser.add_argument(

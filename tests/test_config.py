@@ -718,7 +718,9 @@ def test_get_builtin_defaults():
     # Check container settings defaults (user info is now in RuntimeContext)
     assert defaults["image"] == "ubuntu:latest"
     assert defaults["command"] == "bash"
-    assert defaults["container_name"] == "ctenv-${project_dir|slug}"  # Updated default
+    assert (
+        defaults["container_name"] == "ctenv-${project_dir|slug}-${pid}"
+    )  # Updated default with PID
     assert defaults["workspace"] == "auto"  # Updated workspace field
     assert defaults["workdir"] == "auto"  # Updated workdir field
     assert defaults["env"] == []
@@ -897,6 +899,7 @@ def test_docker_args_volume_options():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         resolved_config = parse_container_config(config, runtime)

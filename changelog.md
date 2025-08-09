@@ -19,6 +19,9 @@
   ./:/repo` to mount `.` to `/repo` in the container, and it adapts to
   where you run ctenv. This is also more consistent with other tools.
 
+- Container name now had PID as variable in the name, so one can start
+  multiple container for the same project dir.
+
 
 ## v0.5
 

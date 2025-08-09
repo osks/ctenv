@@ -74,6 +74,7 @@ def test_config_with_mock_runtime():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         # Create config dict with basic settings to override defaults
@@ -124,6 +125,7 @@ def test_container_name_generation():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         ctenv_config = CtenvConfig.load(Path(tmpdir))  # Empty directory
@@ -148,12 +150,14 @@ def test_container_name_generation():
         spec2 = parse_container_config(config_dict2, mock_runtime)
         spec3 = parse_container_config(config_dict3, mock_runtime)
 
-    # Container names are now based on project_dir (with variable substitution)
-    expected_name = f"ctenv-{str(mock_runtime.project_dir).replace('/', '-').replace(':', '-')}"
+    # Container names are now based on project_dir and PID (with variable substitution)
+    expected_prefix = f"ctenv-{str(mock_runtime.project_dir).replace('/', '-').replace(':', '-')}-"
+    expected_name = f"{expected_prefix}{mock_runtime.pid}"
     assert spec1.container_name == expected_name
-    assert spec2.container_name == expected_name  # Same project_dir
-    assert spec3.container_name == expected_name  # Same project_dir
+    assert spec2.container_name == expected_name  # Same project_dir and PID
+    assert spec3.container_name == expected_name  # Same project_dir and PID
     assert spec1.container_name.startswith("ctenv-")
+    assert str(mock_runtime.pid) in spec1.container_name
 
 
 @pytest.mark.unit
@@ -171,6 +175,7 @@ def test_entrypoint_script_generation():
         cwd=Path.cwd(),
         tty=False,
         project_dir=Path.cwd(),
+        pid=os.getpid(),
     )
 
     # Create config with overrides
@@ -219,6 +224,7 @@ def test_entrypoint_script_examples():
                 cwd=Path.cwd(),
                 tty=False,
                 project_dir=Path.cwd(),
+                pid=os.getpid(),
             ),
             "config_dict": {
                 "image": "ubuntu:latest",
@@ -240,6 +246,7 @@ def test_entrypoint_script_examples():
                 cwd=Path.cwd(),
                 tty=False,
                 project_dir=Path.cwd(),
+                pid=os.getpid(),
             ),
             "config_dict": {
                 "image": "ubuntu:latest",
@@ -533,6 +540,7 @@ def test_cli_volume_template_expansion():
                 cwd=Path.cwd(),
                 tty=False,
                 project_dir=Path.cwd(),
+                pid=os.getpid(),
             )
 
             # Test CLI volume processing directly
@@ -607,6 +615,7 @@ volumes = ["~/.docker", "~/config:/container/config"]
                 cwd=Path.cwd(),
                 tty=False,
                 project_dir=Path.cwd(),
+                pid=os.getpid(),
             )
 
             ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[Path(config_file)])

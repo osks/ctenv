@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch
 import sys
 import tempfile
+import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -30,6 +31,7 @@ def create_test_runtime(
         cwd=Path.cwd(),
         tty=tty,
         project_dir=Path.cwd(),
+        pid=os.getpid(),
     )
 
 
