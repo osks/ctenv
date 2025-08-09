@@ -6,7 +6,12 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-Run commands in containers from any image as current user, preserving user identity and permissions.
+Container environment as current user, in any image, preserving user identity.
+
+Start container based on any image, with current directory mounted and
+runs as your own user in the container. Run a command or start an
+interactive shell.
+
 
 ## Install
 
