@@ -144,7 +144,6 @@ The most obvious way is to create a container image where you have installed Cla
 [containers.claude]
 image = "my-dev-image"
 volumes = ["~/.claude.json", "~/.claude/"]
-post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
 command = "claude"
 ```
 
