@@ -156,17 +156,19 @@ def test_run_with_invalid_platform():
 def test_help_and_invalid_commands():
     """Test help output and invalid command handling."""
     import subprocess
+    import tempfile
 
-    # Test main help
-    result = subprocess.run([sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Test main help
+        result = subprocess.run([sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True, cwd=tmpdir)
 
-    assert result.returncode == 0
-    assert "ctenv" in result.stdout
+        assert result.returncode == 0
+        assert "ctenv" in result.stdout
 
-    # Test invalid subcommand
-    result = subprocess.run(
-        [sys.executable, "-m", "ctenv", "invalid-command"], capture_output=True, text=True
-    )
+        # Test invalid subcommand
+        result = subprocess.run(
+            [sys.executable, "-m", "ctenv", "invalid-command"], capture_output=True, text=True, cwd=tmpdir
+        )
 
     assert result.returncode != 0
 
