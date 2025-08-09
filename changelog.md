@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## v0.6
+
 ### Changed
 
 - There is now a command line argument for specifying the project dir:
