@@ -46,6 +46,7 @@ def test_post_start_commands_shell_functionality():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
@@ -92,6 +93,7 @@ def test_volume_chown_path_injection_prevention():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
@@ -164,6 +166,7 @@ def test_complex_shell_scenarios():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
@@ -211,6 +214,7 @@ def test_safe_commands_work_normally():
             cwd=Path.cwd(),
             tty=False,
             project_dir=Path.cwd(),
+            pid=os.getpid(),
         )
 
         # Parse config to get ContainerSpec using complete configuration
