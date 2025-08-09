@@ -118,6 +118,7 @@ command = "claude"
 ```
 and use with: `ctenv run claude`
 
+You can also use Dev Containers for Claude Code: https://docs.anthropic.com/en/docs/claude-code/devcontainer
 
 ### Development Tools
 Run linters, formatters, or compilers from containers:
