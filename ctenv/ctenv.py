@@ -28,7 +28,7 @@
 # - Use .devN suffix during development - add after making a release
 # - Remove .devN for stable releases
 # - Increment MINOR for new features, MAJOR for breaking changes
-__version__ = "0.5.dev0"
+__version__ = "0.6"
 
 import argparse
 import collections.abc
