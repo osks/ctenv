@@ -173,6 +173,7 @@ image = "ubuntu:latest"
 volumes = ["~/.claude.json", "~/.claude/", "claude-nvm:/nvm"]
 env = ["NVM_DIR=/nvm"]
 command = "/bin/bash -c 'source /nvm/nvm.sh && claude'"
+```
 
 ```shell
 # Install (once)
