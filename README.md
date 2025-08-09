@@ -140,7 +140,6 @@ volumes = ["build-cache:/var/cache:rw,chown"]
 
 The most obvious way is to create a container image where you have installed Claude Code and run ctenv using that image.
 
-`.ctenv.toml`:
 ```toml
 [containers.claude]
 image = "my-dev-image"
@@ -151,6 +150,8 @@ command = "claude"
 One alternative is to use NVM and store the installation in a
 volume. Below is example just to showcase the NVM "hack". For real
 use, you likely want an image with more development tools installed.
+
+In `.ctenv.toml`:
 
 ```toml
 # Installing in volume called claude-nvm
@@ -176,7 +177,7 @@ env = ["NVM_DIR=/nvm"]
 command = "/bin/bash -c 'source /nvm/nvm.sh && claude'"
 ```
 
-run:
+Run:
 ```shell
 # Install (once)
 $ ctenv run claude-install
