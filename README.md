@@ -28,7 +28,7 @@ Recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation
 
 ```bash
 # Interactive shell in ubuntu container
-$ ctenv run --image ubuntu
+$ ctenv run --image ubuntu -- bash
 
 # Run specific command
 $ ctenv run -- npm test
