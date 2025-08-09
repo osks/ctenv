@@ -87,7 +87,7 @@ def test_config_with_mock_runtime():
         # Use CtenvConfig to get complete configuration with defaults
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
-        ctenv_config = CtenvConfig.load(Path.cwd())
+        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
         resolved_spec = parse_container_config(config, mock_runtime)
 
@@ -191,7 +191,7 @@ def test_entrypoint_script_generation():
     # Use CtenvConfig to get complete configuration
     from ctenv.ctenv import CtenvConfig, ContainerConfig
 
-    ctenv_config = CtenvConfig.load(Path.cwd())
+    ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
 
     # Parse to ContainerSpec
@@ -267,7 +267,7 @@ def test_entrypoint_script_examples():
         # Parse to ContainerSpec using CtenvConfig for complete configuration
         from ctenv.ctenv import CtenvConfig, ContainerConfig
 
-        ctenv_config = CtenvConfig.load(Path.cwd())
+        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(
             overrides=ContainerConfig.from_dict(scenario["config_dict"])
         )
