@@ -438,32 +438,39 @@ def test_container_failure_handling(mock_run):
     mock_run.return_value.returncode = 1
     mock_run.return_value.stderr = "Container failed to start"
 
-    # Mock the path checks and config loading
-    with (
-        patch("pathlib.Path.exists", return_value=True),
-        patch("pathlib.Path.is_file", return_value=True),
-        patch("pathlib.Path.is_dir", return_value=True),
-        patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("ctenv.ctenv.find_user_config", return_value=None),
-    ):
-        config_dict = {
-            "image": "invalid:image",
-            "command": "echo test",
-            "workspace": ":",
-            "gosu_path": "/test/gosu",
-            "container_name": "test-container",
-        }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        
+        # Create a fake gosu file
+        gosu_path = tmpdir / "gosu"
+        gosu_path.write_text('#!/bin/sh\nexec "$@"')
+        gosu_path.chmod(0o755)
+        
+        # Mock the path checks and config loading
+        with (
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.is_dir", return_value=True),
+            patch("shutil.which", return_value="/usr/bin/docker"),
+            patch("ctenv.ctenv.find_user_config", return_value=None),
+        ):
+            config_dict = {
+                "image": "invalid:image",
+                "command": "echo test",
+                "workspace": ":",
+                "gosu_path": str(gosu_path),
+                "container_name": "test-container",
+            }
 
-        runtime = create_test_runtime()
-        # Parse config using complete configuration
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+            runtime = create_test_runtime()
+            # Parse config using complete configuration
+            from ctenv.ctenv import CtenvConfig, ContainerConfig
 
-        ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
-        config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+            ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[])  # No config files
+            config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
+            container_spec = parse_container_config(config, runtime)
 
-        result = ContainerRunner.run_container(container_spec)
-        assert result.returncode == 1
+            result = ContainerRunner.run_container(container_spec)
+            assert result.returncode == 1
 
 
 @pytest.mark.unit
