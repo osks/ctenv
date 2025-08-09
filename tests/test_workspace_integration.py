@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import pytest
 import tempfile
 from pathlib import Path
@@ -42,7 +43,7 @@ def run_ctenv(workspace_dir, args, cwd=None):
         cwd = workspace_dir
 
     cmd = [
-        "python3",
+        sys.executable,
         "-m",
         "ctenv",
         "--verbose",
