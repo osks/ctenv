@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import pytest
 from pathlib import Path
 
@@ -9,7 +10,7 @@ def test_basic_container_execution(test_images, temp_workspace):
     """Test basic container execution with ubuntu."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -30,7 +31,7 @@ def test_working_directory_is_mounted_path(test_images, temp_workspace):
     """Test that working directory inside container matches workspace mount."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -57,7 +58,7 @@ def test_file_permission_preservation(test_images, temp_workspace):
     # Create file in container
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -98,7 +99,7 @@ def test_environment_variables_passed(test_images, temp_workspace):
     """Test that user environment is correctly set up."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -120,7 +121,7 @@ def test_error_handling_invalid_image(temp_workspace):
     """Test error handling for invalid image."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -149,7 +150,7 @@ def test_volume_mounting(test_images, temp_workspace):
     # Access the file from within the container
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -171,7 +172,7 @@ def test_config_command(temp_workspace):
     """Test that config command runs without errors."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "config",
@@ -192,7 +193,7 @@ def test_config_show_command(temp_workspace):
     """Test that config show command runs without errors."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "config",
@@ -236,7 +237,7 @@ image = "alpine:latest"
 
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "config",
@@ -273,7 +274,7 @@ env = ["DEBUG=1"]
 
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "config",
@@ -296,7 +297,7 @@ def test_post_start_commands_execution(test_images, temp_workspace):
     """Test that post-start commands work correctly in shell environments."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -334,7 +335,7 @@ def test_relative_volume_path_handling(test_images, temp_workspace):
     expected_container_path = str(Path(temp_workspace).resolve() / "test_volume")
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -363,7 +364,7 @@ def test_multiple_post_start_commands(test_images, temp_workspace):
     """Test multiple post-start commands to stress test the parsing."""
     result = subprocess.run(
         [
-            "python3",
+            sys.executable,
             "-m",
             "ctenv",
             "run",

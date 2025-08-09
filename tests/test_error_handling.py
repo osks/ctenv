@@ -1,6 +1,7 @@
 """Tests for critical error handling scenarios."""
 
 import pytest
+import sys
 import tempfile
 from pathlib import Path
 from ctenv.ctenv import validate_platform, VolumeSpec
@@ -70,7 +71,7 @@ image = "alpine:latest"
         # Run config show (no longer accepts container argument)
         result = subprocess.run(
             [
-                "python",
+                sys.executable,
                 "-m",
                 "ctenv",
                 "--config",
@@ -104,7 +105,7 @@ def test_config_invalid_toml_file():
 
         result = subprocess.run(
             [
-                "python",
+                sys.executable,
                 "-m",
                 "ctenv",
                 "--config",
@@ -131,7 +132,7 @@ def test_run_with_invalid_platform():
 
     result = subprocess.run(
         [
-            "python",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -157,14 +158,14 @@ def test_help_and_invalid_commands():
     import subprocess
 
     # Test main help
-    result = subprocess.run(["python3", "-m", "ctenv", "--help"], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True)
 
     assert result.returncode == 0
     assert "ctenv" in result.stdout
 
     # Test invalid subcommand
     result = subprocess.run(
-        ["python3", "-m", "ctenv", "invalid-command"], capture_output=True, text=True
+        [sys.executable, "-m", "ctenv", "invalid-command"], capture_output=True, text=True
     )
 
     assert result.returncode != 0

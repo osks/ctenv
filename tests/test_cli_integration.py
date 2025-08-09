@@ -2,6 +2,7 @@
 
 import pytest
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from pathlib import Path
 def test_cli_run_basic():
     """Test basic CLI run command."""
     result = subprocess.run(
-        ["python3", "-m", "ctenv", "run", "--dry-run", "--", "echo", "hello"],
+        [sys.executable, "-m", "ctenv", "run", "--dry-run", "--", "echo", "hello"],
         capture_output=True,
         text=True,
     )
@@ -24,7 +25,7 @@ def test_cli_run_with_image():
     """Test CLI run command with specific image."""
     result = subprocess.run(
         [
-            "python",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -60,7 +61,7 @@ command = "echo test"
 
         result = subprocess.run(
             [
-                "python",
+                sys.executable,
                 "-m",
                 "ctenv",
                 "--config",
@@ -82,7 +83,7 @@ command = "echo test"
 def test_cli_run_invalid_container():
     """Test CLI run command with invalid container name."""
     result = subprocess.run(
-        ["python3", "-m", "ctenv", "run", "nonexistent", "--dry-run"],
+        [sys.executable, "-m", "ctenv", "run", "nonexistent", "--dry-run"],
         capture_output=True,
         text=True,
     )
@@ -95,7 +96,7 @@ def test_cli_run_invalid_container():
 @pytest.mark.integration
 def test_cli_config_command():
     """Test CLI config command."""
-    result = subprocess.run(["python3", "-m", "ctenv", "config"], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "-m", "ctenv", "config"], capture_output=True, text=True)
 
     assert result.returncode == 0
     # Check that config shows default values (format-agnostic)
@@ -106,7 +107,7 @@ def test_cli_config_command():
 @pytest.mark.integration
 def test_cli_help():
     """Test CLI help command."""
-    result = subprocess.run(["python3", "-m", "ctenv", "--help"], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True)
 
     assert result.returncode == 0
     assert "ctenv" in result.stdout
@@ -118,7 +119,7 @@ def test_cli_run_with_volumes():
     """Test CLI run command with volume mounting."""
     result = subprocess.run(
         [
-            "python",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
@@ -142,7 +143,7 @@ def test_cli_run_with_env():
     """Test CLI run command with environment variables."""
     result = subprocess.run(
         [
-            "python",
+            sys.executable,
             "-m",
             "ctenv",
             "run",
