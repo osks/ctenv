@@ -4,7 +4,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from ctenv.ctenv import calculate_sha256
+from ctenv.container import calculate_sha256
 
 
 @pytest.mark.unit

@@ -7,11 +7,9 @@ from unittest.mock import patch
 from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.ctenv import (
-    create_parser,
-    RuntimeContext,
-    parse_container_config,
-)
+from ctenv.cli import create_parser
+from ctenv.config import RuntimeContext
+from ctenv.container import parse_container_config
 
 
 @pytest.mark.unit
@@ -31,11 +29,11 @@ def test_config_user_detection():
 
     # Use explicit image to avoid config file interference
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig, RuntimeContext, parse_container_config
+        from ctenv.config import CtenvConfig, RuntimeContext, ContainerConfig
+        from ctenv.container import parse_container_config
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(Path(tmpdir))  # Empty directory
-        from ctenv.ctenv import ContainerConfig
 
         config_dict = ctenv_config.get_default(
             overrides=ContainerConfig.from_dict({"image": "ubuntu:latest"})
@@ -85,7 +83,7 @@ def test_config_with_mock_runtime():
         }
 
         # Use CtenvConfig to get complete configuration with defaults
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
@@ -108,12 +106,8 @@ def test_container_name_generation():
     from pathlib import Path
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import (
-            CtenvConfig,
-            RuntimeContext,
-            parse_container_config,
-            ContainerConfig,
-        )
+        from ctenv.config import CtenvConfig, RuntimeContext, ContainerConfig
+        from ctenv.container import parse_container_config
 
         # Create mock runtime
         mock_runtime = RuntimeContext(
@@ -189,7 +183,7 @@ def test_entrypoint_script_generation():
     }
 
     # Use CtenvConfig to get complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
@@ -197,7 +191,8 @@ def test_entrypoint_script_generation():
     # Parse to ContainerSpec
     spec = parse_container_config(config, mock_runtime)
 
-    script = spec.build_entrypoint_script(verbose=False, quiet=False)
+    from ctenv.container import build_entrypoint_script
+    script = build_entrypoint_script(spec, verbose=False, quiet=False)
 
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
@@ -265,14 +260,15 @@ def test_entrypoint_script_examples():
 
     for scenario in scenarios:
         # Parse to ContainerSpec using CtenvConfig for complete configuration
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(
             overrides=ContainerConfig.from_dict(scenario["config_dict"])
         )
         spec = parse_container_config(config, scenario["runtime"])
-        script = spec.build_entrypoint_script(verbose=False, quiet=False)
+        from ctenv.container import build_entrypoint_script
+        script = build_entrypoint_script(spec, verbose=False, quiet=False)
 
         print(f"\n{scenario['name']}:")
         print(f"  User: {spec.user_name} (UID: {spec.user_id})")
@@ -307,8 +303,8 @@ def test_run_command_dry_run_mode():
     args = parser.parse_args(["run", "--dry-run"])
 
     with patch("sys.stdout", new_callable=StringIO):
-        with patch("ctenv.ctenv.cmd_run") as mock_cmd_run:
-            from ctenv.ctenv import cmd_run
+        with patch("ctenv.cli.cmd_run") as mock_cmd_run:
+            from ctenv.cli import cmd_run
 
             cmd_run(args)
             mock_cmd_run.assert_called_once_with(args)
@@ -358,7 +354,7 @@ def test_post_start_cmd_cli_option():
 
     # Test that CLI post-start extra commands are included in the config
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(Path(tmpdir))  # Empty directory
@@ -389,7 +385,7 @@ post_start_commands = ["echo config-cmd"]
 
     try:
         # Test that both config file and CLI commands are included
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[Path(config_file)])
@@ -420,12 +416,8 @@ def test_post_start_cmd_in_generated_script():
     """Test that post-start extra commands appear in generated script."""
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        from ctenv.ctenv import (
-            CtenvConfig,
-            RuntimeContext,
-            parse_container_config,
-            ContainerConfig,
-        )
+        from ctenv.config import CtenvConfig, RuntimeContext, ContainerConfig
+        from ctenv.container import parse_container_config
         from pathlib import Path
 
         ctenv_config = CtenvConfig.load(Path(tmpdir))  # Empty directory
@@ -442,7 +434,8 @@ def test_post_start_cmd_in_generated_script():
         runtime = RuntimeContext.current(cwd=Path.cwd())
         spec = parse_container_config(config_dict, runtime)
 
-    script = spec.build_entrypoint_script(verbose=True, quiet=False)
+    from ctenv.container import build_entrypoint_script
+    script = build_entrypoint_script(spec, verbose=True, quiet=False)
 
     # Should contain the post-start commands in the script variables
     assert (
@@ -457,7 +450,7 @@ def test_post_start_cmd_in_generated_script():
 @pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
-    from ctenv.ctenv import _parse_volume
+    from ctenv.container import _parse_volume
 
     # Test single path format - smart defaulting
     vol_spec = _parse_volume("~/.docker")
@@ -473,7 +466,7 @@ def test_volume_parsing_smart_defaulting():
 @pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
-    from ctenv.ctenv import _parse_volume
+    from ctenv.container import _parse_volume
 
     # Test empty target with options
     vol_spec = _parse_volume("~/.docker::ro")
@@ -497,7 +490,7 @@ def test_volume_parsing_empty_target_syntax():
 @pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
-    from ctenv.ctenv import _parse_volume
+    from ctenv.container import _parse_volume
 
     # Test standard format still works
     vol_spec = _parse_volume("/host:/container:ro")
@@ -523,12 +516,8 @@ def test_cli_volume_template_expansion():
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.ctenv import (
-                CtenvConfig,
-                RuntimeContext,
-                parse_container_config,
-                ContainerConfig,
-            )
+            from ctenv.config import CtenvConfig, RuntimeContext, ContainerConfig
+            from ctenv.container import parse_container_config
 
             # Create mock runtime context
             mock_runtime = RuntimeContext(
@@ -598,12 +587,8 @@ volumes = ["~/.docker", "~/config:/container/config"]
         test_home = "/home/testuser"
 
         with patch.dict(os.environ, {"HOME": test_home}):
-            from ctenv.ctenv import (
-                CtenvConfig,
-                RuntimeContext,
-                parse_container_config,
-                ContainerConfig,
-            )
+            from ctenv.config import CtenvConfig, RuntimeContext, ContainerConfig
+            from ctenv.container import parse_container_config
 
             # Create mock runtime context
             mock_runtime = RuntimeContext(
