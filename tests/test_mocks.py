@@ -6,11 +6,9 @@ import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.ctenv import (
-    ContainerRunner,
-    RuntimeContext,
-    parse_container_config,
-)
+from ctenv.container import ContainerRunner
+from ctenv.config import RuntimeContext
+from ctenv.container import parse_container_config
 
 
 def create_test_runtime(
@@ -53,7 +51,7 @@ def test_docker_command_examples():
     runtime = create_test_runtime()
 
     # Parse config to get ContainerSpec using complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -106,7 +104,7 @@ def test_platform_support():
     runtime = create_test_runtime()
 
     # Parse config using complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(
@@ -210,7 +208,7 @@ def test_docker_command_scenarios():
             )
 
             # Parse config using complete configuration
-            from ctenv.ctenv import CtenvConfig, ContainerConfig
+            from ctenv.config import CtenvConfig, ContainerConfig
 
             ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
             config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -270,7 +268,7 @@ def test_new_cli_options():
     runtime = create_test_runtime()
 
     # Parse config using complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -331,7 +329,7 @@ def test_sudo_entrypoint_script():
     runtime = create_test_runtime()
 
     # Parse config using complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict_with_sudo))
@@ -343,10 +341,9 @@ def test_sudo_entrypoint_script():
     )
     container_spec_without_sudo = parse_container_config(config2, runtime)
 
-    script_with_sudo = container_spec_with_sudo.build_entrypoint_script(verbose=False, quiet=False)
-    script_without_sudo = container_spec_without_sudo.build_entrypoint_script(
-        verbose=False, quiet=False
-    )
+    from ctenv.container import build_entrypoint_script
+    script_with_sudo = build_entrypoint_script(container_spec_with_sudo, verbose=False, quiet=False)
+    script_without_sudo = build_entrypoint_script(container_spec_without_sudo, verbose=False, quiet=False)
 
     # Test sudo setup is properly configured with ADD_SUDO variable
     assert "ADD_SUDO=1" in script_with_sudo
@@ -382,7 +379,7 @@ def test_docker_command_construction(mock_run):
 
     runtime = create_test_runtime()
     # Parse config using complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -421,7 +418,7 @@ def test_docker_not_available(mock_run, mock_which):
 
     runtime = create_test_runtime()
     # Parse config using complete configuration
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -451,7 +448,7 @@ def test_container_failure_handling(mock_run):
             patch("pathlib.Path.is_file", return_value=True),
             patch("pathlib.Path.is_dir", return_value=True),
             patch("shutil.which", return_value="/usr/bin/docker"),
-            patch("ctenv.ctenv.find_user_config", return_value=None),
+            patch("ctenv.config.find_user_config", return_value=None),
         ):
             config_dict = {
                 "image": "invalid:image",
@@ -463,7 +460,7 @@ def test_container_failure_handling(mock_run):
 
             runtime = create_test_runtime()
             # Parse config using complete configuration
-            from ctenv.ctenv import CtenvConfig, ContainerConfig
+            from ctenv.config import CtenvConfig, ContainerConfig
 
             ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[])  # No config files
             config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -486,7 +483,7 @@ def test_tty_detection():
     }
 
     runtime_with_tty = create_test_runtime(tty=True)
-    from ctenv.ctenv import CtenvConfig, ContainerConfig
+    from ctenv.config import CtenvConfig, ContainerConfig
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict_with_tty))
@@ -541,7 +538,7 @@ def test_volume_chown_option():
 
         runtime = create_test_runtime()
         # Parse config using complete configuration
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -573,7 +570,8 @@ def test_volume_chown_option():
             assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
-            script_content = container_spec.build_entrypoint_script(verbose=False, quiet=False)
+            from ctenv.container import build_entrypoint_script
+            script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
             # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
             assert "/var/cache" in script_content
@@ -614,14 +612,15 @@ def test_post_start_commands():
 
         runtime = create_test_runtime()
         # Parse config using complete configuration
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
         container_spec = parse_container_config(config, runtime)
 
         # Generate entrypoint script content directly
-        script_content = container_spec.build_entrypoint_script(verbose=False, quiet=False)
+        from ctenv.container import build_entrypoint_script
+        script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
         assert "POST_START_COMMANDS=" in script_content
@@ -671,7 +670,7 @@ def test_ulimits_configuration():
 
         runtime = create_test_runtime()
         # Parse config using complete configuration
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
@@ -694,7 +693,8 @@ def test_ulimits_configuration():
 @pytest.mark.unit
 def test_container_labels_added():
     """Test that ctenv adds identifying labels to containers."""
-    from ctenv.ctenv import ContainerRunner, __version__, parse_container_config
+    from ctenv.container import ContainerRunner, parse_container_config
+    from ctenv.cli import __version__
     import tempfile
     from pathlib import Path
 
@@ -714,7 +714,7 @@ def test_container_labels_added():
 
         runtime = create_test_runtime()
         # Parse config using complete configuration
-        from ctenv.ctenv import CtenvConfig, ContainerConfig
+        from ctenv.config import CtenvConfig, ContainerConfig
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))

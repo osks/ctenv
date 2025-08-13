@@ -23,7 +23,7 @@ Issues = "https://github.com/osks/ctenv/issues"
 CI = "https://github.com/osks/ctenv/actions"
 
 [project.scripts]
-ctenv = "ctenv:main"
+ctenv = "ctenv.cli:main"
 
 [project.optional-dependencies]
 test = [
@@ -66,3 +66,8 @@ ignore_missing_imports = true
 check_untyped_defs = false
 disallow_untyped_defs = false
 disable_error_code = ["no-any-return", "assignment", "arg-type", "attr-defined", "var-annotated", "union-attr"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]

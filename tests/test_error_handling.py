@@ -4,7 +4,8 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
-from ctenv.ctenv import validate_platform, VolumeSpec
+from ctenv.container import validate_platform
+from ctenv.config import VolumeSpec
 
 
 @pytest.mark.unit
