@@ -97,7 +97,9 @@ def test_cli_run_invalid_container():
 def test_cli_config_command():
     """Test CLI config command."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        result = subprocess.run([sys.executable, "-m", "ctenv", "config"], capture_output=True, text=True, cwd=tmpdir)
+        result = subprocess.run(
+            [sys.executable, "-m", "ctenv", "config"], capture_output=True, text=True, cwd=tmpdir
+        )
 
     assert result.returncode == 0
     # Check that config shows default values (format-agnostic)
@@ -109,7 +111,9 @@ def test_cli_config_command():
 def test_cli_help():
     """Test CLI help command."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        result = subprocess.run([sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True, cwd=tmpdir)
+        result = subprocess.run(
+            [sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True, cwd=tmpdir
+        )
 
     assert result.returncode == 0
     assert "ctenv" in result.stdout

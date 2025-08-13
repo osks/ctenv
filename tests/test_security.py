@@ -51,6 +51,7 @@ def test_post_start_commands_shell_functionality():
         container_spec = parse_container_config(config, runtime)
 
         from ctenv.container import build_entrypoint_script
+
         script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # Commands should be stored and executed normally with shell interpretation
@@ -112,6 +113,7 @@ def test_volume_chown_path_injection_prevention():
         container_spec.chown_paths = malicious_paths
 
         from ctenv.container import build_entrypoint_script
+
         script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # Paths should be safely quoted in the CHOWN_PATHS variable to prevent command injection
@@ -173,6 +175,7 @@ def test_complex_shell_scenarios():
         container_spec = parse_container_config(config, runtime)
 
         from ctenv.container import build_entrypoint_script
+
         script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # All commands should execute normally with shell interpretation
@@ -222,6 +225,7 @@ def test_safe_commands_work_normally():
         container_spec = parse_container_config(config, runtime)
 
         from ctenv.container import build_entrypoint_script
+
         script = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # Commands should be present (unquoted for normal execution)

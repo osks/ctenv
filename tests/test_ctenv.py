@@ -192,6 +192,7 @@ def test_entrypoint_script_generation():
     spec = parse_container_config(config, mock_runtime)
 
     from ctenv.container import build_entrypoint_script
+
     script = build_entrypoint_script(spec, verbose=False, quiet=False)
 
     assert "useradd" in script
@@ -268,6 +269,7 @@ def test_entrypoint_script_examples():
         )
         spec = parse_container_config(config, scenario["runtime"])
         from ctenv.container import build_entrypoint_script
+
         script = build_entrypoint_script(spec, verbose=False, quiet=False)
 
         print(f"\n{scenario['name']}:")
@@ -435,6 +437,7 @@ def test_post_start_cmd_in_generated_script():
         spec = parse_container_config(config_dict, runtime)
 
     from ctenv.container import build_entrypoint_script
+
     script = build_entrypoint_script(spec, verbose=True, quiet=False)
 
     # Should contain the post-start commands in the script variables

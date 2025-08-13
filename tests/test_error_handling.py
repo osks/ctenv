@@ -161,14 +161,19 @@ def test_help_and_invalid_commands():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Test main help
-        result = subprocess.run([sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True, cwd=tmpdir)
+        result = subprocess.run(
+            [sys.executable, "-m", "ctenv", "--help"], capture_output=True, text=True, cwd=tmpdir
+        )
 
         assert result.returncode == 0
         assert "ctenv" in result.stdout
 
         # Test invalid subcommand
         result = subprocess.run(
-            [sys.executable, "-m", "ctenv", "invalid-command"], capture_output=True, text=True, cwd=tmpdir
+            [sys.executable, "-m", "ctenv", "invalid-command"],
+            capture_output=True,
+            text=True,
+            cwd=tmpdir,
         )
 
     assert result.returncode != 0
