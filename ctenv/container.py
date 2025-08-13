@@ -49,6 +49,7 @@ GOSU_CHECKSUMS = {
 # Platform and Binary Management
 # =============================================================================
 
+
 def validate_platform(platform: str) -> bool:
     """Validate that the platform is supported."""
     supported_platforms = ["linux/amd64", "linux/arm64"]
@@ -113,6 +114,7 @@ def calculate_sha256(file_path: Path) -> str:
 # Path and Volume Utilities
 # =============================================================================
 
+
 def expand_tilde_in_path(path: str, runtime: RuntimeContext) -> str:
     """Expand ~ to user home directory in a path string."""
     if path.startswith("~/"):
@@ -145,6 +147,7 @@ def _expand_tilde_in_volumespec(vol_spec: VolumeSpec, runtime: RuntimeContext) -
 # =============================================================================
 # Configuration Parsing Functions
 # =============================================================================
+
 
 def _parse_volume(vol_str: str) -> VolumeSpec:
     """Parse as volume specification with volume-specific defaulting and validation."""
@@ -308,6 +311,7 @@ def _parse_env(env_config: Union[List[str], NotSetType]) -> List[EnvVar]:
 # Container Specification
 # =============================================================================
 
+
 @dataclass(kw_only=True)
 class ContainerSpec:
     """Resolved container specification ready for execution.
@@ -351,12 +355,12 @@ class ContainerSpec:
 
 def build_entrypoint_script(spec: ContainerSpec, verbose: bool = False, quiet: bool = False) -> str:
     """Generate bash script for container entrypoint.
-    
+
     Args:
         spec: ContainerSpec instance with all container configuration
         verbose: Enable verbose logging in script
         quiet: Enable quiet mode in script
-        
+
     Returns:
         Complete bash script as string
     """
@@ -692,6 +696,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
 # Container Execution
 # =============================================================================
 
+
 class ContainerRunner:
     """Manages Docker container operations."""
 
@@ -705,14 +710,16 @@ class ContainerRunner:
             pass
 
     @staticmethod
-    def build_run_args(spec: 'ContainerSpec', entrypoint_script_path: str, verbose: bool = False) -> List[str]:
+    def build_run_args(
+        spec: "ContainerSpec", entrypoint_script_path: str, verbose: bool = False
+    ) -> List[str]:
         """Build Docker run arguments with provided script path.
-        
+
         Args:
             spec: ContainerSpec instance
             entrypoint_script_path: Path to temporary entrypoint script
             verbose: Enable verbose logging
-            
+
         Returns:
             List of Docker run command arguments
         """
@@ -819,15 +826,17 @@ class ContainerRunner:
         return args
 
     @staticmethod
-    def run_container(spec: 'ContainerSpec', verbose: bool = False, dry_run: bool = False, quiet: bool = False):
+    def run_container(
+        spec: "ContainerSpec", verbose: bool = False, dry_run: bool = False, quiet: bool = False
+    ):
         """Execute Docker container with the given specification.
-        
+
         Args:
             spec: ContainerSpec instance
             verbose: Enable verbose logging
             dry_run: Show commands without executing
             quiet: Suppress non-essential output
-            
+
         Returns:
             subprocess.CompletedProcess result
         """

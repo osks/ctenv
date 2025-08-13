@@ -342,8 +342,11 @@ def test_sudo_entrypoint_script():
     container_spec_without_sudo = parse_container_config(config2, runtime)
 
     from ctenv.container import build_entrypoint_script
+
     script_with_sudo = build_entrypoint_script(container_spec_with_sudo, verbose=False, quiet=False)
-    script_without_sudo = build_entrypoint_script(container_spec_without_sudo, verbose=False, quiet=False)
+    script_without_sudo = build_entrypoint_script(
+        container_spec_without_sudo, verbose=False, quiet=False
+    )
 
     # Test sudo setup is properly configured with ADD_SUDO variable
     assert "ADD_SUDO=1" in script_with_sudo
@@ -437,12 +440,12 @@ def test_container_failure_handling(mock_run):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
-        
+
         # Create a fake gosu file
         gosu_path = tmpdir / "gosu"
         gosu_path.write_text('#!/bin/sh\nexec "$@"')
         gosu_path.chmod(0o755)
-        
+
         # Mock the path checks and config loading
         with (
             patch("pathlib.Path.is_file", return_value=True),
@@ -571,6 +574,7 @@ def test_volume_chown_option():
 
             # Generate entrypoint script content to check for chown commands
             from ctenv.container import build_entrypoint_script
+
             script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
             # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
@@ -620,6 +624,7 @@ def test_post_start_commands():
 
         # Generate entrypoint script content directly
         from ctenv.container import build_entrypoint_script
+
         script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
