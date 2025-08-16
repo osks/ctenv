@@ -166,3 +166,87 @@ def test_cli_run_with_env():
 
     assert result.returncode == 0
     assert "[ctenv] run" in result.stderr
+
+
+@pytest.mark.integration
+def test_cli_build_args_invalid_format():
+    """Test error when build arg has no equals sign."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ctenv",
+            "run",
+            "--build-arg",
+            "INVALID_ARG_NO_EQUALS",
+            "--dry-run",
+            "--",
+            "echo",
+            "hello",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Invalid build argument format" in result.stderr
+    assert "Expected KEY=VALUE" in result.stderr
+
+
+@pytest.mark.integration
+def test_cli_build_command_args_invalid_format():
+    """Test error when build command build arg has no equals sign."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ctenv",
+            "build",
+            "--build-arg",
+            "INVALID_ARG_NO_EQUALS",
+            "default",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Invalid build argument format" in result.stderr
+    assert "Expected KEY=VALUE" in result.stderr
+
+
+@pytest.mark.integration
+def test_cli_invalid_subcommand():
+    """Test help output for invalid subcommand."""
+    result = subprocess.run(
+        [sys.executable, "-m", "ctenv", "invalid_command"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2  # argparse returns 2 for invalid choices
+    assert "usage:" in result.stderr or "usage:" in result.stdout
+
+
+@pytest.mark.integration
+def test_cli_quiet_mode():
+    """Test quiet mode logging configuration."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ctenv",
+            "-q",  # Global flag must come before subcommand
+            "run",
+            "--dry-run",
+            "--",
+            "echo",
+            "hello",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    # In quiet mode, should have minimal output
+    assert len(result.stderr.strip()) < 50  # Very minimal stderr output

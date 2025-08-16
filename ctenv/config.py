@@ -442,11 +442,16 @@ def validate_build_config(build_config: BuildConfig) -> None:
     """
     # Check mutual exclusion of dockerfile and dockerfile_content
     dockerfile_set = build_config.dockerfile is not NOTSET and build_config.dockerfile is not None
-    dockerfile_content_set = build_config.dockerfile_content is not NOTSET and build_config.dockerfile_content is not None
-    
+    dockerfile_content_set = (
+        build_config.dockerfile_content is not NOTSET
+        and build_config.dockerfile_content is not None
+    )
+
     if dockerfile_set and dockerfile_content_set:
-        raise ValueError("Cannot specify both 'dockerfile' and 'dockerfile_content' - they are mutually exclusive")
-    
+        raise ValueError(
+            "Cannot specify both 'dockerfile' and 'dockerfile_content' - they are mutually exclusive"
+        )
+
     # Validate dockerfile_content is not empty if specified
     if dockerfile_content_set and not build_config.dockerfile_content.strip():
         raise ValueError("dockerfile_content cannot be empty")
@@ -461,7 +466,7 @@ def validate_container_config(config: ContainerConfig) -> None:
     # Check mutual exclusion of image and build
     if config.image is not NOTSET and config.build is not NOTSET:
         raise ValueError("Cannot specify both 'image' and 'build' - they are mutually exclusive")
-    
+
     # Validate build configuration if present
     if config.build is not NOTSET:
         validate_build_config(config.build)
@@ -478,9 +483,7 @@ def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
     # Apply build defaults based on what's configured
     if config.build.dockerfile_content is not NOTSET:
         # When using dockerfile_content, don't default dockerfile or context
-        build_defaults = BuildConfig(
-            tag="ctenv-${project_dir|slug}:latest", args={}
-        )
+        build_defaults = BuildConfig(tag="ctenv-${project_dir|slug}:latest", args={})
     else:
         # When using dockerfile path, provide default dockerfile but not context
         build_defaults = BuildConfig(

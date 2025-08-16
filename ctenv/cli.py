@@ -72,7 +72,15 @@ def cmd_run(args, command):
         }
 
         # Handle build arguments
-        if any([args.build_dockerfile, args.build_dockerfile_content, args.build_context, args.build_tag, args.build_args]):
+        if any(
+            [
+                args.build_dockerfile,
+                args.build_dockerfile_content,
+                args.build_context,
+                args.build_tag,
+                args.build_args,
+            ]
+        ):
             build_dict = {}
             if args.build_dockerfile:
                 build_dict["dockerfile"] = args.build_dockerfile

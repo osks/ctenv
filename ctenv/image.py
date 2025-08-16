@@ -6,7 +6,6 @@ This module handles image building functionality including:
 - Build configuration parsing and validation
 """
 
-import contextlib
 import os
 import subprocess
 import sys
@@ -56,10 +55,15 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
 
     # Validate required fields are present
     dockerfile_set = build_config.dockerfile is not NOTSET and build_config.dockerfile is not None
-    dockerfile_content_set = build_config.dockerfile_content is not NOTSET and build_config.dockerfile_content is not None
-    
+    dockerfile_content_set = (
+        build_config.dockerfile_content is not NOTSET
+        and build_config.dockerfile_content is not None
+    )
+
     if not dockerfile_set and not dockerfile_content_set:
-        raise ValueError("Missing required build field: either 'dockerfile' or 'dockerfile_content' must be specified")
+        raise ValueError(
+            "Missing required build field: either 'dockerfile' or 'dockerfile_content' must be specified"
+        )
     if build_config.tag is NOTSET:
         raise ValueError("Missing required build field: tag")
 
@@ -73,7 +77,9 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
 
     return BuildImageSpec(
         dockerfile=build_config.dockerfile if build_config.dockerfile is not NOTSET else None,
-        dockerfile_content=build_config.dockerfile_content if build_config.dockerfile_content is not NOTSET else None,
+        dockerfile_content=build_config.dockerfile_content
+        if build_config.dockerfile_content is not NOTSET
+        else None,
         context=context,
         tag=build_config.tag,
         args=build_config.args if build_config.args is not NOTSET else {},
@@ -83,19 +89,21 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
 
 def _resolve_dockerfile_input(spec: BuildImageSpec) -> Tuple[List[str], Optional[bytes]]:
     """Resolve dockerfile arguments and input data for subprocess.
-    
+
     Returns:
         (dockerfile_args, input_data): Arguments for docker command and stdin data
     """
     if spec.dockerfile_content:
-        return ["-f", "-"], spec.dockerfile_content.encode('utf-8')
+        return ["-f", "-"], spec.dockerfile_content.encode("utf-8")
     else:
+        # spec.dockerfile should never be None due to validation in parse_build_spec
+        assert spec.dockerfile is not None, "Either dockerfile or dockerfile_content must be set"
         return ["-f", spec.dockerfile], None
 
 
 def _resolve_context_path(spec: BuildImageSpec) -> str:
     """Resolve context path for docker build command.
-    
+
     Returns:
         Context path: "-" for empty context (stdin), filesystem path otherwise
     """
@@ -124,19 +132,25 @@ def build_container_image(
     # Resolve dockerfile and context independently
     dockerfile_args, input_data = _resolve_dockerfile_input(build_spec)
     context_path = _resolve_context_path(build_spec)
-    
+
     # Handle special case: empty context with dockerfile file needs empty stdin
     if build_spec.context == "" and not build_spec.dockerfile_content:
         input_data = b""
 
     # Build command with all arguments
     build_cmd = [
-        container_runtime, "build",
+        container_runtime,
+        "build",
         *dockerfile_args,
         *(["--platform", build_spec.platform] if build_spec.platform else []),
-        *[item for key, value in build_spec.args.items() for item in ["--build-arg", f"{key}={value}"]],
-        "-t", build_spec.tag,
-        context_path
+        *[
+            item
+            for key, value in build_spec.args.items()
+            for item in ["--build-arg", f"{key}={value}"]
+        ],
+        "-t",
+        build_spec.tag,
+        context_path,
     ]
 
     if verbose:
@@ -145,12 +159,12 @@ def build_container_image(
     # Execute build
     try:
         result = subprocess.run(
-            build_cmd, 
-            cwd=runtime.project_dir, 
+            build_cmd,
+            cwd=runtime.project_dir,
             input=input_data,
-            capture_output=not verbose, 
+            capture_output=not verbose,
             text=False,
-            check=True
+            check=True,
         )
 
         if verbose and result.stdout:

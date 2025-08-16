@@ -146,7 +146,7 @@ def test_container_name_generation():
 
     # Container names are now based on project_dir and PID (with variable substitution)
     # The slug filter converts to lowercase and replaces colons/slashes with hyphens
-    project_dir_slug = str(mock_runtime.project_dir).lower().replace(':', '-').replace('/', '-')
+    project_dir_slug = str(mock_runtime.project_dir).lower().replace(":", "-").replace("/", "-")
     expected_prefix = f"ctenv-{project_dir_slug}-"
     expected_name = f"{expected_prefix}{mock_runtime.pid}"
     assert spec1.container_name == expected_name
