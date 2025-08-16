@@ -661,6 +661,11 @@ env = ["NODE_ENV=development"]
         args.platform = None
         args.run_args = None
         args.project_dir = None  # Add project_dir attribute
+        # Add build-related attributes
+        args.build_dockerfile = None
+        args.build_context = None
+        args.build_tag = None
+        args.build_args = None
 
         # Mock docker execution to capture the config
         captured_config = {}
