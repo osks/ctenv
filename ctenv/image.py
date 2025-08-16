@@ -6,11 +6,12 @@ This module handles image building functionality including:
 - Build configuration parsing and validation
 """
 
+import contextlib
 import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
 
 from .config import (
     NOTSET,
@@ -24,7 +25,8 @@ from .config import (
 class BuildImageSpec:
     """Resolved build specification ready for image building."""
 
-    dockerfile: str
+    dockerfile: Optional[str]  # Path to dockerfile, None if using content
+    dockerfile_content: Optional[str]  # Inline dockerfile content, None if using path
     context: str
     tag: str
     args: Dict[str, str]
@@ -53,10 +55,11 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
     build_config = substituted_config.build
 
     # Validate required fields are present
-    if build_config.dockerfile is NOTSET:
-        raise ValueError("Missing required build field: dockerfile")
-    if build_config.context is NOTSET:
-        raise ValueError("Missing required build field: context")
+    dockerfile_set = build_config.dockerfile is not NOTSET and build_config.dockerfile is not None
+    dockerfile_content_set = build_config.dockerfile_content is not NOTSET and build_config.dockerfile_content is not None
+    
+    if not dockerfile_set and not dockerfile_content_set:
+        raise ValueError("Missing required build field: either 'dockerfile' or 'dockerfile_content' must be specified")
     if build_config.tag is NOTSET:
         raise ValueError("Missing required build field: tag")
 
@@ -65,13 +68,38 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
     if substituted_config.platform is not NOTSET:
         platform = substituted_config.platform
 
+    # Handle context: NOTSET means empty context (no files sent to Docker)
+    context = build_config.context if build_config.context is not NOTSET else ""
+
     return BuildImageSpec(
-        dockerfile=build_config.dockerfile,
-        context=build_config.context,
+        dockerfile=build_config.dockerfile if build_config.dockerfile is not NOTSET else None,
+        dockerfile_content=build_config.dockerfile_content if build_config.dockerfile_content is not NOTSET else None,
+        context=context,
         tag=build_config.tag,
         args=build_config.args if build_config.args is not NOTSET else {},
         platform=platform,
     )
+
+
+def _resolve_dockerfile_input(spec: BuildImageSpec) -> Tuple[List[str], Optional[bytes]]:
+    """Resolve dockerfile arguments and input data for subprocess.
+    
+    Returns:
+        (dockerfile_args, input_data): Arguments for docker command and stdin data
+    """
+    if spec.dockerfile_content:
+        return ["-f", "-"], spec.dockerfile_content.encode('utf-8')
+    else:
+        return ["-f", spec.dockerfile], None
+
+
+def _resolve_context_path(spec: BuildImageSpec) -> str:
+    """Resolve context path for docker build command.
+    
+    Returns:
+        Context path: "-" for empty context (stdin), filesystem path otherwise
+    """
+    return "-" if spec.context == "" else spec.context
 
 
 def build_container_image(
@@ -93,26 +121,23 @@ def build_container_image(
     # Determine container runtime (docker or podman)
     container_runtime = os.environ.get("RUNNER", "docker")
 
-    # Build the docker build command
-    build_cmd = [container_runtime, "build"]
+    # Resolve dockerfile and context independently
+    dockerfile_args, input_data = _resolve_dockerfile_input(build_spec)
+    context_path = _resolve_context_path(build_spec)
+    
+    # Handle special case: empty context with dockerfile file needs empty stdin
+    if build_spec.context == "" and not build_spec.dockerfile_content:
+        input_data = b""
 
-    # Add dockerfile
-    build_cmd.extend(["-f", build_spec.dockerfile])
-
-    # Add platform if specified
-    if build_spec.platform:
-        build_cmd.extend(["--platform", build_spec.platform])
-
-    # Add build arguments
-    if build_spec.args:
-        for key, value in build_spec.args.items():
-            build_cmd.extend(["--build-arg", f"{key}={value}"])
-
-    # Add tag
-    build_cmd.extend(["-t", build_spec.tag])
-
-    # Add context (this should be last)
-    build_cmd.append(build_spec.context)
+    # Build command with all arguments
+    build_cmd = [
+        container_runtime, "build",
+        *dockerfile_args,
+        *(["--platform", build_spec.platform] if build_spec.platform else []),
+        *[item for key, value in build_spec.args.items() for item in ["--build-arg", f"{key}={value}"]],
+        "-t", build_spec.tag,
+        context_path
+    ]
 
     if verbose:
         print(f"[ctenv] Building image: {' '.join(build_cmd)}", file=sys.stderr)
@@ -120,7 +145,12 @@ def build_container_image(
     # Execute build
     try:
         result = subprocess.run(
-            build_cmd, cwd=runtime.project_dir, capture_output=not verbose, text=True, check=True
+            build_cmd, 
+            cwd=runtime.project_dir, 
+            input=input_data,
+            capture_output=not verbose, 
+            text=False,
+            check=True
         )
 
         if verbose and result.stdout:

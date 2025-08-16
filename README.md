@@ -120,20 +120,18 @@ Run Claude Code in a container for isolation:
 $ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code" -- claude
 ```
 
-That would install it every time you run it. To avoid that, we can build an image that installs it. Example:
-
-Create `~/.ctenv/Dockerfile.claude` with:
-```
-FROM node:20
-RUN npm install -g @anthropic-ai/claude-code
-```
-
-Then add this to `~/.ctenv.toml`:
+That would install it every time you run it. To avoid that, we can use
+ctenv to build an image with Claude Code. `~/.ctenv.toml`:
 ```toml
 [containers.claude]
-build = { dockerfile = ".ctenv/Dockerfile.claude", context = ".ctenv" }
 volumes = ["~/.claude.json", "~/.claude/"]
 command = "claude"
+
+[containers.claude.build]
+dockerfile_content = """
+FROM node:20
+RUN npm install -g @anthropic-ai/claude-code
+"""
 ```
 and use with: `ctenv run claude`
 
@@ -149,7 +147,7 @@ $ ctenv run --image node:20 -- eslint src/
 ### Build Systems
 Use containerized build environments:
 ```toml
-[containers.build]
+[containers.build-system]
 image = "some-build-system:v17"
 volumes = ["build-cache:/var/cache:rw,chown"]
 ```

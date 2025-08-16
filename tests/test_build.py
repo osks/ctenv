@@ -132,7 +132,7 @@ class TestContainerConfigWithBuild:
         assert result.image is NOTSET
         assert result.build.dockerfile == "Dockerfile.custom"
         # Defaults should be applied for missing fields
-        assert result.build.context == "."
+        assert result.build.context is NOTSET  # Context defaults to NOTSET (empty context)
         assert result.build.tag == "ctenv-${project_dir|slug}:latest"
         assert result.build.args == {}
 
@@ -249,6 +249,7 @@ class TestBuildContainerImage:
         
         spec = BuildImageSpec(
             dockerfile="Dockerfile",
+            dockerfile_content=None,
             context=".",
             tag="test-app:latest",
             args={"ENV": "test", "VERSION": "1.0"},
@@ -295,6 +296,7 @@ class TestBuildContainerImage:
         
         spec = BuildImageSpec(
             dockerfile="Dockerfile",
+            dockerfile_content=None,
             context=".",
             tag="test:latest",
             args={}
@@ -322,6 +324,7 @@ class TestBuildContainerImage:
         
         spec = BuildImageSpec(
             dockerfile="Dockerfile",
+            dockerfile_content=None,
             context=".",
             tag="test:latest",
             args={}
@@ -340,6 +343,7 @@ class TestBuildContainerImage:
         
         spec = BuildImageSpec(
             dockerfile="Dockerfile",
+            dockerfile_content=None,
             context=".",
             tag="test:latest",
             args={}
@@ -428,8 +432,8 @@ build = { dockerfile = "Dockerfile", context = ".", tag = "dev:latest" }
             # Set all required attributes
             for attr in ["image", "workspace", "workdir", "env", "volumes", "sudo", 
                         "network", "post_start_commands", "platform", 
-                        "run_args", "build_dockerfile", "build_context", "build_tag", 
-                        "build_args"]:
+                        "run_args", "build_dockerfile", "build_dockerfile_content", 
+                        "build_context", "build_tag", "build_args"]:
                 setattr(args, attr, None)
             
             # Set gosu_path to the fake gosu we created
@@ -482,7 +486,7 @@ tag = "api:v1.0"
             args.project_dir = str(tmpdir)
             
             # Set build-specific attributes
-            for attr in ["build_dockerfile", "build_context", "build_tag", "build_args"]:
+            for attr in ["build_dockerfile", "build_dockerfile_content", "build_context", "build_tag", "build_args"]:
                 setattr(args, attr, None)
             
             with patch('sys.exit'):
@@ -529,6 +533,308 @@ build = { dockerfile = "Dockerfile.default", context = ".", tag = "default:lates
             assert merged_config.build.context == str(tmpdir.resolve())
 
 
+@pytest.mark.unit  
+class TestDockerfileContentFeature:
+    """Unit tests for dockerfile_content feature."""
+    
+    def test_build_config_with_dockerfile_content(self):
+        """Test BuildConfig with dockerfile_content field."""
+        config = BuildConfig(
+            dockerfile_content="FROM ubuntu:latest\nRUN apt-get update",
+            context=".",
+            tag="test:latest"
+        )
+        assert config.dockerfile_content == "FROM ubuntu:latest\nRUN apt-get update"
+        assert config.dockerfile is NOTSET
+        
+    def test_mutual_exclusion_validation(self):
+        """Test mutual exclusion between dockerfile and dockerfile_content."""
+        from ctenv.config import validate_build_config
+        
+        # Both set should fail
+        config = BuildConfig(
+            dockerfile="Dockerfile",
+            dockerfile_content="FROM ubuntu:latest"
+        )
+        with pytest.raises(ValueError, match="Cannot specify both 'dockerfile' and 'dockerfile_content'"):
+            validate_build_config(config)
+            
+        # Only one set should pass
+        config1 = BuildConfig(dockerfile="Dockerfile")
+        validate_build_config(config1)  # Should not raise
+        
+        config2 = BuildConfig(dockerfile_content="FROM ubuntu:latest")
+        validate_build_config(config2)  # Should not raise
+        
+    def test_empty_dockerfile_content_validation(self):
+        """Test validation of empty dockerfile_content."""
+        from ctenv.config import validate_build_config
+        
+        config = BuildConfig(dockerfile_content="   ")  # Only whitespace
+        with pytest.raises(ValueError, match="dockerfile_content cannot be empty"):
+            validate_build_config(config)
+            
+    def test_dockerfile_content_variable_substitution(self):
+        """Test variable substitution in dockerfile_content."""
+        config = ContainerConfig(
+            build=BuildConfig(
+                dockerfile_content="FROM ${env.base_image}\nRUN echo ${user_name}",
+                context=".",
+                tag="test:latest"
+            )
+        )
+        
+        runtime = RuntimeContext(
+            user_name="testuser",
+            user_id=1000,
+            user_home="/home/testuser",
+            group_name="testgroup",
+            group_id=1000,
+            cwd=Path("/project"),
+            tty=False,
+            project_dir=Path("/project"),
+            pid=12345,
+        )
+        
+        with patch.dict(os.environ, {"base_image": "ubuntu:22.04"}, clear=True):
+            spec = parse_build_spec(config, runtime)
+            
+        assert spec.dockerfile_content == "FROM ubuntu:22.04\nRUN echo testuser"
+        assert spec.dockerfile is None
+        
+    def test_parse_build_spec_with_dockerfile_content(self):
+        """Test parsing build spec with dockerfile_content."""
+        config = ContainerConfig(
+            build=BuildConfig(
+                dockerfile_content="FROM alpine:latest\nRUN apk add curl",
+                context=".",
+                tag="test:latest",
+                args={"BUILD_ENV": "test"}
+            )
+        )
+        
+        runtime = Mock()
+        runtime.project_dir = Path("/project")
+        
+        with patch('ctenv.image._substitute_variables_in_container_config') as mock_sub:
+            mock_sub.return_value = config
+            spec = parse_build_spec(config, runtime)
+            
+        assert spec.dockerfile is None
+        assert spec.dockerfile_content == "FROM alpine:latest\nRUN apk add curl"
+        assert spec.context == "."
+        assert spec.tag == "test:latest"
+        assert spec.args == {"BUILD_ENV": "test"}
+        
+    @patch('ctenv.image.subprocess.run')
+    def test_build_with_dockerfile_content_stdin(self, mock_run):
+        """Test building with dockerfile_content uses stdin."""
+        mock_run.return_value = Mock(stdout="")
+        
+        spec = BuildImageSpec(
+            dockerfile=None,
+            dockerfile_content="FROM ubuntu:latest\nRUN apt-get update",
+            context=".",
+            tag="test:latest",
+            args={}
+        )
+        
+        runtime = Mock()
+        runtime.project_dir = Path("/project")
+        
+        build_container_image(spec, runtime)
+        
+        # Verify docker build was called with -f -
+        call_args = mock_run.call_args[0][0]
+        assert "docker" in call_args
+        assert "build" in call_args
+        assert "-f" in call_args
+        assert "-" in call_args  # stdin
+        
+        # Verify dockerfile content was passed as input (encoded as bytes)
+        assert mock_run.call_args[1]["input"] == b"FROM ubuntu:latest\nRUN apt-get update"
+        assert mock_run.call_args[1]["text"] is False  # Binary mode
+        
+    @patch('ctenv.image.subprocess.run')  
+    def test_build_with_dockerfile_path_not_stdin(self, mock_run):
+        """Test building with dockerfile path doesn't use stdin."""
+        mock_run.return_value = Mock(stdout="")
+        
+        spec = BuildImageSpec(
+            dockerfile="Dockerfile",
+            dockerfile_content=None,
+            context=".",
+            tag="test:latest",
+            args={}
+        )
+        
+        runtime = Mock()
+        runtime.project_dir = Path("/project")
+        
+        build_container_image(spec, runtime)
+        
+        # Verify docker build was called with -f Dockerfile
+        call_args = mock_run.call_args[0][0]
+        assert "docker" in call_args
+        assert "build" in call_args
+        assert "-f" in call_args
+        dockerfile_idx = call_args.index("-f") + 1
+        assert call_args[dockerfile_idx] == "Dockerfile"
+        
+        # Verify no input was passed
+        assert mock_run.call_args[1]["input"] is None
+
+    @patch('ctenv.image.subprocess.run')
+    def test_build_with_empty_context_uses_stdin(self, mock_run):
+        """Test building with empty context uses stdin context."""
+        mock_run.return_value = Mock(stdout="")
+        
+        spec = BuildImageSpec(
+            dockerfile="Dockerfile",
+            dockerfile_content=None,
+            context="",  # Empty context
+            tag="test:latest",
+            args={}
+        )
+        
+        runtime = Mock()
+        runtime.project_dir = Path("/project")
+        
+        build_container_image(spec, runtime)
+        
+        # Verify docker build was called with "-" as context (stdin)
+        call_args = mock_run.call_args[0][0]
+        assert "docker" in call_args
+        assert "build" in call_args
+        context_arg = call_args[-1]  # Last argument should be context
+        assert context_arg == "-"  # stdin context for empty context
+        
+        # Verify empty bytes were passed as input for empty context
+        assert mock_run.call_args[1]["input"] == b""
+        
+    @patch('ctenv.image.subprocess.run')
+    def test_build_with_dockerfile_content_and_empty_context_uses_stdin(self, mock_run):
+        """Test building with dockerfile_content and empty context uses stdin for both."""
+        mock_run.return_value = Mock(stdout="")
+        
+        spec = BuildImageSpec(
+            dockerfile=None,
+            dockerfile_content="FROM ubuntu:latest",
+            context="",  # Empty context
+            tag="test:latest",
+            args={}
+        )
+        
+        runtime = Mock()
+        runtime.project_dir = Path("/project")
+        
+        build_container_image(spec, runtime)
+        
+        # Verify docker build was called with -f - and "-" as context (both stdin)
+        call_args = mock_run.call_args[0][0]
+        assert "docker" in call_args
+        assert "build" in call_args
+        assert "-f" in call_args
+        assert "-" in call_args  # stdin for dockerfile
+        context_path = call_args[-1]  # Last argument should be context
+        assert context_path == "-"  # stdin for empty context
+        
+        # Verify dockerfile content was passed as input (encoded as bytes)
+        assert mock_run.call_args[1]["input"] == b"FROM ubuntu:latest"
+        assert mock_run.call_args[1]["text"] is False  # Binary mode
+
+
+@pytest.mark.integration
+class TestDockerfileContentIntegration:
+    """Integration tests for dockerfile_content feature."""
+    
+    def test_config_file_with_dockerfile_content(self):
+        """Test loading dockerfile_content from config file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            config_file = tmpdir / ".ctenv.toml"
+            config_content = """
+[containers.inline]
+[containers.inline.build]
+dockerfile_content = '''
+FROM ubuntu:latest
+RUN apt-get update && apt-get install -y curl
+WORKDIR /app
+CMD ["bash"]
+'''
+context = "."
+tag = "inline-test:latest"
+"""
+            config_file.write_text(config_content)
+            
+            ctenv_config = CtenvConfig.load(tmpdir)
+            container_config = ctenv_config.get_container("inline")
+            
+            assert container_config.build.dockerfile_content.strip() == """FROM ubuntu:latest
+RUN apt-get update && apt-get install -y curl
+WORKDIR /app
+CMD ["bash"]"""
+            assert container_config.build.dockerfile is NOTSET
+            
+    @patch('ctenv.cli.build_container_image')
+    @patch('ctenv.container.ContainerRunner.run_container')
+    def test_cmd_run_with_dockerfile_content_cli(self, mock_run_container, mock_build_image):
+        """Test cmd_run with dockerfile_content from CLI."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # Create config file without build config
+            config_file = tmpdir / ".ctenv.toml"
+            config_content = """
+[containers.cli-test]
+# No build config - will use CLI args
+"""
+            config_file.write_text(config_content)
+            
+            # Create fake gosu
+            gosu_path = tmpdir / "gosu"
+            gosu_path.write_text('#!/bin/sh\nexec "$@"')
+            gosu_path.chmod(0o755)
+            
+            mock_build_image.return_value = "cli-test:latest"
+            mock_run_container.return_value = Mock(returncode=0)
+            
+            # Create args mock with dockerfile_content
+            args = Mock()
+            args.container = "cli-test"
+            args.config = [str(config_file)]
+            args.verbose = False
+            args.quiet = True
+            args.dry_run = False
+            args.project_dir = str(tmpdir)
+            args.gosu_path = str(gosu_path)
+            
+            # Set build args - dockerfile_content from CLI
+            args.build_dockerfile = None
+            args.build_dockerfile_content = "FROM alpine:latest\nRUN apk add git"
+            args.build_context = None
+            args.build_tag = None
+            args.build_args = None
+            
+            # Set other required attributes
+            for attr in ["image", "workspace", "workdir", "env", "volumes", "sudo",
+                        "network", "post_start_commands", "platform", "run_args"]:
+                setattr(args, attr, None)
+            
+            with patch('sys.exit'):
+                cmd_run(args, "echo test")
+            
+            # Verify build was called
+            mock_build_image.assert_called_once()
+            
+            # Verify the build spec contains dockerfile_content
+            build_call_args = mock_build_image.call_args[0]
+            build_spec = build_call_args[0]
+            assert build_spec.dockerfile_content == "FROM alpine:latest\nRUN apk add git"
+            assert build_spec.dockerfile is None
+
+
 @pytest.mark.integration
 class TestBuildErrorHandling:
     """Integration tests for build error handling."""
@@ -540,6 +846,7 @@ class TestBuildErrorHandling:
             
             spec = BuildImageSpec(
                 dockerfile="nonexistent.dockerfile",
+                dockerfile_content=None,
                 context=".",
                 tag="test:latest",
                 args={}
@@ -591,7 +898,7 @@ image = "ubuntu:latest"
             args.project_dir = str(tmpdir)
             
             # Set build-specific attributes to None
-            for attr in ["build_dockerfile", "build_context", "build_tag", "build_args"]:
+            for attr in ["build_dockerfile", "build_dockerfile_content", "build_context", "build_tag", "build_args"]:
                 setattr(args, attr, None)
             
             with patch('sys.exit') as mock_exit:

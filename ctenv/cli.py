@@ -72,10 +72,12 @@ def cmd_run(args, command):
         }
 
         # Handle build arguments
-        if any([args.build_dockerfile, args.build_context, args.build_tag, args.build_args]):
+        if any([args.build_dockerfile, args.build_dockerfile_content, args.build_context, args.build_tag, args.build_args]):
             build_dict = {}
             if args.build_dockerfile:
                 build_dict["dockerfile"] = args.build_dockerfile
+            if args.build_dockerfile_content:
+                build_dict["dockerfile_content"] = args.build_dockerfile_content
             if args.build_context:
                 build_dict["context"] = args.build_context
             if args.build_tag:
@@ -225,6 +227,8 @@ def cmd_build(args):
         build_dict = {}
         if args.build_dockerfile:
             build_dict["dockerfile"] = args.build_dockerfile
+        if args.build_dockerfile_content:
+            build_dict["dockerfile_content"] = args.build_dockerfile_content
         if args.build_context:
             build_dict["context"] = args.build_context
         if args.build_tag:
@@ -387,6 +391,10 @@ Note: Use '--' to separate commands from container/options.""",
         help="Path to Dockerfile for building (default: Dockerfile)",
     )
     run_parser.add_argument(
+        "--build-dockerfile-content",
+        help="Inline Dockerfile content (mutually exclusive with --build-dockerfile)",
+    )
+    run_parser.add_argument(
         "--build-context",
         help="Build context directory (default: .)",
     )
@@ -421,6 +429,10 @@ Note: Use '--' to separate commands from container/options.""",
     build_parser.add_argument(
         "--build-dockerfile",
         help="Path to Dockerfile for building (default: Dockerfile)",
+    )
+    build_parser.add_argument(
+        "--build-dockerfile-content",
+        help="Inline Dockerfile content (mutually exclusive with --build-dockerfile)",
     )
     build_parser.add_argument(
         "--build-context",
