@@ -4,9 +4,6 @@
 
 ## [Unreleased]
 
-## v0.6
-
-
 ### Added
 
 - ctenv can now build custom container images from Dockerfiles. Add a `build` section to your container configuration to automatically build images before running containers. For example:
@@ -25,6 +22,8 @@
   ```
   If build is specified, the image will be built before the container is started. This allows using existing images, but also simple to add extra to them. For example like installing Claude Code.
 
+
+## v0.6
 
 ### Changed
 
