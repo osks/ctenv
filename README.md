@@ -120,12 +120,19 @@ Run Claude Code in a container for isolation:
 $ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code" -- claude
 ```
 
-Or write as config in `~/.ctenv.toml`:
+That would install it every time you run it. To avoid that, we can build an image that installs it. Example:
+
+Create `~/.ctenv/Dockerfile.claude` with:
+```
+FROM node:20
+RUN npm install -g @anthropic-ai/claude-code
+```
+
+Then add this to `~/.ctenv.toml`:
 ```toml
 [containers.claude]
-image = "node:20"
+build = { dockerfile = ".ctenv/Dockerfile.claude", context = ".ctenv" }
 volumes = ["~/.claude.json", "~/.claude/"]
-post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
 command = "claude"
 ```
 and use with: `ctenv run claude`

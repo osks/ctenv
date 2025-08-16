@@ -253,6 +253,38 @@ def find_project_dir(start_dir: Path) -> Optional[Path]:
 
 
 @dataclass(kw_only=True)
+class BuildConfig:
+    """Container image build configuration.
+
+    All fields default to NOTSET (meaning "not configured") to distinguish
+    between explicit configuration and missing values. This allows
+    BuildConfig to represent partial configurations that can be merged together.
+    """
+
+    dockerfile: Union[str, NotSetType] = NOTSET
+    context: Union[str, NotSetType] = NOTSET
+    tag: Union[str, NotSetType] = NOTSET
+    args: Union[Dict[str, str], NotSetType] = NOTSET
+
+    def to_dict(self, include_notset: bool = False) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        result = asdict(self)
+
+        if not include_notset:
+            # Filter out NOTSET values for display/config files
+            result = {k: v for k, v in result.items() if v is not NOTSET}
+
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BuildConfig":
+        """Create BuildConfig from dictionary, ignoring unknown keys."""
+        known_fields = {f.name for f in fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+        return cls(**filtered_data)
+
+
+@dataclass(kw_only=True)
 class ContainerConfig:
     """Parsed configuration object with NOTSET sentinel support.
 
@@ -271,6 +303,7 @@ class ContainerConfig:
 
     # Container settings
     image: Union[str, NotSetType] = NOTSET
+    build: Union[BuildConfig, NotSetType] = NOTSET
     command: Union[str, NotSetType] = NOTSET
     workspace: Union[str, NotSetType] = NOTSET
     workdir: Union[str, NotSetType] = NOTSET
@@ -323,8 +356,18 @@ class ContainerConfig:
         else:
             filtered_data = data
 
-        # Convert None to NOTSET and create instance in one step
-        return cls(**{k: (NOTSET if v is None else v) for k, v in filtered_data.items()})
+        # Convert special fields and None to NOTSET
+        converted_data = {}
+        for k, v in filtered_data.items():
+            if v is None:
+                converted_data[k] = NOTSET
+            elif k == "build" and isinstance(v, dict):
+                # Convert build dict to BuildConfig
+                converted_data[k] = BuildConfig.from_dict(v)
+            else:
+                converted_data[k] = v
+
+        return cls(**converted_data)
 
     @classmethod
     def builtin_defaults(cls) -> "ContainerConfig":
@@ -340,6 +383,7 @@ class ContainerConfig:
             tty="auto",  # Auto-detect from stdin
             # Container settings with defaults
             image="ubuntu:latest",
+            build=NOTSET,  # Image and build are mutually exclusive
             command="bash",
             container_name="ctenv-${project_dir|slug}-${pid}",
             sudo=False,
@@ -373,8 +417,67 @@ def resolve_relative_paths_in_container_config(
     if config.gosu_path is not NOTSET:
         updates["gosu_path"] = resolve_relative_path(config.gosu_path, base_dir)
 
+    if config.build is not NOTSET:
+        # Resolve relative paths in build configuration
+        build_updates = {}
+        if config.build.dockerfile is not NOTSET:
+            build_updates["dockerfile"] = resolve_relative_path(config.build.dockerfile, base_dir)
+        if config.build.context is not NOTSET:
+            build_updates["context"] = resolve_relative_path(config.build.context, base_dir)
+
+        if build_updates:
+            # Type: ignore because we know config.build is BuildConfig here due to NOTSET check
+            updates["build"] = replace(config.build, **build_updates)  # type: ignore[type-var]
+
     # Return new ContainerConfig with only the changed fields
     return replace(config, **updates)
+
+
+def validate_container_config(config: ContainerConfig) -> None:
+    """Validate container configuration for logical consistency.
+
+    Raises:
+        ValueError: If configuration is invalid
+    """
+    # Check mutual exclusion of image and build
+    if config.image is not NOTSET and config.build is not NOTSET:
+        raise ValueError("Cannot specify both 'image' and 'build' - they are mutually exclusive")
+
+
+def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
+    """Apply build defaults when build is configured.
+
+    Returns new ContainerConfig with build defaults applied if needed.
+    """
+    if config.build is NOTSET:
+        return config
+
+    # Apply build defaults
+    build_defaults = BuildConfig(
+        dockerfile="Dockerfile", context=".", tag="ctenv-${project_dir|slug}:latest", args={}
+    )
+
+    # Merge build config with defaults
+    merged_build = merge_build_configs(build_defaults, config.build)
+
+    # Clear image field if build is configured (build takes precedence)
+    updates = {"build": merged_build}
+    if config.image is not NOTSET:
+        updates["image"] = NOTSET
+
+    return replace(config, **updates)
+
+
+def merge_build_configs(base: BuildConfig, override: BuildConfig) -> BuildConfig:
+    """Merge two BuildConfig objects, with override taking precedence."""
+    updates = {}
+
+    for field_info in fields(override):
+        override_value = getattr(override, field_info.name)
+        if override_value is not NOTSET:
+            updates[field_info.name] = override_value
+
+    return replace(base, **updates)
 
 
 @dataclass
@@ -490,6 +593,10 @@ class CtenvConfig:
         if overrides:
             result_config = merge_container_configs(result_config, overrides)
 
+        # Apply build defaults and validate
+        result_config = apply_build_defaults(result_config)
+        validate_container_config(result_config)
+
         return result_config
 
     def get_container(
@@ -526,6 +633,10 @@ class CtenvConfig:
         # Apply overrides if provided
         if overrides:
             result_config = merge_container_configs(result_config, overrides)
+
+        # Apply build defaults and validate
+        result_config = apply_build_defaults(result_config)
+        validate_container_config(result_config)
 
         return result_config
 
@@ -599,6 +710,8 @@ def _substitute_variables(text: str, variables: Dict[str, str], environ: Dict[st
 
         # Apply filter
         if filter_name == "slug":
+            # Convert to lowercase and replace colons/slashes with hyphens
+            value = value.lower()
             value = value.replace(":", "-").replace("/", "-")
         elif filter_name is not None:
             raise ValueError(f"Unknown filter: {filter_name}")
@@ -632,6 +745,20 @@ def _substitute_variables_in_container_config(
                 _substitute_variables(item, variables, environ) if isinstance(item, str) else item
                 for item in value
             ]
+        elif isinstance(value, dict):
+            return {
+                key: _substitute_variables(val, variables, environ) if isinstance(val, str) else val
+                for key, val in value.items()
+            }
+        elif isinstance(value, BuildConfig):
+            # Handle BuildConfig by substituting its string fields
+            build_updates = {}
+            for field_info in fields(value):
+                field_value = getattr(value, field_info.name)
+                substituted_value = substitute_field(field_value)
+                if substituted_value != field_value:
+                    build_updates[field_info.name] = substituted_value
+            return replace(value, **build_updates) if build_updates else value
         else:
             return value
 

@@ -6,6 +6,26 @@
 
 ## v0.6
 
+
+### Added
+
+- ctenv can now build custom container images from Dockerfiles. Add a `build` section to your container configuration to automatically build images before running containers. For example:
+  ```toml
+  [containers.dev]
+  ... container options ...
+  build = { dockerfile = "Dockerfile.dev", context = "." }
+  
+  [containers.api]
+  ... container options ...
+  [containers.api.build]
+  dockerfile = "Dockerfile.image"
+  context = "./image"
+  tag = "my-api:latest"
+  args = { NODE_ENV = "development", API_VERSION = "1.0" }
+  ```
+  If build is specified, the image will be built before the container is started. This allows using existing images, but also simple to add extra to them. For example like installing Claude Code.
+
+
 ### Changed
 
 - There is now a command line argument for specifying the project dir:

@@ -16,8 +16,11 @@ from .config import (
     RuntimeContext,
     convert_notset_strings,
     resolve_relative_paths_in_container_config,
+    NOTSET,
+    replace,
 )
 from .container import parse_container_config, ContainerRunner
+from .image import build_container_image, parse_build_spec
 
 
 def setup_logging(verbose, quiet):
@@ -53,25 +56,46 @@ def cmd_run(args, command):
     try:
         # Convert CLI overrides to ContainerConfig and resolve paths
         # convert "NOTSET" string to NOTSET sentinel
+        cli_args_dict = {
+            "image": args.image,
+            "command": command,
+            "workspace": args.workspace,
+            "workdir": args.workdir,
+            "env": args.env,
+            "volumes": args.volumes,
+            "sudo": args.sudo,
+            "network": args.network,
+            "gosu_path": args.gosu_path,
+            "platform": args.platform,
+            "post_start_commands": args.post_start_commands,
+            "run_args": args.run_args,
+        }
+
+        # Handle build arguments
+        if any([args.build_dockerfile, args.build_context, args.build_tag, args.build_args]):
+            build_dict = {}
+            if args.build_dockerfile:
+                build_dict["dockerfile"] = args.build_dockerfile
+            if args.build_context:
+                build_dict["context"] = args.build_context
+            if args.build_tag:
+                build_dict["tag"] = args.build_tag
+            if args.build_args:
+                # Convert build args from list of "KEY=VALUE" to dict
+                build_dict["args"] = {}
+                for arg in args.build_args:
+                    if "=" in arg:
+                        key, value = arg.split("=", 1)
+                        build_dict["args"][key] = value
+                    else:
+                        raise ValueError(
+                            f"Invalid build argument format: {arg}. Expected KEY=VALUE"
+                        )
+
+            cli_args_dict["build"] = build_dict
+
         cli_overrides = resolve_relative_paths_in_container_config(
-            ContainerConfig.from_dict(
-                convert_notset_strings(
-                    {
-                        "image": args.image,
-                        "command": command,
-                        "workspace": args.workspace,
-                        "workdir": args.workdir,
-                        "env": args.env,
-                        "volumes": args.volumes,
-                        "sudo": args.sudo,
-                        "network": args.network,
-                        "gosu_path": args.gosu_path,
-                        "platform": args.platform,
-                        "post_start_commands": args.post_start_commands,
-                        "run_args": args.run_args,
-                    }
-                )
-            ),
+            ContainerConfig.from_dict(convert_notset_strings(cli_args_dict)),
             runtime.cwd,
         )
 
@@ -82,6 +106,14 @@ def cmd_run(args, command):
             container_config = ctenv_config.get_container(
                 container=args.container, overrides=cli_overrides
             )
+
+        # Handle image building if build configuration is present
+        if container_config.build is not NOTSET:
+            # Build the image first
+            build_spec = parse_build_spec(container_config, runtime)
+            built_image_tag = build_container_image(build_spec, runtime, verbose=verbose)
+            # Update container config to use the built image
+            container_config = replace(container_config, image=built_image_tag, build=NOTSET)
 
         # Parse and resolve to ContainerSpec with runtime context
         spec = parse_container_config(container_config, runtime)
@@ -161,6 +193,86 @@ def cmd_config_show(args):
             print("# No containers defined")
 
     except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_build(args):
+    """Build container image."""
+    verbose = args.verbose
+    quiet = args.quiet
+
+    # Get runtime context once at the start
+    runtime = RuntimeContext.current(
+        cwd=Path.cwd(),
+        project_dir=args.project_dir,
+    )
+
+    # Load configuration early
+    try:
+        explicit_configs = [Path(c) for c in args.config] if args.config else None
+        ctenv_config = CtenvConfig.load(runtime.project_dir, explicit_config_files=explicit_configs)
+    except Exception as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Create build config from CLI arguments
+    try:
+        # Build CLI overrides for build configuration
+        cli_args_dict = {}
+
+        # Handle build arguments - always enable build for build command
+        build_dict = {}
+        if args.build_dockerfile:
+            build_dict["dockerfile"] = args.build_dockerfile
+        if args.build_context:
+            build_dict["context"] = args.build_context
+        if args.build_tag:
+            build_dict["tag"] = args.build_tag
+        if args.build_args:
+            # Convert build args from list of "KEY=VALUE" to dict
+            build_dict["args"] = {}
+            for arg in args.build_args:
+                if "=" in arg:
+                    key, value = arg.split("=", 1)
+                    build_dict["args"][key] = value
+                else:
+                    raise ValueError(f"Invalid build argument format: {arg}. Expected KEY=VALUE")
+
+        cli_args_dict["build"] = build_dict
+
+        cli_overrides = resolve_relative_paths_in_container_config(
+            ContainerConfig.from_dict(convert_notset_strings(cli_args_dict)),
+            runtime.cwd,
+        )
+
+        # Get merged ContainerConfig
+        container_config = ctenv_config.get_container(
+            container=args.container, overrides=cli_overrides
+        )
+
+        # Ensure build configuration is present
+        if container_config.build is NOTSET:
+            print(
+                "Error: No build configuration found. Use config file or CLI arguments to specify build options.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # Parse build specification and build the image
+        build_spec = parse_build_spec(container_config, runtime)
+        built_image_tag = build_container_image(build_spec, runtime, verbose=verbose)
+
+        if not quiet:
+            print(f"[ctenv] Successfully built image: {built_image_tag}", file=sys.stderr)
+
+    except ValueError as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -268,6 +380,27 @@ Note: Use '--' to separate commands from container/options.""",
         dest="post_start_commands",
         help="Add extra command to run after container starts, but before the COMMAND is executed (can be used multiple times)",
     )
+
+    # Build options
+    run_parser.add_argument(
+        "--build-dockerfile",
+        help="Path to Dockerfile for building (default: Dockerfile)",
+    )
+    run_parser.add_argument(
+        "--build-context",
+        help="Build context directory (default: .)",
+    )
+    run_parser.add_argument(
+        "--build-tag",
+        help="Custom image tag (default: auto-generated)",
+    )
+    run_parser.add_argument(
+        "--build-arg",
+        action="append",
+        dest="build_args",
+        help="Build arguments in KEY=VALUE format (can be used multiple times)",
+    )
+
     run_parser.add_argument("container", nargs="?", help="Container to use (default: 'default')")
 
     # config subcommand group
@@ -278,6 +411,32 @@ Note: Use '--' to separate commands from container/options.""",
 
     # config show
     config_subparsers.add_parser("show", help="Show configuration or container details")
+
+    # build command
+    build_parser = subparsers.add_parser(
+        "build",
+        help="Build container image",
+        description="Build container image from build configuration",
+    )
+    build_parser.add_argument(
+        "--build-dockerfile",
+        help="Path to Dockerfile for building (default: Dockerfile)",
+    )
+    build_parser.add_argument(
+        "--build-context",
+        help="Build context directory (default: .)",
+    )
+    build_parser.add_argument(
+        "--build-tag",
+        help="Custom image tag (default: auto-generated)",
+    )
+    build_parser.add_argument(
+        "--build-arg",
+        action="append",
+        dest="build_args",
+        help="Build arguments in KEY=VALUE format (can be used multiple times)",
+    )
+    build_parser.add_argument("container", help="Container to use for build configuration")
 
     return parser
 
@@ -315,6 +474,8 @@ def main(argv=None):
             cmd_config_show(args)
         else:
             parser.parse_args(["config", "--help"])
+    elif args.subcommand == "build":
+        cmd_build(args)
     else:
         parser.print_help()
         sys.exit(1)
