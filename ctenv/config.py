@@ -262,6 +262,7 @@ class BuildConfig:
     """
 
     dockerfile: Union[str, NotSetType] = NOTSET
+    dockerfile_content: Union[str, NotSetType] = NOTSET
     context: Union[str, NotSetType] = NOTSET
     tag: Union[str, NotSetType] = NOTSET
     args: Union[Dict[str, str], NotSetType] = NOTSET
@@ -433,6 +434,24 @@ def resolve_relative_paths_in_container_config(
     return replace(config, **updates)
 
 
+def validate_build_config(build_config: BuildConfig) -> None:
+    """Validate build configuration for logical consistency.
+
+    Raises:
+        ValueError: If build configuration is invalid
+    """
+    # Check mutual exclusion of dockerfile and dockerfile_content
+    dockerfile_set = build_config.dockerfile is not NOTSET and build_config.dockerfile is not None
+    dockerfile_content_set = build_config.dockerfile_content is not NOTSET and build_config.dockerfile_content is not None
+    
+    if dockerfile_set and dockerfile_content_set:
+        raise ValueError("Cannot specify both 'dockerfile' and 'dockerfile_content' - they are mutually exclusive")
+    
+    # Validate dockerfile_content is not empty if specified
+    if dockerfile_content_set and not build_config.dockerfile_content.strip():
+        raise ValueError("dockerfile_content cannot be empty")
+
+
 def validate_container_config(config: ContainerConfig) -> None:
     """Validate container configuration for logical consistency.
 
@@ -442,6 +461,10 @@ def validate_container_config(config: ContainerConfig) -> None:
     # Check mutual exclusion of image and build
     if config.image is not NOTSET and config.build is not NOTSET:
         raise ValueError("Cannot specify both 'image' and 'build' - they are mutually exclusive")
+    
+    # Validate build configuration if present
+    if config.build is not NOTSET:
+        validate_build_config(config.build)
 
 
 def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
@@ -452,10 +475,17 @@ def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
     if config.build is NOTSET:
         return config
 
-    # Apply build defaults
-    build_defaults = BuildConfig(
-        dockerfile="Dockerfile", context=".", tag="ctenv-${project_dir|slug}:latest", args={}
-    )
+    # Apply build defaults based on what's configured
+    if config.build.dockerfile_content is not NOTSET:
+        # When using dockerfile_content, don't default dockerfile or context
+        build_defaults = BuildConfig(
+            tag="ctenv-${project_dir|slug}:latest", args={}
+        )
+    else:
+        # When using dockerfile path, provide default dockerfile but not context
+        build_defaults = BuildConfig(
+            dockerfile="Dockerfile", tag="ctenv-${project_dir|slug}:latest", args={}
+        )
 
     # Merge build config with defaults
     merged_build = merge_build_configs(build_defaults, config.build)
