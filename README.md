@@ -35,12 +35,11 @@ Recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation
 # Interactive shell in ubuntu container
 $ ctenv run --image ubuntu -- bash
 
-# Run specific command
-$ ctenv run -- npm test
+# Run a configured container
+$ ctenv run my-node
 
-# Run Claude Code in a container
-$ ctenv run --image node:20 --volume ~/.claude.json --volume ~/.claude \
-    --post-start-command "npm install -g @anthropic-ai/claude-code"
+# Run a custom command and mount a volume
+$ ctenv run my-node --volume ./tests -- npm test
 ```
 
 ## Why ctenv?
@@ -64,7 +63,7 @@ dynamically to handle user creation and environment setup.
 
 ## Highlights
 
-- Works with existing images without modifications  
+- Works with existing images without modifications
 - Files created have your UID/GID (preserves permissions)
 - Convenient volume mounting like `-v ~/.gitconfig` (mounts to same path in container)
 - Simple configuration with reusable `.ctenv.toml` setups
@@ -88,61 +87,32 @@ dynamically to handle user creation and environment setup.
 
 ## Configuration
 
+ctenv supports having a `.ctenv.toml` either in HOME or in project
+directores. When located in a project, it will use the path to the
+config file as project root.
+
 Create `.ctenv.toml` for reusable container setups:
 
 ```toml
 [defaults]
-command = "zsh"
+command = "zsh" # Run a shell for interactive use
 
 [containers.python]
 image = "python:3.11"
+env = [
+    "MY_API_KEY", # passed from environment when run
+    "ENV=dev",
+]
 volumes = ["~/.cache/pip"]
 
-# For running Claude Code in container
-[containers.claude]
-image = "node:20"
-post_start_commands = ["npm install -g @anthropic-ai/claude-code"]
-volumes = ["~/.claude.json", "~/.claude"]
 ```
 
 Then run:
 ```bash
 $ ctenv run python -- python script.py
-$ ctenv run claude
 ```
 
 ## Common Use Cases
-
-### Claude Code
-Run Claude Code in a container for isolation:
-
-```shell
-$ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code" -- claude
-```
-
-That would install it every time you run it. To avoid that, we can use
-ctenv to build an image with Claude Code. `~/.ctenv.toml`:
-```toml
-[containers.claude]
-volumes = ["~/.claude.json", "~/.claude/"]
-command = "claude"
-
-[containers.claude.build]
-dockerfile_content = """
-FROM node:20
-RUN npm install -g @anthropic-ai/claude-code
-"""
-```
-and use with: `ctenv run claude`
-
-You can also use Dev Containers for Claude Code: https://docs.anthropic.com/en/docs/claude-code/devcontainer
-
-### Development Tools
-Run linters, formatters, or compilers from containers:
-```bash
-$ ctenv run --image rust:latest -- cargo fmt
-$ ctenv run --image node:20 -- eslint src/
-```
 
 ### Build Systems
 Use containerized build environments:
@@ -152,76 +122,108 @@ image = "some-build-system:v17"
 volumes = ["build-cache:/var/cache:rw,chown"]
 ```
 
+### Development Tools
+Run linters, formatters, or compilers from containers:
+```bash
+$ ctenv run --image rust:latest -- cargo fmt
+$ ctenv run --image my-node-env -- eslint src/
+```
+
+### Claude Code
+Run Claude Code in a container for isolation with configuration for convenient usage:
+
+`~/.ctenv.toml`:
+```
+# Run Claude Code in container
+[containers.claude]
+volumes = ["~/.claude.json", "~/.claude/"]
+command = "claude" # Run claude directly
+
+# Builds an image so you don't have to reinstall every time
+[containers.claude.build]
+dockerfile_content = """
+FROM node:20
+RUN npm install -g @anthropic-ai/claude-code
+"""
+```
+
+Then start with: `ctenv run claude`
+
+
 ## Detailed Examples
 
-### Claude Code without installing every time
+### Claude Code
 
-The most obvious way is to create a container image where you have installed Claude Code and run ctenv using that image.
+Basic example:
 
+```shell
+$ ctenv run --image node:20 -v ~/.claude.json -v ~/.claude/ --post-start-command "npm install -g @anthropic-ai/claude-code" -- claude
+```
+
+That would install it every time you run it. To avoid that, we can use
+ctenv to build an image with Claude Code:
+
+```shell
+$ ctenv run --build-dockerfile-content "FROM node:20\nRUN npm install -g @anthropic-ai/claude-code" -v ~/.claude.json -v ~/.claude/ -- claude
+```
+
+You likely want to configure this for conveniency:
+```
+# Run Claude Code in container
+[containers.claude]
+volumes = ["~/.claude.json", "~/.claude/"]
+command = "claude" # Run claude directly
+
+# Builds an image so you don't have to reinstall every time
+[containers.claude.build]
+dockerfile_content = """
+FROM node:20
+RUN npm install -g @anthropic-ai/claude-code
+"""
+```
+
+If you have an existing image with a build environment already, use that and install Claude Code:
 ```toml
 [containers.claude]
-image = "my-dev-image"
 volumes = ["~/.claude.json", "~/.claude/"]
 command = "claude"
+
+[containers.claude.build]
+dockerfile_content = """
+FROM my-build-env:latest
+RUN npm install -g @anthropic-ai/claude-code
+"""
+```
+and run with: `ctenv run claude`
+
+ctenv by default mounts the current directory as "workspace" and
+switches to it, so it would start Claude Code in with the current
+directory mounted in the container.
+
+If you don't already have an image with your development tools in
+(`node:20` doesn't include that much), you likely want to write a
+`Dockerfile` and install more tools in it for Claude and you to use.
+```
+[containers.claude.build]
+dockerfile = "Dockerfile" # instead of dockerfile_content
 ```
 
-One alternative is to use NVM and store the installation in a
-volume. Below is example just to showcase the NVM "hack". For real
-use, you likely want an image with more development tools installed.
-
-In `.ctenv.toml`:
-
-```toml
-# Installing in volume called claude-nvm
-[containers.claude-install]
-image = "ubuntu:latest"
-volumes = ["~/.claude.json", "~/.claude/", "claude-nvm:/nvm"]
-env = ["NVM_DIR=/nvm"]
-post_start_commands = [
-    # Install curl (for nvm)
-    "apt update && apt install -y curl",
-    # Install nvm
-    "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash",
-    # node and claude code
-    "/bin/bash -c 'source /nvm/nvm.sh && nvm install 20 && npm install -g @anthropic-ai/claude-code'"
-]
-command = "exit 0"
-
-# Running
-[containers.claude-run]
-image = "ubuntu:latest"
-volumes = ["~/.claude.json", "~/.claude/", "claude-nvm:/nvm"]
-env = ["NVM_DIR=/nvm"]
-command = "/bin/bash -c 'source /nvm/nvm.sh && claude'"
-```
-
-Run:
-```shell
-# Install (once)
-$ ctenv run claude-install
-
-# Run without installing again
-$ ctenv run claude-run
-```
-
-
-### Claude Code with Network Restrictions
-For running Claude Code in isolation with network limitations:
-
+Can for example also use iptables to restrict network access:
 ```toml
 [containers.claude]
-image = "node:20"
+...
 network = "bridge"
 run_args = ["--cap-add=NET_ADMIN"]
 post_start_commands = [
-    "apt update && apt install -y iptables",
     "iptables -A OUTPUT -d 192.168.0.0/24 -j DROP",
-    "npm install -g @anthropic-ai/claude-code"
 ]
-volumes = ["~/.claude.json", "~/.claude"]
 ```
 
 Note: On macOS, Claude Code stores credentials in the keychain by default. When run in a container, it will create `~/.claude/.credentials.json` instead, which persists outside the container due to the volume mount.
+
+Note: There are also other tools for running Claude Code in a container, such as devcontainers: https://docs.anthropic.com/en/docs/claude-code/devcontainer
+
+
 
 ### Build System with Caching
 Complex build environment with shared caches:
@@ -254,5 +256,5 @@ had older libraries than the modern OSes that was used by the
 developers.
 
 ctenv is a much more generic tool than that bash script and without
-the many hard-coded parts. Written i Python and support for config
+the many hard-coded parts. Written in Python and support for config
 files and much more.
