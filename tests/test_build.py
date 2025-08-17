@@ -116,7 +116,7 @@ class TestContainerConfigWithBuild:
         assert result.image is NOTSET
         assert result.build.dockerfile == "Dockerfile.custom"
         # Defaults should be applied for missing fields
-        assert result.build.context is NOTSET  # Context defaults to NOTSET (empty context)
+        assert result.build.context == "."  # Context defaults to current directory
         assert result.build.tag == "ctenv-${project_dir|slug}:latest"
         assert result.build.args == {}
 
@@ -681,8 +681,8 @@ class TestDockerfileContentFeature:
         assert mock_run.call_args[1]["input"] is None
 
     @patch("ctenv.image.subprocess.run")
-    def test_build_with_empty_context_uses_stdin(self, mock_run):
-        """Test building with empty context uses stdin context."""
+    def test_build_with_empty_context_uses_tempdir(self, mock_run):
+        """Test building with empty context uses temporary directory."""
         mock_run.return_value = Mock(stdout="")
 
         spec = BuildImageSpec(
@@ -698,19 +698,20 @@ class TestDockerfileContentFeature:
 
         build_container_image(spec, runtime)
 
-        # Verify docker build was called with "-" as context (stdin)
+        # Verify docker build was called with temporary directory as context
         call_args = mock_run.call_args[0][0]
         assert "docker" in call_args
         assert "build" in call_args
         context_arg = call_args[-1]  # Last argument should be context
-        assert context_arg == "-"  # stdin context for empty context
+        assert context_arg.startswith("/")  # Should be a filesystem path
+        assert "ctenv-empty-context-" in context_arg  # Should be our temp directory
 
-        # Verify empty bytes were passed as input for empty context
-        assert mock_run.call_args[1]["input"] == b""
+        # Verify no input was passed (dockerfile is a file path)
+        assert mock_run.call_args[1]["input"] is None
 
     @patch("ctenv.image.subprocess.run")
-    def test_build_with_dockerfile_content_and_empty_context_uses_stdin(self, mock_run):
-        """Test building with dockerfile_content and empty context uses stdin for both."""
+    def test_build_with_dockerfile_content_and_empty_context_uses_tempdir(self, mock_run):
+        """Test building with dockerfile_content and empty context uses stdin for dockerfile and tempdir for context."""
         mock_run.return_value = Mock(stdout="")
 
         spec = BuildImageSpec(
@@ -726,14 +727,15 @@ class TestDockerfileContentFeature:
 
         build_container_image(spec, runtime)
 
-        # Verify docker build was called with -f - and "-" as context (both stdin)
+        # Verify docker build was called with -f - and temporary directory as context
         call_args = mock_run.call_args[0][0]
         assert "docker" in call_args
         assert "build" in call_args
         assert "-f" in call_args
         assert "-" in call_args  # stdin for dockerfile
         context_path = call_args[-1]  # Last argument should be context
-        assert context_path == "-"  # stdin for empty context
+        assert context_path.startswith("/")  # Should be a filesystem path
+        assert "ctenv-empty-context-" in context_path  # Should be our temp directory
 
         # Verify dockerfile content was passed as input (encoded as bytes)
         assert mock_run.call_args[1]["input"] == b"FROM ubuntu:latest"
