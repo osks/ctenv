@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## v0.7
+
 ### Added
 
 - ctenv can now build images from a Dockerfile. Add a `build` section to your container configuration to automatically build images before running containers. Mutually exclusive with the `image` option. Example:
@@ -12,8 +14,8 @@
   ... container options ...
   build = { dockerfile = "Dockerfile.dev", context = "." }
   ```
-  The TOML structure below can be easier to read if there are many options.
-  ```
+  The TOML structure below can be easier to read if there are many options:
+  ```toml
   [containers.api]
   ... container options ...
   
@@ -22,15 +24,15 @@
   context = "./image"
   tag = "my-api:latest"
   args = { NODE_ENV = "development", API_VERSION = "1.0" }
-```
+  ```
   The image will be built before the container is started. This allows using existing images, but also simple to add extra to them. For example using and existing image but adding Claude Code. The Dockerfile content can also be inlined:
   ```toml
-[containers.claude.build]
-dockerfile_content = """
-FROM node:20
-RUN npm install -g @anthropic-ai/claude-code
-"""
-```
+  [containers.claude.build]
+  dockerfile_content = """
+  FROM node:20
+  RUN npm install -g @anthropic-ai/claude-code
+  """
+  ```
 
 
 ## v0.6
