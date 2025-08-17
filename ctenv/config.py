@@ -284,6 +284,15 @@ class BuildConfig:
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
         return cls(**filtered_data)
 
+    @classmethod
+    def builtin_defaults(cls) -> "BuildConfig":
+        """Get built-in default configuration values for build."""
+        return cls(
+            context=".",  # Default to current directory
+            tag="ctenv-${project_dir|slug}:latest",
+            args={},
+        )
+
 
 @dataclass(kw_only=True)
 class ContainerConfig:
@@ -480,15 +489,16 @@ def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
     if config.build is NOTSET:
         return config
 
+    # Start with builtin defaults
+    build_defaults = BuildConfig.builtin_defaults()
+    
     # Apply build defaults based on what's configured
     if config.build.dockerfile_content is not NOTSET:
-        # When using dockerfile_content, don't default dockerfile or context
-        build_defaults = BuildConfig(tag="ctenv-${project_dir|slug}:latest", args={})
+        # When using dockerfile_content, don't default dockerfile
+        build_defaults = replace(build_defaults, dockerfile=NOTSET)
     else:
-        # When using dockerfile path, provide default dockerfile but not context
-        build_defaults = BuildConfig(
-            dockerfile="Dockerfile", tag="ctenv-${project_dir|slug}:latest", args={}
-        )
+        # When using dockerfile path, provide default dockerfile
+        build_defaults = replace(build_defaults, dockerfile="Dockerfile")
 
     # Merge build config with defaults
     merged_build = merge_build_configs(build_defaults, config.build)
