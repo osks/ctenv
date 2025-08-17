@@ -491,7 +491,7 @@ def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
 
     # Start with builtin defaults
     build_defaults = BuildConfig.builtin_defaults()
-    
+
     # Apply build defaults based on what's configured
     if config.build.dockerfile_content is not NOTSET:
         # When using dockerfile_content, don't default dockerfile

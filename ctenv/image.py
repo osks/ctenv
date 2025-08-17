@@ -125,7 +125,7 @@ def build_container_image(
 
     # Resolve dockerfile input
     dockerfile_args, input_data = _resolve_dockerfile_input(build_spec)
-    
+
     # Handle context: create temp directory for empty context
     temp_context_dir = None
     try:
@@ -173,15 +173,19 @@ def build_container_image(
     except subprocess.CalledProcessError as e:
         # Format Docker error output for better readability
         print(f"\n[ctenv] Image build failed with exit code {e.returncode}", file=sys.stderr)
-        
+
         # Display Docker's error output in a readable format
         if e.stderr:
-            docker_error = e.stderr.decode('utf-8') if isinstance(e.stderr, bytes) else str(e.stderr)
+            docker_error = (
+                e.stderr.decode("utf-8") if isinstance(e.stderr, bytes) else str(e.stderr)
+            )
             print(f"[ctenv] Docker build error:\n{docker_error}", file=sys.stderr)
         elif e.stdout:
-            docker_output = e.stdout.decode('utf-8') if isinstance(e.stdout, bytes) else str(e.stdout)
+            docker_output = (
+                e.stdout.decode("utf-8") if isinstance(e.stdout, bytes) else str(e.stdout)
+            )
             print(f"[ctenv] Docker build output:\n{docker_output}", file=sys.stderr)
-            
+
         # Exit cleanly without showing Python traceback
         sys.exit(1)
     except FileNotFoundError:
@@ -192,6 +196,7 @@ def build_container_image(
         # Clean up temporary directory if created
         if temp_context_dir:
             import shutil
+
             try:
                 shutil.rmtree(temp_context_dir)
             except OSError:
