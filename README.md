@@ -211,7 +211,7 @@ dockerfile = "Dockerfile" # instead of dockerfile_content
 Can for example also use iptables to restrict network access:
 ```toml
 [containers.claude]
-...
+# ...
 network = "bridge"
 run_args = ["--cap-add=NET_ADMIN"]
 post_start_commands = [
