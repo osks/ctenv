@@ -11,13 +11,13 @@
 - ctenv can now build images from a Dockerfile. Add a `build` section to your container configuration to automatically build images before running containers. Mutually exclusive with the `image` option. Example:
   ```toml
   [containers.dev]
-  ... container options ...
+  # ... container options ...
   build = { dockerfile = "Dockerfile.dev", context = "." }
   ```
   The TOML structure below can be easier to read if there are many options:
   ```toml
   [containers.api]
-  ... container options ...
+  # ... container options ...
   
   [containers.api.build]
   dockerfile = "Dockerfile.dev"
