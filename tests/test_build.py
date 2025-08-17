@@ -293,7 +293,7 @@ class TestBuildContainerImage:
 
     @patch("ctenv.image.subprocess.run")
     def test_build_container_image_failure(self, mock_run):
-        """Test handling of build failure."""
+        """Test handling of build failure with clean exit."""
         from subprocess import CalledProcessError
 
         mock_run.side_effect = CalledProcessError(
@@ -311,8 +311,9 @@ class TestBuildContainerImage:
         runtime = Mock()
         runtime.project_dir = Path("/project")
 
-        with pytest.raises(RuntimeError, match="Image build failed"):
+        with pytest.raises(SystemExit) as exc_info:
             build_container_image(spec, runtime)
+        assert exc_info.value.code == 1
 
     @patch("ctenv.image.subprocess.run")
     def test_build_container_image_docker_not_found(self, mock_run):
@@ -851,7 +852,7 @@ class TestBuildErrorHandling:
     """Integration tests for build error handling."""
 
     def test_build_missing_dockerfile(self):
-        """Test error handling when Dockerfile is missing."""
+        """Test error handling when Dockerfile is missing with clean exit."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
 
@@ -885,8 +886,9 @@ class TestBuildErrorHandling:
                     stderr="unable to prepare context: unable to evaluate symlinks in Dockerfile",
                 )
 
-                with pytest.raises(RuntimeError, match="Image build failed"):
+                with pytest.raises(SystemExit) as exc_info:
                     build_container_image(spec, runtime)
+                assert exc_info.value.code == 1
 
     def test_cmd_build_no_build_config(self):
         """Test cmd_build when no build configuration is found."""
