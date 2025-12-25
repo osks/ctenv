@@ -364,11 +364,11 @@ Note: Use '--' to separate commands from container/options.""",
         "--network", help="Enable container networking (default: disabled for security)"
     )
     run_parser.add_argument(
+        "-w",
         "--workspace",
         help="Workspace to mount (supports volume syntax: /path, /host:/container, auto:/repo)",
     )
     run_parser.add_argument(
-        "-w",
         "--workdir",
         help="Working directory inside container (where to cd) (default: cwd)",
     )
