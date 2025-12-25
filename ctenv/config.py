@@ -7,15 +7,24 @@ from TOML files and CLI arguments.
 import collections.abc
 import copy
 import grp
-import logging
 import os
 import pwd
 import re
 import shlex
 import sys
 from dataclasses import dataclass, field, asdict, replace, fields
+from enum import IntEnum
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union, TYPE_CHECKING
+
+
+class Verbosity(IntEnum):
+    """Verbosity levels for CLI output."""
+
+    QUIET = -1        # -q: errors only
+    NORMAL = 0        # default: status messages
+    VERBOSE = 1       # -v: detailed info
+    VERY_VERBOSE = 2  # -vv: full debug output
 
 try:
     import tomllib
@@ -206,7 +215,6 @@ def _load_config_file(config_path: Path) -> Dict[str, Any]:
     try:
         with open(config_path, "rb") as f:
             config_data = tomllib.load(f)
-        logging.debug(f"Loaded config from {config_path}")
         return config_data
     except tomllib.TOMLDecodeError as e:
         raise ValueError(f"Invalid TOML in {config_path}: {e}") from e
@@ -561,7 +569,6 @@ class ConfigFile:
             )
             container_configs[name] = container_config
 
-        logging.debug(f"Loaded config from {config_path}")
         return cls(
             containers=container_configs,
             defaults=defaults_config,

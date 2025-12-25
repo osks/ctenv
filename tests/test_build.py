@@ -10,6 +10,7 @@ from ctenv.config import (
     BuildConfig,
     ContainerConfig,
     RuntimeContext,
+    Verbosity,
     NOTSET,
     CtenvConfig,
     convert_notset_strings,
@@ -248,7 +249,7 @@ class TestBuildContainerImage:
             pid=12345,
         )
 
-        result = build_container_image(spec, runtime, verbose=False)
+        result = build_container_image(spec, runtime, verbosity=Verbosity.NORMAL)
 
         assert result == "test-app:latest"
         mock_run.assert_called_once()

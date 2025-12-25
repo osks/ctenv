@@ -6,9 +6,8 @@ import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.container import ContainerRunner
-from ctenv.config import RuntimeContext
-from ctenv.container import parse_container_config
+from ctenv.container import ContainerRunner, parse_container_config, build_entrypoint_script
+from ctenv.config import RuntimeContext, Verbosity
 
 
 def create_test_runtime(
@@ -341,11 +340,9 @@ def test_sudo_entrypoint_script():
     )
     container_spec_without_sudo = parse_container_config(config2, runtime)
 
-    from ctenv.container import build_entrypoint_script
-
-    script_with_sudo = build_entrypoint_script(container_spec_with_sudo, verbose=False, quiet=False)
+    script_with_sudo = build_entrypoint_script(container_spec_with_sudo, verbosity=Verbosity.NORMAL)
     script_without_sudo = build_entrypoint_script(
-        container_spec_without_sudo, verbose=False, quiet=False
+        container_spec_without_sudo, verbosity=Verbosity.NORMAL
     )
 
     # Test sudo setup is properly configured with ADD_SUDO variable
@@ -573,9 +570,7 @@ def test_volume_chown_option():
             assert logs_volume == "--volume=logs:/logs:ro,z"
 
             # Generate entrypoint script content to check for chown commands
-            from ctenv.container import build_entrypoint_script
-
-            script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
+            script_content = build_entrypoint_script(container_spec, verbosity=Verbosity.NORMAL)
 
             # Should contain chown paths in the CHOWN_PATHS variable for cache and data, but not logs
             assert "/var/cache" in script_content
@@ -623,9 +618,7 @@ def test_post_start_commands():
         container_spec = parse_container_config(config, runtime)
 
         # Generate entrypoint script content directly
-        from ctenv.container import build_entrypoint_script
-
-        script_content = build_entrypoint_script(container_spec, verbose=False, quiet=False)
+        script_content = build_entrypoint_script(container_spec, verbosity=Verbosity.NORMAL)
 
         # Should contain post-start commands in the POST_START_COMMANDS variable
         assert "POST_START_COMMANDS=" in script_content

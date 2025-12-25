@@ -8,7 +8,6 @@ This module handles all container-related functionality including:
 """
 
 import hashlib
-import logging
 import os
 import platform
 import shlex
@@ -28,6 +27,7 @@ from .config import (
     VolumeSpec,
     RuntimeContext,
     ContainerConfig,
+    Verbosity,
     _substitute_variables_in_container_config,
 )
 
@@ -353,17 +353,20 @@ class ContainerSpec:
     ulimits: Optional[Dict[str, Any]] = None  # None = no ulimits
 
 
-def build_entrypoint_script(spec: ContainerSpec, verbose: bool = False, quiet: bool = False) -> str:
+def build_entrypoint_script(spec: ContainerSpec, verbosity: Verbosity = Verbosity.NORMAL) -> str:
     """Generate bash script for container entrypoint.
 
     Args:
         spec: ContainerSpec instance with all container configuration
-        verbose: Enable verbose logging in script
-        quiet: Enable quiet mode in script
+        verbosity: Verbosity level for script output
 
     Returns:
         Complete bash script as string
     """
+    # Map verbosity to script's verbose/quiet flags
+    verbose = verbosity >= Verbosity.VERBOSE
+    quiet = verbosity < Verbosity.NORMAL
+
     # Extract PS1 from environment variables
     ps1_var = next((env for env in spec.env if env.name == "PS1"), None)
     ps1_value = ps1_var.value if ps1_var else DEFAULT_PS1
@@ -705,25 +708,25 @@ class ContainerRunner:
         """Safely remove a file, ignoring errors."""
         try:
             os.unlink(path)
-            logging.debug(f"Cleaned up temporary script: {path}")
         except OSError:
             pass
 
     @staticmethod
     def build_run_args(
-        spec: "ContainerSpec", entrypoint_script_path: str, verbose: bool = False
+        spec: "ContainerSpec", entrypoint_script_path: str, verbosity: Verbosity = Verbosity.NORMAL
     ) -> List[str]:
         """Build Docker run arguments with provided script path.
 
         Args:
             spec: ContainerSpec instance
             entrypoint_script_path: Path to temporary entrypoint script
-            verbose: Enable verbose logging
+            verbosity: Verbosity level
 
         Returns:
             List of Docker run command arguments
         """
-        logging.debug("Building Docker run arguments")
+        if verbosity >= Verbosity.VERBOSE:
+            print("Building Docker run arguments", file=sys.stderr)
 
         args = [
             "docker",
@@ -757,99 +760,113 @@ class ContainerRunner:
         ]
         args.extend(volume_args)
 
-        logging.debug("Volume mounts:")
-        logging.debug(f"  Workspace: {spec.workspace.to_string()}")
-        logging.debug(f"  Working directory: {spec.workdir}")
-        logging.debug(f"  Gosu binary: {spec.gosu.to_string()}")
-        logging.debug(f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh")
+        if verbosity >= Verbosity.VERBOSE:
+            print("Volume mounts:", file=sys.stderr)
+            print(f"  Workspace: {spec.workspace.to_string()}", file=sys.stderr)
+            print(f"  Working directory: {spec.workdir}", file=sys.stderr)
+            print(f"  Gosu binary: {spec.gosu.to_string()}", file=sys.stderr)
+            print(f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh", file=sys.stderr)
 
         # Additional volume mounts
         if spec.volumes:
-            logging.debug("Additional volume mounts:")
+            if verbosity >= Verbosity.VERBOSE:
+                print("Additional volume mounts:", file=sys.stderr)
             for vol_spec in spec.volumes:
                 volume_arg = f"--volume={vol_spec.to_string()}"
                 args.append(volume_arg)
-                logging.debug(f"  {vol_spec.to_string()}")
+                if verbosity >= Verbosity.VERBOSE:
+                    print(f"  {vol_spec.to_string()}", file=sys.stderr)
 
-        if spec.chown_paths:
-            logging.debug("Volumes with chown enabled:")
+        if spec.chown_paths and verbosity >= Verbosity.VERBOSE:
+            print("Volumes with chown enabled:", file=sys.stderr)
             for path in spec.chown_paths:
-                logging.debug(f"  {path}")
+                print(f"  {path}", file=sys.stderr)
 
         # Environment variables
         if spec.env:
-            logging.debug("Environment variables:")
+            if verbosity >= Verbosity.VERBOSE:
+                print("Environment variables:", file=sys.stderr)
             for env_var in spec.env:
                 args.append(env_var.to_docker_arg())
-                if env_var.value is None:
-                    host_value = os.environ.get(env_var.name, "")
-                    logging.debug(f"  Passing: {env_var.name}={host_value}")
-                else:
-                    logging.debug(f"  Setting: {env_var.name}={env_var.value}")
+                if verbosity >= Verbosity.VERBOSE:
+                    if env_var.value is None:
+                        host_value = os.environ.get(env_var.name, "")
+                        print(f"  Passing: {env_var.name}={host_value}", file=sys.stderr)
+                    else:
+                        print(f"  Setting: {env_var.name}={env_var.value}", file=sys.stderr)
 
         # Resource limits (ulimits)
         if spec.ulimits:
-            logging.debug("Resource limits (ulimits):")
+            if verbosity >= Verbosity.VERBOSE:
+                print("Resource limits (ulimits):", file=sys.stderr)
             for limit_name, limit_value in spec.ulimits.items():
                 args.extend([f"--ulimit={limit_name}={limit_value}"])
-                logging.debug(f"  {limit_name}={limit_value}")
+                if verbosity >= Verbosity.VERBOSE:
+                    print(f"  {limit_name}={limit_value}", file=sys.stderr)
 
         # Network configuration
         if spec.network:
             args.extend([f"--network={spec.network}"])
-            logging.debug(f"Network mode: {spec.network}")
-        else:
+            if verbosity >= Verbosity.VERBOSE:
+                print(f"Network mode: {spec.network}", file=sys.stderr)
+        elif verbosity >= Verbosity.VERBOSE:
             # Default: use Docker's default networking (no --network flag)
-            logging.debug("Network mode: default (Docker default)")
+            print("Network mode: default (Docker default)", file=sys.stderr)
 
         # TTY flags if running interactively
         if spec.tty:
             args.extend(["-t", "-i"])
-            logging.debug("TTY mode: enabled")
-        else:
-            logging.debug("TTY mode: disabled")
+            if verbosity >= Verbosity.VERBOSE:
+                print("TTY mode: enabled", file=sys.stderr)
+        elif verbosity >= Verbosity.VERBOSE:
+            print("TTY mode: disabled", file=sys.stderr)
 
         # Custom run arguments
         if spec.run_args:
-            logging.debug("Custom run arguments:")
+            if verbosity >= Verbosity.VERBOSE:
+                print("Custom run arguments:", file=sys.stderr)
             for run_arg in spec.run_args:
                 args.append(run_arg)
-                logging.debug(f"  {run_arg}")
+                if verbosity >= Verbosity.VERBOSE:
+                    print(f"  {run_arg}", file=sys.stderr)
 
         # Set entrypoint to our script
         args.extend(["--entrypoint", "/ctenv/entrypoint.sh"])
 
         # Container image
         args.append(spec.image)
-        logging.debug(f"Container image: {spec.image}")
+        if verbosity >= Verbosity.VERBOSE:
+            print(f"Container image: {spec.image}", file=sys.stderr)
 
         return args
 
     @staticmethod
     def run_container(
-        spec: "ContainerSpec", verbose: bool = False, dry_run: bool = False, quiet: bool = False
+        spec: "ContainerSpec", verbosity: Verbosity = Verbosity.NORMAL, dry_run: bool = False
     ):
         """Execute Docker container with the given specification.
 
         Args:
             spec: ContainerSpec instance
-            verbose: Enable verbose logging
+            verbosity: Verbosity level
             dry_run: Show commands without executing
-            quiet: Suppress non-essential output
 
         Returns:
             subprocess.CompletedProcess result
         """
-        logging.debug("Starting container execution")
+        if verbosity >= Verbosity.VERBOSE:
+            print("Starting container execution", file=sys.stderr)
 
         # Check if Docker is available
         docker_path = shutil.which("docker")
         if not docker_path:
             raise FileNotFoundError("Docker not found in PATH. Please install Docker.")
-        logging.debug(f"Found Docker at: {docker_path}")
+        if verbosity >= Verbosity.VERBOSE:
+            print(f"Found Docker at: {docker_path}", file=sys.stderr)
 
         # Verify gosu binary exists
-        logging.debug(f"Checking for gosu binary at: {spec.gosu.host_path}")
+        if verbosity >= Verbosity.VERBOSE:
+            print(f"Checking for gosu binary at: {spec.gosu.host_path}", file=sys.stderr)
         gosu_path = Path(spec.gosu.host_path)
         if not gosu_path.exists():
             raise FileNotFoundError(
@@ -861,7 +878,8 @@ class ContainerRunner:
 
         # Verify workspace exists
         workspace_source = Path(spec.workspace.host_path)
-        logging.debug(f"Verifying workspace directory: {workspace_source}")
+        if verbosity >= Verbosity.VERBOSE:
+            print(f"Verifying workspace directory: {workspace_source}", file=sys.stderr)
         if not workspace_source.exists():
             raise FileNotFoundError(f"Workspace directory {workspace_source} does not exist.")
 
@@ -869,7 +887,7 @@ class ContainerRunner:
             raise FileNotFoundError(f"Workspace path {workspace_source} is not a directory.")
 
         # Generate entrypoint script content (chown paths are already in spec)
-        script_content = build_entrypoint_script(spec, verbose, quiet)
+        script_content = build_entrypoint_script(spec, verbosity)
 
         # Handle script file creation
         if dry_run:
@@ -877,7 +895,8 @@ class ContainerRunner:
             script_cleanup = None
         else:
             script_fd, entrypoint_script_path = tempfile.mkstemp(suffix=".sh", text=True)
-            logging.debug(f"Created temporary entrypoint script: {entrypoint_script_path}")
+            if verbosity >= Verbosity.VERBOSE:
+                print(f"Created temporary entrypoint script: {entrypoint_script_path}", file=sys.stderr)
             with os.fdopen(script_fd, "w") as f:
                 f.write(script_content)
             os.chmod(entrypoint_script_path, 0o755)
@@ -885,15 +904,16 @@ class ContainerRunner:
 
         try:
             # Build Docker arguments (same for both modes)
-            docker_args = ContainerRunner.build_run_args(spec, entrypoint_script_path, verbose)
-            logging.debug(f"Executing Docker command: {' '.join(docker_args)}")
+            docker_args = ContainerRunner.build_run_args(spec, entrypoint_script_path, verbosity)
+            if verbosity >= Verbosity.VERBOSE:
+                print(f"Executing Docker command: {' '.join(docker_args)}", file=sys.stderr)
 
             # Show what will be executed
             if dry_run:
                 print(" ".join(docker_args))
 
-            # Show entrypoint script in verbose mode
-            if verbose:
+            # Show entrypoint script only at very verbose level (-vv)
+            if verbosity >= Verbosity.VERY_VERBOSE:
                 print("\n" + "=" * 60, file=sys.stderr)
                 print(
                     "Entrypoint script" + (" that would be executed:" if dry_run else ":"),
@@ -905,17 +925,18 @@ class ContainerRunner:
 
             # Execute or mock execution
             if dry_run:
-                logging.debug("Dry-run mode: Docker command printed, not executed")
+                if verbosity >= Verbosity.VERBOSE:
+                    print("Dry-run mode: Docker command printed, not executed", file=sys.stderr)
                 return subprocess.CompletedProcess(docker_args, 0)
             else:
                 result = subprocess.run(docker_args, check=False)
-                if result.returncode != 0:
-                    logging.debug(f"Container exited with code: {result.returncode}")
+                if result.returncode != 0 and verbosity >= Verbosity.VERBOSE:
+                    print(f"Container exited with code: {result.returncode}", file=sys.stderr)
                 return result
 
         except subprocess.CalledProcessError as e:
             if not dry_run:
-                logging.error(f"Container execution failed: {e}")
+                print(f"Error: Container execution failed: {e}", file=sys.stderr)
                 raise RuntimeError(f"Container execution failed: {e}")
             raise
         finally:

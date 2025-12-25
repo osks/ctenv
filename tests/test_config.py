@@ -279,21 +279,24 @@ env = ["CI=true"]
 def test_empty_config_structure():
     """Test that CtenvConfig.load works with no config files."""
     import tempfile
+    from unittest.mock import patch
 
     # Test that CtenvConfig.load works with no config files
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
         from ctenv.config import CtenvConfig
 
-        ctenv_config = CtenvConfig.load(tmpdir)  # No config files in empty dir
-        assert len(ctenv_config.containers) == 0  # No containers should be present
-        # Check that defaults still work (contains system defaults)
-        defaults_dict = ctenv_config.defaults.to_dict()
-        assert defaults_dict["image"] == "ubuntu:latest"  # System default
+        # Mock find_user_config to return None so we don't pick up ~/.ctenv.toml
+        with patch("ctenv.config.find_user_config", return_value=None):
+            ctenv_config = CtenvConfig.load(tmpdir)  # No config files in empty dir
+            assert len(ctenv_config.containers) == 0  # No containers should be present
+            # Check that defaults still work (contains system defaults)
+            defaults_dict = ctenv_config.defaults.to_dict()
+            assert defaults_dict["image"] == "ubuntu:latest"  # System default
 
-        # But system defaults should be applied when resolving config
-        config = ctenv_config.get_default()
-        assert config.image == "ubuntu:latest"  # System default
+            # But system defaults should be applied when resolving config
+            config = ctenv_config.get_default()
+            assert config.image == "ubuntu:latest"  # System default
 
 
 @pytest.mark.unit
