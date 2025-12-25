@@ -10,6 +10,11 @@
 
 ### Changed
 
+- Relative paths in config files (`.ctenv.toml`) are now relative to
+  the file, not to the project. This change only affects
+  HOME/.ctenv.toml. Reason for the change is more predictable behavior
+  (paths may exist in some projects and not in others).
+
 - Container configs are no longer merged. A container defined in a
   project `.ctenv.toml` will entirely shadow one defined in
   `HOME/.ctenv.toml`.
