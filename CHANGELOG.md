@@ -10,6 +10,10 @@
 
 ### Changed
 
+- Container configs are no longer merged. A container defined in a
+  project `.ctenv.toml` will entirely shadow one defined in
+  `HOME/.ctenv.toml`.
+
 - `-w` is now a short parameter for `--workspace`.
 
 
