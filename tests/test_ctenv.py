@@ -8,8 +8,8 @@ from io import StringIO
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from ctenv.cli import create_parser
-from ctenv.config import RuntimeContext
-from ctenv.container import parse_container_config
+from ctenv.config import RuntimeContext, Verbosity
+from ctenv.container import parse_container_config, build_entrypoint_script
 
 
 @pytest.mark.unit
@@ -193,9 +193,7 @@ def test_entrypoint_script_generation():
     # Parse to ContainerSpec
     spec = parse_container_config(config, mock_runtime)
 
-    from ctenv.container import build_entrypoint_script
-
-    script = build_entrypoint_script(spec, verbose=False, quiet=False)
+    script = build_entrypoint_script(spec, verbosity=Verbosity.NORMAL)
 
     assert "useradd" in script
     assert 'USER_NAME="testuser"' in script
@@ -270,9 +268,7 @@ def test_entrypoint_script_examples():
             overrides=ContainerConfig.from_dict(scenario["config_dict"])
         )
         spec = parse_container_config(config, scenario["runtime"])
-        from ctenv.container import build_entrypoint_script
-
-        script = build_entrypoint_script(spec, verbose=False, quiet=False)
+        script = build_entrypoint_script(spec, verbosity=Verbosity.NORMAL)
 
         print(f"\n{scenario['name']}:")
         print(f"  User: {spec.user_name} (UID: {spec.user_id})")
@@ -321,8 +317,12 @@ def test_verbose_mode():
 
     # Test that verbose flag is accepted as global option
     args = parser.parse_args(["--verbose", "run", "--dry-run"])
-    assert args.verbose is True
+    assert args.verbose == 1  # -v gives verbosity level 1
     assert args.subcommand == "run"
+
+    # Test -vv gives verbosity level 2
+    args = parser.parse_args(["-vv", "run", "--dry-run"])
+    assert args.verbose == 2
 
 
 @pytest.mark.unit
@@ -438,9 +438,7 @@ def test_post_start_cmd_in_generated_script():
         runtime = RuntimeContext.current(cwd=Path.cwd())
         spec = parse_container_config(config_dict, runtime)
 
-    from ctenv.container import build_entrypoint_script
-
-    script = build_entrypoint_script(spec, verbose=True, quiet=False)
+    script = build_entrypoint_script(spec, verbosity=Verbosity.VERBOSE)
 
     # Should contain the post-start commands in the script variables
     assert (

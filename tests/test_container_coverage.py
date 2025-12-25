@@ -3,6 +3,8 @@
 import pytest
 from unittest.mock import Mock, patch
 import subprocess
+import sys
+from io import StringIO
 
 from ctenv.container import (
     get_platform_specific_gosu_name,
@@ -10,7 +12,7 @@ from ctenv.container import (
     expand_tilde_in_path,
     ContainerRunner,
 )
-from ctenv.config import VolumeSpec
+from ctenv.config import VolumeSpec, Verbosity
 
 
 @pytest.mark.unit
@@ -278,12 +280,13 @@ class TestContainerExecutionErrors:
             mock_is_dir.return_value = True  # workspace is a directory
             mock_which.return_value = "/usr/bin/docker"  # docker exists
 
-            # Enable debug logging to test the logging code path
-            with patch("logging.debug") as mock_debug:
-                runner.run_container(spec, dry_run=True)
+            # Capture stderr to verify verbose output
+            captured_stderr = StringIO()
+            with patch("sys.stderr", captured_stderr):
+                runner.run_container(spec, verbosity=Verbosity.VERBOSE, dry_run=True)
 
-                # Verify debug logging was called for custom run args
-                debug_calls = [call[0][0] for call in mock_debug.call_args_list]
-                assert any("Custom run arguments:" in call for call in debug_calls)
-                assert any("--privileged" in call for call in debug_calls)
-                assert any("--cap-add=SYS_ADMIN" in call for call in debug_calls)
+            # Verify verbose output includes custom run args
+            output = captured_stderr.getvalue()
+            assert "Custom run arguments:" in output
+            assert "--privileged" in output
+            assert "--cap-add=SYS_ADMIN" in output

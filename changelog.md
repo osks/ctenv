@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `-vv` for very verbose (required for printing the entrypoit script).
+
 ### Changed
 
 - `-w` is now a short parameter for `--workspace`.

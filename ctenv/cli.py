@@ -4,7 +4,6 @@ This module handles argument parsing, command routing, and user interaction.
 """
 
 import argparse
-import logging
 import shlex
 import sys
 from pathlib import Path
@@ -14,6 +13,7 @@ from .config import (
     CtenvConfig,
     ContainerConfig,
     RuntimeContext,
+    Verbosity,
     convert_notset_strings,
     resolve_relative_paths_in_container_config,
     NOTSET,
@@ -23,20 +23,21 @@ from .container import parse_container_config, ContainerRunner
 from .image import build_container_image, parse_build_spec
 
 
-def setup_logging(verbose, quiet):
-    """Configure logging based on verbosity flags."""
-    if verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(message)s", stream=sys.stderr)
-    elif quiet:
-        logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
+def get_verbosity(args) -> Verbosity:
+    """Convert args to Verbosity level."""
+    if args.quiet:
+        return Verbosity.QUIET
+    elif args.verbose >= 2:
+        return Verbosity.VERY_VERBOSE
+    elif args.verbose >= 1:
+        return Verbosity.VERBOSE
     else:
-        logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
+        return Verbosity.NORMAL
 
 
 def cmd_run(args, command):
     """Run command in container."""
-    verbose = args.verbose
-    quiet = args.quiet
+    verbosity = get_verbosity(args)
 
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
@@ -121,7 +122,7 @@ def cmd_run(args, command):
         if container_config.build is not NOTSET:
             # Build the image first
             build_spec = parse_build_spec(container_config, runtime)
-            built_image_tag = build_container_image(build_spec, runtime, verbose=verbose)
+            built_image_tag = build_container_image(build_spec, runtime, verbosity=verbosity)
             # Update container config to use the built image
             container_config = replace(container_config, image=built_image_tag, build=NOTSET)
 
@@ -135,30 +136,30 @@ def cmd_run(args, command):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if verbose:
-        # Use resolved spec for debugging output to show final values
-        logging.debug("Configuration:")
-        logging.debug(f"  Image: {spec.image}")
-        logging.debug(f"  Command: {spec.command}")
-        logging.debug(f"  User: {spec.user_name} (UID: {spec.user_id})")
-        logging.debug(f"  Group: {spec.group_name} (GID: {spec.group_id})")
-        logging.debug(f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path}")
-        logging.debug(f"  Working directory: {spec.workdir}")
-        logging.debug(f"  Container name: {spec.container_name}")
-        logging.debug(f"  Environment variables: {spec.env}")
-        logging.debug(f"  Volumes: {[vol.to_string() for vol in spec.volumes]}")
-        logging.debug(f"  Network: {spec.network or 'default (Docker default)'}")
-        logging.debug(f"  Sudo: {spec.sudo}")
-        logging.debug(f"  TTY: {spec.tty}")
-        logging.debug(f"  Platform: {spec.platform or 'default'}")
-        logging.debug(f"  Gosu binary: {spec.gosu.to_string()}")
-
-    if not quiet:
+    if verbosity >= Verbosity.NORMAL:
         print("[ctenv] run", file=sys.stderr)
+
+    if verbosity >= Verbosity.VERBOSE:
+        # Use resolved spec for debugging output to show final values
+        print("Configuration:", file=sys.stderr)
+        print(f"  Image: {spec.image}", file=sys.stderr)
+        print(f"  Command: {spec.command}", file=sys.stderr)
+        print(f"  User: {spec.user_name} (UID: {spec.user_id})", file=sys.stderr)
+        print(f"  Group: {spec.group_name} (GID: {spec.group_id})", file=sys.stderr)
+        print(f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path}", file=sys.stderr)
+        print(f"  Working directory: {spec.workdir}", file=sys.stderr)
+        print(f"  Container name: {spec.container_name}", file=sys.stderr)
+        print(f"  Environment variables: {spec.env}", file=sys.stderr)
+        print(f"  Volumes: {[vol.to_string() for vol in spec.volumes]}", file=sys.stderr)
+        print(f"  Network: {spec.network or 'default (Docker default)'}", file=sys.stderr)
+        print(f"  Sudo: {spec.sudo}", file=sys.stderr)
+        print(f"  TTY: {spec.tty}", file=sys.stderr)
+        print(f"  Platform: {spec.platform or 'default'}", file=sys.stderr)
+        print(f"  Gosu binary: {spec.gosu.to_string()}", file=sys.stderr)
 
     # Execute container (or dry-run)
     try:
-        result = ContainerRunner.run_container(spec, verbose, dry_run=args.dry_run, quiet=quiet)
+        result = ContainerRunner.run_container(spec, verbosity=verbosity, dry_run=args.dry_run)
         sys.exit(result.returncode)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -209,8 +210,7 @@ def cmd_config_show(args):
 
 def cmd_build(args):
     """Build container image."""
-    verbose = args.verbose
-    quiet = args.quiet
+    verbosity = get_verbosity(args)
 
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
@@ -273,9 +273,9 @@ def cmd_build(args):
 
         # Parse build specification and build the image
         build_spec = parse_build_spec(container_config, runtime)
-        built_image_tag = build_container_image(build_spec, runtime, verbose=verbose)
+        built_image_tag = build_container_image(build_spec, runtime, verbosity=verbosity)
 
-        if not quiet:
+        if verbosity >= Verbosity.NORMAL:
             print(f"[ctenv] Successfully built image: {built_image_tag}", file=sys.stderr)
 
     except ValueError as e:
@@ -299,8 +299,19 @@ def create_parser():
     )
 
     parser.add_argument("--version", action="version", version=f"ctenv {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential output")
+
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument(
+        "-v", "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity (-v verbose, -vv very verbose)",
+    )
+    verbosity_group.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Suppress non-essential output",
+    )
     parser.add_argument(
         "--config",
         action="append",
@@ -482,9 +493,6 @@ def main(argv=None):
     # Parse only ctenv arguments
     parser = create_parser()
     args = parser.parse_args(ctenv_args)
-
-    # Setup logging based on global verbose/quiet flags
-    setup_logging(args.verbose, args.quiet)
 
     # Route to appropriate command handler
     if args.subcommand == "run":

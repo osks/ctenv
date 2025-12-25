@@ -17,6 +17,7 @@ from .config import (
     NOTSET,
     ContainerConfig,
     RuntimeContext,
+    Verbosity,
     _substitute_variables_in_container_config,
 )
 
@@ -105,14 +106,14 @@ def _resolve_dockerfile_input(spec: BuildImageSpec) -> Tuple[List[str], Optional
 
 
 def build_container_image(
-    build_spec: BuildImageSpec, runtime: RuntimeContext, verbose: bool = False
+    build_spec: BuildImageSpec, runtime: RuntimeContext, verbosity: Verbosity = Verbosity.NORMAL
 ) -> str:
     """Build container image and return the image tag.
 
     Args:
         build_spec: Resolved build specification
         runtime: Runtime context (used for working directory)
-        verbose: Enable verbose output
+        verbosity: Verbosity level
 
     Returns:
         Image tag of the built image
@@ -152,7 +153,7 @@ def build_container_image(
             context_path,
         ]
 
-        if verbose:
+        if verbosity >= Verbosity.VERBOSE:
             print(f"[ctenv] Building image: {' '.join(build_cmd)}", file=sys.stderr)
 
         # Execute build
@@ -160,12 +161,12 @@ def build_container_image(
             build_cmd,
             cwd=runtime.project_dir,
             input=input_data,
-            capture_output=not verbose,
+            capture_output=verbosity < Verbosity.VERBOSE,
             text=False,
             check=True,
         )
 
-        if verbose and result.stdout:
+        if verbosity >= Verbosity.VERBOSE and result.stdout:
             print(result.stdout, file=sys.stderr)
 
         return build_spec.tag
