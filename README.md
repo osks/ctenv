@@ -255,6 +255,10 @@ This setup ensures the build environment matches the user's environment while sh
   - Command line: Relative paths are relative to the current working directory.
 
 
+- A container configured in the current project config will shadow
+  container with name defined in HOME/global config.
+
+
 - Project directory (`-p` / `--project-dir`)
   
   Root of your project, generally your git repo. Define by placing a

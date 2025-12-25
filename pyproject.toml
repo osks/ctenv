@@ -52,7 +52,7 @@ version = {attr = "ctenv.__version__"}
 
 
 [tool.ruff.lint]
-# Allow lambda assignment in specific cases where it's more readable
+# ignore E731 - Allow lambda assignment in specific cases where it's more readable
 ignore = ["E731"]
 
 [tool.ruff]
