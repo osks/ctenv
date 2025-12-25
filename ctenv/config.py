@@ -731,16 +731,13 @@ class CtenvConfig:
                 defaults = merge_container_configs(defaults, config_file.defaults)
                 break  # Stop after first (= highest prio) [defaults] section found
 
-        # Compute containers (merge all containers, higher priority wins)
+        # Compute containers (higher priority completely replaces lower priority)
         containers = {}
-        # Process in reverse order so higher priority overrides
+        # Process in reverse order so higher priority wins
         for config_file in reversed(config_files):
             for name, container_config in config_file.containers.items():
-                if name in containers:
-                    # Merge with existing (higher priority wins)
-                    containers[name] = merge_container_configs(containers[name], container_config)
-                else:
-                    containers[name] = container_config
+                # Simply overwrite - no merging between config files
+                containers[name] = container_config
 
         return cls(defaults=defaults, containers=containers)
 
