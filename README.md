@@ -88,7 +88,7 @@ dynamically to handle user creation and environment setup.
 ## Configuration
 
 ctenv supports having a `.ctenv.toml` either in HOME or in project
-directores. When located in a project, it will use the path to the
+directories. When located in a project, it will use the path to the
 config file as project root.
 
 Create `.ctenv.toml` for reusable container setups:
@@ -260,43 +260,43 @@ This setup ensures the build environment matches the user's environment while sh
   Root of your project, generally your git repo. Define by placing a
   `.ctenv.toml` there, ctenv will look for it automatically.
   
-  Supports volume syntax (`/host/path:/container/path`) to specify
-  where in the container it should be mounted. Default is to mount at
-  the same path as the host directory. See also _Workspace_.
+  Supports volume syntax (`/host/path:/container/path`) to specify the
+  _project container path_, i.e. where in the container it should be
+  mounted. Default is to mount at the same path as the host
+  directory. See also _Workspace_.
 
 
 - Workspace (`-w` / `--workspace`)
   
-  Main directory to mount and use. Must be a subdirectory to the
+  Main directory to mount and use. Must be a subdirectory of the
   _project directory_. Default is the _project directory_.
   
   Specify a subdirectory to limit which part of a project that gets
   mounted. (If multiple directories are needed, use `--volume` for the
   additional directories.)
   
-  Will be mounted under the _project directory container
-  path_. Example: If CWD is `/project` and ctenv is run with `-p
-  .:/repo -w ./foo`, then `/project/foo` will be mounted at
-  `/repo/foo`.
+  Will be mounted under the _project container path_. Example: If CWD
+  is `/project` and ctenv is run with `-p .:/repo -w ./foo`, then
+  `/project/foo` will be mounted at `/repo/foo`.
 
 
 - Volume (`-v` / `--volume`)
   
-  Path to mount
+  Path to mount into the container.
   
   Supports volume syntax (`/host/path:/container/path`) to specify
   where in the container it should be mounted. Default is to mount at
-  the same path as the host directory. See also _Workspace_.
+  the same path as the host directory.
   
-  Subpaths to _project directory_ will be mounted relative to the
-  _project directory container path_. This is mainly useful when a
-  specific _Workspace_ has been specified, as it allows one to easily
-  mount a subset of the paths of the project and have them all be be
-  mounted at the same paths under the _project directory container
-  path_ as if the entire _project directory_ was mounted. Example: If
-  CWD is `/project` and ctenv is run with `-p .:/repo -w ./foo`, then
-  specfiying ` -v ./bar` will mount `/project/bar` at `/repo/bar` (and
-  `/project/foo` at `/repo/foo` for the _workspace_).
+  Subpaths of the _project directory_ will be mounted relative to the
+  _project container path_. This is mainly useful when a specific
+  _Workspace_ has been specified, as it allows one to easily mount a
+  subset of the paths of the project and have them all be mounted at
+  the same paths under the _project container path_ as if the entire
+  _project directory_ was mounted. Example: If CWD is `/project` and
+  ctenv is run with `-p .:/repo -w ./foo`, then specifying `-v ./bar`
+  will mount `/project/bar` at `/repo/bar` (and `/project/foo` at
+  `/repo/foo` for the _workspace_).
 
 
 
