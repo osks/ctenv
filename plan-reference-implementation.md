@@ -1,0 +1,418 @@
+# Implementation Plan: Reference Section Features
+
+This plan addresses discrepancies between the README Reference section and the actual implementation.
+
+## Summary of Changes
+
+1. **Project directory volume syntax** - Add support for `-p /host:/container` syntax
+2. **Volume subpath remapping** - Mount project subpaths relative to project container path
+3. **Workspace subdirectory validation** - Warn when workspace is outside project directory
+4. **Config file relative paths** - Resolve relative paths relative to the config file, not project directory
+5. **Container config precedence** - Project container configs completely replace (not merge with) user configs of the same name
+
+---
+
+## 1. Project Directory Volume Syntax
+
+**Goal:** Support `-p .:/repo` to specify both host path and container mount point.
+
+### Changes to `config.py`
+
+**Add `project_container_path` to RuntimeContext:**
+
+```python
+@dataclass(kw_only=True)
+class RuntimeContext:
+    # ... existing fields ...
+    project_dir: Path
+    project_container_path: str  # NEW: Where project appears in container
+
+    @classmethod
+    def current(cls, *, cwd, project_dir=None, project_container_path=None) -> "RuntimeContext":
+        if project_dir is None:
+            project_dir = (find_project_dir(cwd) or cwd).resolve()
+        else:
+            project_dir = Path(project_dir).resolve()
+
+        # Default container path to host path if not specified
+        if project_container_path is None:
+            project_container_path = str(project_dir)
+
+        # ... rest of method ...
+        return cls(
+            # ... existing fields ...
+            project_dir=project_dir,
+            project_container_path=project_container_path,
+        )
+```
+
+### Changes to `cli.py`
+
+**Parse `--project-dir` with volume syntax:**
+
+```python
+def _parse_project_dir_arg(project_dir_arg: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Parse --project-dir argument, which may include volume syntax.
+
+    Returns:
+        (host_path, container_path) - container_path is None if not specified
+    """
+    if project_dir_arg is None:
+        return None, None
+
+    if ":" in project_dir_arg:
+        # Check if it's a Windows path (e.g., C:\foo) vs volume syntax
+        # Volume syntax: /path:/container or ./path:/container
+        spec = VolumeSpec.parse(project_dir_arg)
+        return spec.host_path, spec.container_path or None
+    else:
+        return project_dir_arg, None
+```
+
+**Update `cmd_run` to use parsed project dir:**
+
+```python
+def cmd_run(args, command):
+    # Parse project-dir with volume syntax support
+    project_host, project_container = _parse_project_dir_arg(args.project_dir)
+
+    runtime = RuntimeContext.current(
+        cwd=Path.cwd(),
+        project_dir=project_host,
+        project_container_path=project_container,
+    )
+    # ... rest of function
+```
+
+---
+
+## 2. Volume Subpath Remapping
+
+**Goal:** When a volume is a subpath of project directory and has no explicit container path, mount it relative to project container path.
+
+### Changes to `container.py`
+
+**Update `_parse_volume` signature and logic:**
+
+```python
+def _parse_volume(vol_str: str, runtime: RuntimeContext) -> VolumeSpec:
+    """Parse volume specification with project-aware path defaulting.
+
+    If the volume's host path is a subpath of project_dir and no container
+    path is specified, the container path is computed relative to
+    project_container_path.
+    """
+    if vol_str is NOTSET or vol_str is None:
+        raise ValueError(f"Invalid volume: {vol_str}")
+
+    spec = VolumeSpec.parse(vol_str)
+
+    if not spec.host_path:
+        raise ValueError(f"Volume host path cannot be empty: {vol_str}")
+
+    # Smart defaulting for container path
+    if not spec.container_path:
+        # Check if this is a subpath of project directory
+        try:
+            rel_path = os.path.relpath(spec.host_path, runtime.project_dir)
+            if not rel_path.startswith(".."):
+                # It's a subpath - mount relative to project container path
+                if rel_path == ".":
+                    spec.container_path = runtime.project_container_path
+                else:
+                    spec.container_path = os.path.join(
+                        runtime.project_container_path, rel_path
+                    )
+            else:
+                # Outside project - mount at same path as host
+                spec.container_path = spec.host_path
+        except ValueError:
+            # Different drives on Windows, can't compute relative path
+            spec.container_path = spec.host_path
+
+    return spec
+```
+
+**Update call sites in `parse_container_config`:**
+
+```python
+# Change from:
+vol_spec = _parse_volume(vol_str)
+
+# To:
+vol_spec = _parse_volume(vol_str, runtime)
+```
+
+### Changes to `_parse_workspace`
+
+**Update to use `project_container_path`:**
+
+```python
+def _parse_workspace(workspace_str: str, runtime: RuntimeContext) -> VolumeSpec:
+    """Parse workspace configuration and return VolumeSpec.
+
+    Uses runtime.project_container_path for container path defaulting.
+    """
+    if workspace_str is NOTSET or workspace_str is None:
+        raise ValueError(f"Invalid workspace: {workspace_str}")
+
+    spec = VolumeSpec.parse(workspace_str)
+
+    # Default host path to project directory
+    if not spec.host_path:
+        spec.host_path = "auto"
+    if spec.host_path == "auto":
+        spec.host_path = str(runtime.project_dir)
+
+    # Default container path using project_container_path
+    if spec.container_path == "auto" or not spec.container_path:
+        try:
+            rel_path = os.path.relpath(spec.host_path, runtime.project_dir)
+            if not rel_path.startswith(".."):
+                if rel_path == ".":
+                    spec.container_path = runtime.project_container_path
+                else:
+                    spec.container_path = os.path.join(
+                        runtime.project_container_path, rel_path
+                    )
+            else:
+                # Outside project directory
+                spec.container_path = spec.host_path
+        except ValueError:
+            spec.container_path = spec.host_path
+
+    # Add 'z' option if not already present (for SELinux)
+    if "z" not in spec.options:
+        spec.options.append("z")
+
+    return spec
+```
+
+**Update signature:** Change from `(workspace_str, project_dir)` to `(workspace_str, runtime)`.
+
+---
+
+## 3. Workspace Subdirectory Validation
+
+**Goal:** Warn (not error) when workspace is outside project directory.
+
+### Changes to `container.py`
+
+**Add validation in `_parse_workspace`:**
+
+```python
+def _parse_workspace(workspace_str: str, runtime: RuntimeContext) -> VolumeSpec:
+    # ... existing parsing logic ...
+
+    # Validate workspace is within project directory (warning only)
+    try:
+        rel_path = os.path.relpath(spec.host_path, runtime.project_dir)
+        if rel_path.startswith(".."):
+            logging.warning(
+                f"Workspace '{spec.host_path}' is outside project directory "
+                f"'{runtime.project_dir}'. Project container path remapping will not apply."
+            )
+    except ValueError:
+        # Different drives on Windows
+        logging.warning(
+            f"Workspace '{spec.host_path}' is on a different drive than project directory "
+            f"'{runtime.project_dir}'. Project container path remapping will not apply."
+        )
+
+    return spec
+```
+
+---
+
+## 4. Config File Relative Paths
+
+**Goal:** Resolve relative paths in config files relative to the config file's location, not project directory.
+
+### Changes to `config.py`
+
+**Update `ConfigFile.load` to use config file's directory:**
+
+```python
+@classmethod
+def load(cls, config_path: Path, project_dir: Path) -> "ConfigFile":
+    """Load configuration from a specific file.
+
+    Relative paths in the config file are resolved relative to the
+    config file's directory, not the project directory.
+    """
+    if not config_path.exists():
+        raise ValueError(f"Config file not found: {config_path}")
+
+    config_data = _load_config_file(config_path)
+
+    # Use config file's parent directory for relative path resolution
+    config_base_dir = config_path.parent.resolve()
+
+    raw_containers = config_data.get("containers", {})
+    raw_defaults = config_data.get("defaults")
+
+    # Process defaults to ContainerConfig if present
+    defaults_config = None
+    if raw_defaults:
+        defaults_config = ContainerConfig.from_dict(convert_notset_strings(raw_defaults))
+        defaults_config._config_file_path = str(config_path.resolve())
+        # Resolve relative to config file, not project_dir
+        defaults_config = resolve_relative_paths_in_container_config(
+            defaults_config, config_base_dir  # CHANGED
+        )
+
+    # Process containers to ContainerConfig objects
+    container_configs = {}
+    for name, container_dict in raw_containers.items():
+        container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
+        container_config._config_file_path = str(config_path.resolve())
+        # Resolve relative to config file, not project_dir
+        container_config = resolve_relative_paths_in_container_config(
+            container_config, config_base_dir  # CHANGED
+        )
+        container_configs[name] = container_config
+
+    # ... rest of method
+```
+
+**Note:** The `project_dir` parameter is still passed but only used for other purposes (like variable substitution). Path resolution uses `config_path.parent`.
+
+---
+
+## 5. Container Config Precedence (No Merging) ✅ DONE
+
+**Goal:** If a container name exists in both project config and user config, use the project config entirely - no merging.
+
+**Current behavior:**
+```python
+# In CtenvConfig.load()
+for config_file in reversed(config_files):
+    for name, container_config in config_file.containers.items():
+        if name in containers:
+            # PROBLEM: Merges configs - lists concatenate, values layer
+            containers[name] = merge_container_configs(containers[name], container_config)
+        else:
+            containers[name] = container_config
+```
+
+This causes confusing behavior where volumes/env from user config leak into project config.
+
+### Changes to `config.py`
+
+**Update `CtenvConfig.load` to replace instead of merge:**
+
+```python
+@classmethod
+def load(cls, project_dir: Path, explicit_config_files: Optional[List[Path]] = None):
+    # ... existing config file loading ...
+
+    # Compute containers - higher priority completely replaces lower priority
+    containers = {}
+    # Process in reverse order so higher priority wins
+    for config_file in reversed(config_files):
+        for name, container_config in config_file.containers.items():
+            # Simply overwrite - no merging
+            containers[name] = container_config
+
+    return cls(defaults=defaults, containers=containers)
+```
+
+**That's it** - just remove the `merge_container_configs` call and always overwrite.
+
+### Behavior After Change
+
+`~/.ctenv.toml`:
+```toml
+[containers.foobar]
+image = "ubuntu:20.04"
+volumes = ["~/.cache"]
+env = ["FOO=bar"]
+```
+
+`/project/.ctenv.toml`:
+```toml
+[containers.foobar]
+image = "ubuntu:22.04"
+volumes = ["./build"]
+```
+
+**Result:**
+```
+image = "ubuntu:22.04"    # from project
+volumes = ["./build"]     # from project only (no ~/.cache!)
+env = []                  # from project (empty, not inherited)
+```
+
+The project config is self-contained. User config for "foobar" is completely ignored.
+
+### Open Question: Defaults Merging
+
+Currently `[defaults]` still merges. Whether this is correct is TBD - there's a need for users to override personal preferences (like PS1) without affecting project config. Possible solutions:
+- `.ctenv.local.toml` (gitignored local overrides)
+- User config wins for defaults
+- Environment variable overrides
+
+This is deferred for later consideration.
+
+---
+
+## Implementation Order
+
+Recommended order to minimize conflicts:
+
+1. **#5 - Container config precedence** ✅ DONE
+2. **#4 - Config file relative paths** (isolated change, same file as #5)
+3. **#1 - Project container path in RuntimeContext** (foundation for #2 and #3)
+4. **#3 - Workspace validation** (uses RuntimeContext changes from #1)
+5. **#2 - Volume subpath remapping** (depends on #1, modifies same functions as #3)
+
+---
+
+## Testing Considerations
+
+### Test cases for #1 (Project directory volume syntax):
+- `-p /project` - host and container both `/project`
+- `-p /project:/repo` - host `/project`, container `/repo`
+- `-p .:/repo` - host is cwd resolved, container `/repo`
+- Auto-detection when no `-p` specified
+
+### Test cases for #2 (Volume subpath remapping):
+- `-p /project:/repo -v /project/src` → mounts at `/repo/src`
+- `-p /project:/repo -v /project/src:/custom` → mounts at `/custom` (explicit)
+- `-p /project:/repo -v /other/path` → mounts at `/other/path` (outside project)
+- `-p /project -v /project/src` → mounts at `/project/src` (no remapping needed)
+
+### Test cases for #3 (Workspace validation):
+- `-p /project -w /project/src` → no warning
+- `-p /project -w /other/path` → warning logged
+- `-w` not specified → defaults to project, no warning
+
+### Test cases for #4 (Config relative paths):
+- `~/.ctenv.toml` with `volumes = ["./cache"]` → resolves to `~/cache`
+- `/project/.ctenv.toml` with `volumes = ["./build"]` → resolves to `/project/build`
+- Absolute paths unchanged in both cases
+
+### Test cases for #5 (Container config precedence):
+- Container only in user config → used as-is
+- Container only in project config → used as-is
+- Container in both → project config used entirely, user config ignored
+- Different containers in each → both available (no conflict)
+- `[defaults]` still merges (only named containers replace)
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `ctenv/config.py` | Add `project_container_path` to RuntimeContext, fix ConfigFile.load path resolution, remove container merging in CtenvConfig.load |
+| `ctenv/cli.py` | Parse `--project-dir` with volume syntax, pass to RuntimeContext |
+| `ctenv/container.py` | Update `_parse_workspace` and `_parse_volume` signatures and logic |
+
+---
+
+## Backward Compatibility
+
+**Note:** There are no external users yet, so backward compatibility is not a constraint. We can freely change behavior to match the documented/intended design.
+
+**Breaking change in #5:** Container config merging is removed. Users who might have relied on defining base volumes in `~/.ctenv.toml` and extending in project would need to duplicate the full config. This is the correct behavior - merging was confusing.
