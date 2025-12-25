@@ -768,7 +768,7 @@ def _substitute_variables_in_container_config(
     config: ContainerConfig, runtime: RuntimeContext, environ: Dict[str, str]
 ) -> ContainerConfig:
     """Substitute template variables in all string fields of ContainerConfig."""
-    # Build variables dictionary
+    # Define variables dictionary
     variables = {
         "image": config.image if config.image is not NOTSET else "",
         "user_home": runtime.user_home,
