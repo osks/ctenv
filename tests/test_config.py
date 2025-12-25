@@ -697,10 +697,10 @@ env = ["NODE_ENV=development"]
             cmd_run(args, "echo test")
 
         # Verify config file volumes were preserved (not overridden by empty CLI list)
-        # Paths should be resolved to absolute paths relative to project directory
+        # Paths should be resolved to absolute paths relative to config file's directory
         # Use Path.resolve() to handle potential symlinks on macOS
-        expected_node_modules = str((Path.cwd() / "node_modules").resolve())
-        expected_data = str((Path.cwd() / "data").resolve())
+        expected_node_modules = str((tmpdir / "node_modules").resolve())
+        expected_data = str((tmpdir / "data").resolve())
 
         assert captured_config["volumes"] == [
             f"{expected_node_modules}:/app/node_modules:z",

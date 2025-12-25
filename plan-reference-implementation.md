@@ -224,7 +224,7 @@ def _parse_workspace(workspace_str: str, runtime: RuntimeContext) -> VolumeSpec:
 
 ---
 
-## 4. Config File Relative Paths
+## 4. Config File Relative Paths ✅ DONE
 
 **Goal:** Resolve relative paths in config files relative to the config file's location, not project directory.
 
@@ -361,7 +361,7 @@ This is deferred for later consideration.
 Recommended order to minimize conflicts:
 
 1. **#5 - Container config precedence** ✅ DONE
-2. **#4 - Config file relative paths** (isolated change, same file as #5)
+2. **#4 - Config file relative paths** ✅ DONE
 3. **#1 - Project container path in RuntimeContext** (foundation for #2 and #3)
 4. **#3 - Workspace validation** (uses RuntimeContext changes from #1)
 5. **#2 - Volume subpath remapping** (depends on #1, modifies same functions as #3)

@@ -541,11 +541,18 @@ class ConfigFile:
 
     @classmethod
     def load(cls, config_path: Path, project_dir: Path) -> "ConfigFile":
-        """Load configuration from a specific file."""
+        """Load configuration from a specific file.
+
+        Relative paths in the config file are resolved relative to the
+        config file's directory, not the project directory.
+        """
         if not config_path.exists():
             raise ValueError(f"Config file not found: {config_path}")
 
         config_data = _load_config_file(config_path)
+
+        # Use config file's parent directory for relative path resolution
+        config_base_dir = config_path.parent.resolve()
 
         raw_containers = config_data.get("containers", {})
         raw_defaults = config_data.get("defaults")
@@ -556,7 +563,7 @@ class ConfigFile:
             defaults_config = ContainerConfig.from_dict(convert_notset_strings(raw_defaults))
             defaults_config._config_file_path = str(config_path.resolve())
             defaults_config = resolve_relative_paths_in_container_config(
-                defaults_config, project_dir
+                defaults_config, config_base_dir
             )
 
         # Process containers to ContainerConfig objects
@@ -565,7 +572,7 @@ class ConfigFile:
             container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
             container_config._config_file_path = str(config_path.resolve())
             container_config = resolve_relative_paths_in_container_config(
-                container_config, project_dir
+                container_config, config_base_dir
             )
             container_configs[name] = container_config
 
