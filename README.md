@@ -28,6 +28,11 @@ $ uv tool run ctenv --help
 
 Recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation/).
 
+### Requirements
+
+- Python 3.10+
+- Docker (tested on Linux and macOS)
+
 
 ## Usage
 
@@ -67,11 +72,6 @@ dynamically to handle user creation and environment setup.
 - Files created have your UID/GID (preserves permissions)
 - Convenient volume mounting like `-v ~/.gitconfig` (mounts to same path in container)
 - Simple configuration with reusable `.ctenv.toml` setups
-
-## Requirements
-
-- Python 3.10+
-- Docker (tested on Linux/macOS)
 
 ## Features
 
@@ -244,6 +244,60 @@ post_start_commands = ["source /venv/bin/activate"]
 ```
 
 This setup ensures the build environment matches the user's environment while sharing caches between different repository clones.
+
+
+## Reference
+
+- Path handling in general
+  
+  - Config file: Relative paths are relative to the file.
+  
+  - Command line: Relative paths are relative to the current working directory.
+
+
+- Project directory (`-p` / `--project-dir`)
+  
+  Root of your project, generally your git repo. Define by placing a
+  `.ctenv.toml` there, ctenv will look for it automatically.
+  
+  Supports volume syntax (`/host/path:/container/path`) to specify
+  where in the container it should be mounted. Default is to mount at
+  the same path as the host directory. See also _Workspace_.
+
+
+- Workspace (`-w` / `--workspace`)
+  
+  Main directory to mount and use. Must be a subdirectory to the
+  _project directory_. Default is the _project directory_.
+  
+  Specify a subdirectory to limit which part of a project that gets
+  mounted. (If multiple directories are needed, use `--volume` for the
+  additional directories.)
+  
+  Will be mounted under the _project directory container
+  path_. Example: If CWD is `/project` and ctenv is run with `-p
+  .:/repo -w ./foo`, then `/project/foo` will be mounted at
+  `/repo/foo`.
+
+
+- Volume (`-v` / `--volume`)
+  
+  Path to mount
+  
+  Supports volume syntax (`/host/path:/container/path`) to specify
+  where in the container it should be mounted. Default is to mount at
+  the same path as the host directory. See also _Workspace_.
+  
+  Subpaths to _project directory_ will be mounted relative to the
+  _project directory container path_. This is mainly useful when a
+  specific _Workspace_ has been specified, as it allows one to easily
+  mount a subset of the paths of the project and have them all be be
+  mounted at the same paths under the _project directory container
+  path_ as if the entire _project directory_ was mounted. Example: If
+  CWD is `/project` and ctenv is run with `-p .:/repo -w ./foo`, then
+  specfiying ` -v ./bar` will mount `/project/bar` at `/repo/bar` (and
+  `/project/foo` at `/repo/foo` for the _workspace_).
+
 
 
 ## History
