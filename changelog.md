@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `-w` is now a short parameter for `--workspace`.
+
+
 ## v0.7
 
 ### Added
