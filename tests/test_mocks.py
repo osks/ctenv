@@ -42,7 +42,7 @@ def test_docker_command_examples():
     config_dict = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",  # Auto-detect
+        "workspace": "",  # Auto-detect
         "gosu_path": "/test/gosu",
     }
 
@@ -88,14 +88,17 @@ def test_docker_command_examples():
 
 
 @pytest.mark.unit
-def test_platform_support():
+def test_platform_support(tmp_path, monkeypatch):
     """Test platform support in Docker commands."""
+    # Prevent loading user config which might have platform set
+    import ctenv.config
+    monkeypatch.setattr(ctenv.config, "find_user_config", lambda: None)
 
     # Test with platform specified
     config_dict_with_platform = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
         "platform": "linux/arm64",
     }
@@ -103,9 +106,10 @@ def test_platform_support():
     runtime = create_test_runtime()
 
     # Parse config using complete configuration
+    # Use tmp_path to avoid loading project config
     from ctenv.config import CtenvConfig, ContainerConfig
 
-    ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
+    ctenv_config = CtenvConfig.load(tmp_path, explicit_config_files=[])
     config = ctenv_config.get_default(
         overrides=ContainerConfig.from_dict(config_dict_with_platform)
     )
@@ -120,12 +124,12 @@ def test_platform_support():
     config_dict_no_platform = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
         # No platform specified
     }
 
-    ctenv_config2 = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
+    ctenv_config2 = CtenvConfig.load(tmp_path, explicit_config_files=[])
     config2 = ctenv_config2.get_default(
         overrides=ContainerConfig.from_dict(config_dict_no_platform)
     )
@@ -194,7 +198,7 @@ def test_docker_command_scenarios():
             config_dict = {
                 "image": full_config["IMAGE"],
                 "command": full_config["COMMAND"],
-                "workspace": ":",
+                "workspace": "",
                 "gosu_path": "/usr/local/bin/gosu",
             }
 
@@ -255,7 +259,7 @@ def test_new_cli_options():
     config_dict = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
         "container_name": "test-container",
         "env": ["TEST_VAR=hello", "USER"],
@@ -312,7 +316,7 @@ def test_sudo_entrypoint_script():
     config_dict_with_sudo = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
         "sudo": True,
     }
@@ -320,7 +324,7 @@ def test_sudo_entrypoint_script():
     config_dict_without_sudo = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
         "sudo": False,
     }
@@ -372,7 +376,7 @@ def test_docker_command_construction(mock_run):
     config_dict = {
         "image": "ubuntu:latest",
         "command": "echo hello",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
         "container_name": "test-container",
     }
@@ -412,7 +416,7 @@ def test_docker_not_available(mock_run, mock_which):
     config_dict = {
         "image": "ubuntu:latest",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
     }
 
@@ -453,7 +457,7 @@ def test_container_failure_handling(mock_run):
             config_dict = {
                 "image": "invalid:image",
                 "command": "echo test",
-                "workspace": ":",
+                "workspace": "",
                 "gosu_path": str(gosu_path),
                 "container_name": "test-container",
             }
@@ -478,7 +482,7 @@ def test_tty_detection():
     config_dict_with_tty = {
         "image": "ubuntu",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
     }
 
@@ -497,7 +501,7 @@ def test_tty_detection():
     config_dict_without_tty = {
         "image": "ubuntu",
         "command": "bash",
-        "workspace": ":",
+        "workspace": "",
         "gosu_path": "/test/gosu",
     }
 
@@ -527,7 +531,7 @@ def test_volume_chown_option():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "gosu_path": str(gosu_path),
             "volumes": [
                 "cache-vol:/var/cache:rw,chown",
@@ -600,7 +604,7 @@ def test_post_start_commands():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "gosu_path": str(gosu_path),
             "post_start_commands": [
                 "source /bitbake-venv/bin/activate",
@@ -661,7 +665,7 @@ def test_ulimits_configuration():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "gosu_path": str(gosu_path),
             "ulimits": {"nofile": 1024, "nproc": 2048, "core": "0"},
         }
@@ -706,7 +710,7 @@ def test_container_labels_added():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "gosu_path": str(gosu_path),
         }
 

@@ -730,7 +730,7 @@ def test_get_builtin_defaults():
     assert (
         defaults["container_name"] == "ctenv-${project_dir|slug}-${pid}"
     )  # Updated default with PID
-    assert defaults["workspace"] == "auto"  # Updated workspace field
+    assert defaults["workspace"] == ""  # Empty = use project directory
     assert defaults["workdir"] == "auto"  # Updated workdir field
     assert defaults["env"] == []
     assert defaults["volumes"] == []
@@ -844,6 +844,10 @@ def test_volume_options_preserved():
     """Test that volume options are properly parsed and preserved."""
     from ctenv.container import _parse_volume
 
+    # Provide project_dir and project_mount (not used when container path is explicit)
+    project_dir = Path("/project")
+    project_mount = "/project"
+
     # Test parsing various volume specification formats
     test_cases = [
         ("./data:/data", "./data", "/data", []),
@@ -853,7 +857,7 @@ def test_volume_options_preserved():
     ]
 
     for spec_str, expected_host, expected_container, expected_options in test_cases:
-        vol_spec = _parse_volume(spec_str)
+        vol_spec = _parse_volume(spec_str, project_dir, project_mount)
 
         assert vol_spec.host_path == expected_host
         assert vol_spec.container_path == expected_container

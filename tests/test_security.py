@@ -15,7 +15,7 @@ def test_post_start_commands_shell_functionality():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "post_start_commands": [
                 "echo 'hello'; touch /tmp/injected; echo 'done'",  # Semicolon injection
                 "echo test && touch /tmp/injected2",  # AND operator injection
@@ -71,7 +71,7 @@ def test_volume_chown_path_injection_prevention():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
         }
 
         # Create runtime context
@@ -132,7 +132,7 @@ def test_complex_shell_scenarios():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "post_start_commands": [
                 # Nested quotes and substitutions
                 "echo \"$(echo '$(whoami)')\"",
@@ -186,7 +186,7 @@ def test_safe_commands_work_normally():
         config_dict = {
             "image": "test:latest",
             "command": "bash",
-            "workspace": ":",
+            "workspace": "",
             "post_start_commands": [
                 "npm install",
                 "npm test",

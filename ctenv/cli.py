@@ -9,11 +9,14 @@ import sys
 from pathlib import Path
 
 from .version import __version__
+from typing import Optional, Tuple
+
 from .config import (
     CtenvConfig,
     ContainerConfig,
     RuntimeContext,
     Verbosity,
+    VolumeSpec,
     convert_notset_strings,
     resolve_relative_paths_in_container_config,
     NOTSET,
@@ -35,14 +38,47 @@ def get_verbosity(args) -> Verbosity:
         return Verbosity.NORMAL
 
 
+def _parse_project_dir_arg(project_dir_arg: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Parse --project-dir argument, which may include volume syntax.
+
+    Supports:
+      - "/path" - host path only, container defaults to same
+      - "/path:/container" - explicit host and container paths
+      - ".:/repo" - relative host, explicit container
+
+    Returns:
+        (host_path, container_path) - either can be None if not specified
+    """
+    if project_dir_arg is None:
+        return None, None
+
+    if ":" in project_dir_arg:
+        # Volume syntax: /path:/container or ./path:/container
+        spec = VolumeSpec.parse(project_dir_arg)
+        host = spec.host_path if spec.host_path else None
+        container = spec.container_path if spec.container_path else None
+        return host, container
+    else:
+        # Just a path, no container path specified
+        return project_dir_arg, None
+
+
 def cmd_run(args, command):
     """Run command in container."""
     verbosity = get_verbosity(args)
 
+    if verbosity >= Verbosity.NORMAL:
+        print("[ctenv] run", file=sys.stderr)
+
+    # Parse -p/--project-dir which sets TWO things:
+    # 1. project_dir → RuntimeContext.project_dir (host path)
+    # 2. project_mount → ContainerConfig.project_mount (where it mounts in container)
+    project_dir, project_mount = _parse_project_dir_arg(args.project_dir)
+
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
         cwd=Path.cwd(),
-        project_dir=args.project_dir,
+        project_dir=project_dir,  # Host path (None = auto-detect)
     )
 
     # Load configuration early
@@ -60,6 +96,8 @@ def cmd_run(args, command):
         cli_args_dict = {
             "image": args.image,
             "command": command,
+            # Mount path from -p syntax (e.g., -p .:/repo) - host is in RuntimeContext
+            "project_mount": project_mount,
             "workspace": args.workspace,
             "workdir": args.workdir,
             "env": args.env,
@@ -136,11 +174,9 @@ def cmd_run(args, command):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if verbosity >= Verbosity.NORMAL:
-        print("[ctenv] run", file=sys.stderr)
-
     if verbosity >= Verbosity.VERBOSE:
         # Use resolved spec for debugging output to show final values
+        print(f"Project dir: {runtime.project_dir} (mount: {container_config.project_mount})", file=sys.stderr)
         print("Configuration:", file=sys.stderr)
         print(f"  Image: {spec.image}", file=sys.stderr)
         print(f"  Command: {spec.command}", file=sys.stderr)
@@ -172,9 +208,12 @@ def cmd_run(args, command):
 def cmd_config_show(args):
     """Show configuration or container details."""
     try:
+        # Parse project-dir with volume syntax support (only project_dir used here)
+        project_dir, _ = _parse_project_dir_arg(args.project_dir)
+
         runtime = RuntimeContext.current(
             cwd=Path.cwd(),
-            project_dir=args.project_dir,
+            project_dir=project_dir,
         )
 
         # Load configuration early
@@ -212,10 +251,13 @@ def cmd_build(args):
     """Build container image."""
     verbosity = get_verbosity(args)
 
+    # Parse project-dir with volume syntax support (only project_dir used for build)
+    project_dir, _ = _parse_project_dir_arg(args.project_dir)
+
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
         cwd=Path.cwd(),
-        project_dir=args.project_dir,
+        project_dir=project_dir,
     )
 
     # Load configuration early

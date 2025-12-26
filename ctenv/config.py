@@ -323,6 +323,7 @@ class ContainerConfig:
     image: Union[str, NotSetType] = NOTSET
     build: Union[BuildConfig, NotSetType] = NOTSET
     command: Union[str, NotSetType] = NOTSET
+    project_mount: Union[str, NotSetType] = NOTSET  # Where project mounts in container (e.g., ":/repo")
     workspace: Union[str, NotSetType] = NOTSET
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
@@ -395,7 +396,7 @@ class ContainerConfig:
         """
         return cls(
             # Auto-detect behaviors
-            workspace="auto",  # Auto-detect project root
+            workspace="",  # Empty = use project directory
             workdir="auto",  # Preserve relative position
             gosu_path="auto",  # Auto-detect bundled binary
             tty="auto",  # Auto-detect from stdin
@@ -489,6 +490,27 @@ def validate_container_config(config: ContainerConfig) -> None:
         validate_build_config(config.build)
 
 
+def validate_config_project_mount(project_mount_str: str, config_path: Path) -> None:
+    """Validate project_mount from config file.
+
+    project_mount should be a simple path string (where project mounts in container).
+
+    Raises:
+        ValueError: If project_mount is empty or invalid
+    """
+    if not project_mount_str or not project_mount_str.strip():
+        raise ValueError(
+            f"In config file {config_path}: project_mount cannot be empty"
+        )
+
+    # Must be an absolute path
+    if not project_mount_str.startswith("/"):
+        raise ValueError(
+            f"In config file {config_path}: project_mount must be an absolute path. "
+            f"Got: '{project_mount_str}'"
+        )
+
+
 def apply_build_defaults(config: ContainerConfig) -> ContainerConfig:
     """Apply build defaults when build is configured.
 
@@ -562,6 +584,9 @@ class ConfigFile:
         if raw_defaults:
             defaults_config = ContainerConfig.from_dict(convert_notset_strings(raw_defaults))
             defaults_config._config_file_path = str(config_path.resolve())
+            # Validate project_mount if set (must use :/path or auto:/path syntax)
+            if defaults_config.project_mount is not NOTSET:
+                validate_config_project_mount(defaults_config.project_mount, config_path)
             defaults_config = resolve_relative_paths_in_container_config(
                 defaults_config, config_base_dir
             )
@@ -571,6 +596,9 @@ class ConfigFile:
         for name, container_dict in raw_containers.items():
             container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
             container_config._config_file_path = str(config_path.resolve())
+            # Validate project_mount if set (must use :/path or auto:/path syntax)
+            if container_config.project_mount is not NOTSET:
+                validate_config_project_mount(container_config.project_mount, config_path)
             container_config = resolve_relative_paths_in_container_config(
                 container_config, config_base_dir
             )
