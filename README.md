@@ -259,15 +259,16 @@ This setup ensures the build environment matches the user's environment while sh
   container with name defined in HOME/global config.
 
 
-- Project directory (`-p` / `--project-dir`)
+- Project (`-p` / `--project`)
   
-  Root of your project, generally your git repo. Define by placing a
-  `.ctenv.toml` there, ctenv will look for it automatically.
+  Specifies the _project directory_, the root of your project. Generally
+  your git repo. Define the project by placing a `.ctenv.toml` there,
+  ctenv will look for it automatically.
   
-  Supports volume syntax (`/host/path:/container/path`) to specify the
-  _project container path_, i.e. where in the container it should be
-  mounted. Default is to mount at the same path as the host
-  directory. See also _Workspace_.
+  Supports volume syntax (`/project/dir:/project/mount`) to specify
+  also the _project mount_, i.e. where in the container the _project
+  directory_ should be mounted. Default is to mount at the same path
+  as on the host. See also _Workspace_.
 
 
 - Workspace (`-w` / `--workspace`)
@@ -279,7 +280,7 @@ This setup ensures the build environment matches the user's environment while sh
   mounted. (If multiple directories are needed, use `--volume` for the
   additional directories.)
   
-  Will be mounted under the _project container path_. Example: If CWD
+  Will be mounted under the _project mount_. Example: If CWD
   is `/project` and ctenv is run with `-p .:/repo -w ./foo`, then
   `/project/foo` will be mounted at `/repo/foo`.
 
@@ -293,10 +294,10 @@ This setup ensures the build environment matches the user's environment while sh
   the same path as the host directory.
   
   Subpaths of the _project directory_ will be mounted relative to the
-  _project container path_. This is mainly useful when a specific
+  _project mount_. This is mainly useful when a specific
   _Workspace_ has been specified, as it allows one to easily mount a
   subset of the paths of the project and have them all be mounted at
-  the same paths under the _project container path_ as if the entire
+  the same paths under the _project mount_ as if the entire
   _project directory_ was mounted. Example: If CWD is `/project` and
   ctenv is run with `-p .:/repo -w ./foo`, then specifying `-v ./bar`
   will mount `/project/bar` at `/repo/bar` (and `/project/foo` at

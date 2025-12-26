@@ -8,6 +8,7 @@ This module handles all container-related functionality including:
 """
 
 import hashlib
+import logging
 import os
 import platform
 import shlex
@@ -149,8 +150,13 @@ def _expand_tilde_in_volumespec(vol_spec: VolumeSpec, runtime: RuntimeContext) -
 # =============================================================================
 
 
-def _parse_volume(vol_str: str) -> VolumeSpec:
-    """Parse as volume specification with volume-specific defaulting and validation."""
+def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> VolumeSpec:
+    """Parse volume specification with project-aware path defaulting.
+
+    If the volume's host path is a subpath of project_dir and no container
+    path is specified, the container path is computed relative to
+    project_mount.
+    """
     if vol_str is NOTSET or vol_str is None:
         raise ValueError(f"Invalid volume: {vol_str}")
 
@@ -160,39 +166,80 @@ def _parse_volume(vol_str: str) -> VolumeSpec:
     if not spec.host_path:
         raise ValueError(f"Volume host path cannot be empty: {vol_str}")
 
-    # Volume smart defaulting: empty container path defaults to host path
-    # (This handles :: syntax where container_path is explicitly empty)
+    # Smart defaulting for container path
     if not spec.container_path:
-        spec.container_path = spec.host_path
+        # Only apply subpath remapping for absolute paths
+        # Paths with ~ or relative paths can't be reliably compared to project_dir
+        if os.path.isabs(spec.host_path):
+            try:
+                rel_path = os.path.relpath(spec.host_path, project_dir)
+                if not rel_path.startswith(".."):
+                    # It's a subpath - mount relative to project mount
+                    if rel_path == ".":
+                        spec.container_path = project_mount
+                    else:
+                        spec.container_path = os.path.join(project_mount, rel_path)
+                else:
+                    # Outside project - mount at same path as host
+                    spec.container_path = spec.host_path
+            except ValueError:
+                # Different drives on Windows, can't compute relative path
+                spec.container_path = spec.host_path
+        else:
+            # Relative or tilde path - use as-is (will be expanded later)
+            spec.container_path = spec.host_path
 
     return spec
 
 
-def _parse_workspace(workspace_str: str, project_dir: Path) -> VolumeSpec:
+def _parse_workspace(workspace_val: str, project_dir: Path, project_mount: str) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
-    Handles auto-detection, project root expansion, tilde expansion, and SELinux options.
+    Workspace is a host path (absolute or relative to project_dir).
+    Container path is always derived from project_mount.
+    Empty string means use project directory.
     """
-    if workspace_str is NOTSET or workspace_str is None:
-        raise ValueError(f"Invalid workspace: {workspace_str}")
+    if workspace_val is NOTSET:
+        raise ValueError("Workspace not configured")
 
-    spec = VolumeSpec.parse(workspace_str)
+    # Empty string means use project directory
+    if not workspace_val or not workspace_val.strip():
+        host_path = str(project_dir)
+    else:
+        host_path = workspace_val.strip()
 
-    if not spec.host_path:
-        spec.host_path = "auto"
+    # Resolve relative paths to project_dir
+    if not os.path.isabs(host_path) and not host_path.startswith("~"):
+        host_path = str((project_dir / host_path).resolve())
 
-    if spec.host_path == "auto":
-        spec.host_path = str(project_dir)
-    if spec.container_path == "auto":
-        spec.container_path = str(project_dir)
-    if not spec.container_path:
-        spec.container_path = spec.host_path
+    # Container path is always relative to project_mount
+    try:
+        rel_path = os.path.relpath(host_path, project_dir)
+        if not rel_path.startswith(".."):
+            if rel_path == ".":
+                container_path = project_mount
+            else:
+                container_path = os.path.join(project_mount, rel_path)
+        else:
+            # Outside project directory
+            logging.warning(
+                f"Workspace '{host_path}' is outside project directory "
+                f"'{project_dir}'. Using host path as container path."
+            )
+            container_path = host_path
+    except ValueError:
+        # Different drives on Windows
+        logging.warning(
+            f"Workspace '{host_path}' is on a different drive than project directory "
+            f"'{project_dir}'. Using host path as container path."
+        )
+        container_path = host_path
 
-    # Add 'z' option if not already present (for SELinux)
-    if "z" not in spec.options:
-        spec.options.append("z")
-
-    return spec
+    return VolumeSpec(
+        host_path=host_path,
+        container_path=container_path,
+        options=["z"],  # SELinux option
+    )
 
 
 def _resolve_workdir_auto(workspace_spec: VolumeSpec, runtime: RuntimeContext) -> str:
@@ -609,6 +656,14 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     # Apply variable substitution
     substituted_config = _substitute_variables_in_container_config(config, runtime, os.environ)
 
+    # Resolve project mount early (needed for workspace/volume parsing)
+    # project_mount is a simple absolute path string (e.g., "/repo")
+    # If not set, default to same as runtime.project_dir (host path)
+    if substituted_config.project_mount is not NOTSET:
+        project_mount = substituted_config.project_mount
+    else:
+        project_mount = str(runtime.project_dir)
+
     # Validate required fields are not NOTSET
     required_fields = {
         "image": substituted_config.image,
@@ -637,7 +692,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     chown_paths = []
     volumes = substituted_config.volumes if substituted_config.volumes is not NOTSET else []
     for vol_str in volumes:
-        vol_spec = _parse_volume(vol_str)
+        vol_spec = _parse_volume(vol_str, runtime.project_dir, project_mount)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
 
         # Check for chown option and extract it
@@ -667,7 +722,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     ]
 
     # Parse workspace first since workdir depends on it
-    workspace_spec = _parse_workspace(substituted_config.workspace, runtime.project_dir)
+    workspace_spec = _parse_workspace(substituted_config.workspace, runtime.project_dir, project_mount)
     workspace_spec = _expand_tilde_in_volumespec(workspace_spec, runtime)
 
     spec_dict = {

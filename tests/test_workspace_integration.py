@@ -14,7 +14,7 @@ def workspace_with_config():
         # Create .ctenv.toml
         config_content = """
 [defaults]
-workspace = ".:/repo"
+project_mount = "/repo"
 
 [containers.test]
 image = "ubuntu:22.04"
@@ -37,16 +37,26 @@ def workspace_without_config():
         yield workspace
 
 
-def run_ctenv(workspace_dir, args, cwd=None):
-    """Helper to run ctenv with dry-run"""
+def run_ctenv(workspace_dir, args, cwd=None, global_args=None):
+    """Helper to run ctenv with dry-run
+
+    Args:
+        workspace_dir: The workspace directory
+        args: Arguments to pass after 'run'
+        cwd: Current working directory (defaults to workspace_dir)
+        global_args: Arguments to pass before 'run' (e.g., ['-p', '.:/repo'])
+    """
     if cwd is None:
         cwd = workspace_dir
+    if global_args is None:
+        global_args = []
 
     cmd = [
         sys.executable,
         "-m",
         "ctenv",
         "--verbose",
+    ] + global_args + [
         "run",
         "--dry-run",
         "--gosu-path",
@@ -83,9 +93,10 @@ class TestWorkspaceAutoDetection:
 
     def test_no_project_detection(self, workspace_without_config):
         """Test behavior when no .ctenv.toml exists"""
+        # Without config, runs from src subdir - project_dir defaults to cwd
         result = run_ctenv(
             workspace_without_config,
-            ["--workspace", ":", "--", "pwd"],
+            ["--", "pwd"],
             cwd=workspace_without_config / "src",
         )
 
@@ -96,50 +107,42 @@ class TestWorkspaceAutoDetection:
 
 
 @pytest.mark.integration
-class TestWorkspaceVolumesSyntax:
-    """Test workspace volume syntax variations"""
+class TestProjectMountSyntax:
+    """Test project mount syntax variations (replaces old workspace volume syntax)"""
 
-    def test_auto_syntax(self, workspace_with_config):
-        """Test --workspace : (auto-detection)"""
-        result = run_ctenv(workspace_with_config, ["--workspace", ":", "test", "--", "pwd"])
-
-        assert result.returncode == 0
-        # Handle macOS path normalization (/private prefix)
-        # Check for the volume mount (both paths are the same)
-        assert ":z" in result.stdout and "--volume=" in result.stdout
-        # Check workdir contains the workspace path
-        assert "--workdir=" in result.stdout
-
-    def test_auto_with_target(self, workspace_with_config):
-        """Test --workspace :/repo"""
-        result = run_ctenv(workspace_with_config, ["--workspace", ":/repo", "test", "--", "pwd"])
+    def test_auto_workspace(self, workspace_with_config):
+        """Test default workspace (uses project_mount from config)"""
+        result = run_ctenv(workspace_with_config, ["test", "--", "pwd"])
 
         assert result.returncode == 0
-        # Handle macOS path normalization (/private prefix)
+        # Config has project_mount = "/repo"
         assert ":/repo:z" in result.stdout
         assert "--workdir=/repo" in result.stdout
 
-    def test_shorthand_syntax(self, workspace_with_config):
-        """Test --workspace :/repo shorthand"""
-        result = run_ctenv(workspace_with_config, ["--workspace", ":/repo", "test", "--", "pwd"])
-
-        assert result.returncode == 0
-        # Handle macOS path normalization (/private prefix)
-        assert ":/repo:z" in result.stdout
-        assert "--workdir=/repo" in result.stdout
-
-    def test_explicit_paths(self, workspace_with_config):
-        """Test explicit host:container paths"""
-        host_path = workspace_with_config
+    def test_project_dir_with_mount(self, workspace_with_config):
+        """Test -p .:/repo syntax"""
         result = run_ctenv(
             workspace_with_config,
-            ["--workspace", f"{host_path}:/workspace", "test", "--", "pwd"],
+            ["test", "--", "pwd"],
+            global_args=["-p", ".:/custom"],
         )
 
         assert result.returncode == 0
-        # Handle macOS path normalization (/private prefix)
-        assert ":/workspace:z" in result.stdout
-        assert "--workdir=/workspace" in result.stdout
+        # Project mounted at /custom
+        assert ":/custom:z" in result.stdout
+        assert "--workdir=/custom" in result.stdout
+
+    def test_workspace_subdirectory(self, workspace_with_config):
+        """Test workspace as subdirectory of project"""
+        result = run_ctenv(
+            workspace_with_config,
+            ["--workspace", "src", "test", "--", "pwd"],
+        )
+
+        assert result.returncode == 0
+        # Workspace is src subdir, mounted relative to project_mount
+        assert "src:/repo/src:z" in result.stdout
+        assert "--workdir=/repo/src" in result.stdout
 
 
 @pytest.mark.integration
@@ -148,9 +151,10 @@ class TestWorkingDirectoryTranslation:
 
     def test_relative_position_preserved(self, workspace_with_config):
         """Test that relative position is preserved when mounting to different path"""
+        # Config has project_mount = "/repo"
         result = run_ctenv(
             workspace_with_config,
-            ["--workspace", ":/repo", "test", "--", "pwd"],
+            ["test", "--", "pwd"],
             cwd=workspace_with_config / "src",
         )
 
@@ -162,11 +166,10 @@ class TestWorkingDirectoryTranslation:
 
     def test_workdir_override(self, workspace_with_config):
         """Test --workdir override"""
+        # Config has project_mount = "/repo"
         result = run_ctenv(
             workspace_with_config,
             [
-                "--workspace",
-                ":/repo",
                 "--workdir",
                 "/repo/tests",
                 "test",
@@ -187,8 +190,8 @@ class TestWorkingDirectoryTranslation:
 class TestConfigFileWorkspace:
     """Test workspace settings in config files"""
 
-    def test_config_workspace_applied(self, workspace_with_config):
-        """Test that config file workspace is applied"""
+    def test_config_project_mount_applied(self, workspace_with_config):
+        """Test that config file project_mount is applied"""
         result = run_ctenv(
             workspace_with_config,
             ["test", "--", "pwd"],
@@ -196,24 +199,26 @@ class TestConfigFileWorkspace:
         )
 
         assert result.returncode == 0
-        # Config has workspace = ".:/repo"
+        # Config has project_mount = "/repo"
         # Handle macOS path normalization (/private prefix)
         assert ":/repo:z" in result.stdout
         assert "--workdir=/repo/src" in result.stdout
 
     def test_cli_overrides_config(self, workspace_with_config):
-        """Test that CLI workspace overrides config"""
+        """Test that CLI -p overrides config project_mount"""
+        # Use explicit path to project root (not . from src subdir)
         result = run_ctenv(
             workspace_with_config,
-            ["--workspace", ":", "test", "--", "pwd"],
+            ["test", "--", "pwd"],
             cwd=workspace_with_config / "src",
+            global_args=["-p", f"{workspace_with_config}:/custom"],
         )
 
         assert result.returncode == 0
-        # CLI should override config (auto mounts to same path)
+        # CLI should override config project_mount
         # Handle macOS path normalization (/private prefix)
-        assert ":z" in result.stdout and "--volume=" in result.stdout
-        assert "/src" in result.stdout and "--workdir=" in result.stdout
+        assert ":/custom:z" in result.stdout
+        assert "--workdir=/custom/src" in result.stdout
 
 
 @pytest.mark.integration
@@ -251,11 +256,11 @@ class TestRealWorldScenarios:
     def test_build_reproducibility_scenario(self, workspace_with_config):
         """Test Use Case 5: Build reproducibility with fixed paths"""
         # This tests the scenario where different host paths mount to /repo
-        # for build reproducibility
+        # for build reproducibility (config has project_mount = "/repo")
 
         result = run_ctenv(
             workspace_with_config,
-            ["test", "--", "pwd"],  # Uses config workspace = ".:/repo"
+            ["test", "--", "pwd"],
             cwd=workspace_with_config / "src",
         )
 

@@ -10,6 +10,9 @@
 
 ### Changed
 
+- `--project` is the new name for `--project-dir` and it supports
+  volume syntax for specifying where it should be mounted.
+
 - Relative paths in config files (`.ctenv.toml`) are now relative to
   the file, not to the project. This change only affects
   HOME/.ctenv.toml. Reason for the change is more predictable behavior

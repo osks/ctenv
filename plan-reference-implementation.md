@@ -12,41 +12,63 @@ This plan addresses discrepancies between the README Reference section and the a
 
 ---
 
-## 1. Project Directory Volume Syntax
+## 1. Project Directory Volume Syntax ✅ DONE
 
 **Goal:** Support `-p .:/repo` to specify both host path and container mount point.
 
-**Design consideration:** `project_container_path` should be a **configuration option** (in ContainerConfig), not just a RuntimeContext field. This allows users to configure a default mount point:
+**Design:** CLI uses volume syntax, config uses `project_mount` for clarity:
 
 ```toml
 # ~/.ctenv.toml - always mount project at /repo
 [defaults]
-project_container_path = "/repo"
+project_mount = "/repo"       # Where project mounts in container
 
 # Or per-container
 [containers.build]
-project_container_path = "/repo"
+project_mount = "/repo"
 ```
 
+CLI supports volume syntax: `-p .:/repo` (host:mount)
+
+**Config restriction:** `project_mount` is a simple absolute path string (e.g., `/repo`). It only sets where the project mounts in the container - the host path is always determined at runtime.
+
 **Precedence (highest to lowest):**
-1. CLI `-p /host:/container` - explicit container path wins
-2. CLI `-p /host` + config `project_container_path` - config value used
-3. CLI `-p /host` alone - container path = host path
-4. Auto-detect project_dir + config `project_container_path` - config value used
-5. Auto-detect project_dir alone - container path = host path (current behavior)
+1. CLI `-p /host:/mount` - both parts from CLI
+2. CLI `-p /host` + config `project_mount = "/repo"` - host from CLI, mount from config
+3. CLI `-p /host` alone - mount path = host path
+4. Auto-detect + config `project_mount = "/repo"` - host auto-detected, mount from config
+5. Auto-detect alone - mount path = host path (current behavior)
 
 ### Changes to `config.py`
 
-**Add `project_container_path` to ContainerConfig:**
+**Add `project_mount` to ContainerConfig:**
 
 ```python
 @dataclass(kw_only=True)
 class ContainerConfig:
     # ... existing fields ...
-    project_container_path: Union[str, NotSetType] = NOTSET  # NEW
+    project_mount: Union[str, NotSetType] = NOTSET  # Absolute path (e.g., "/repo")
 ```
 
-**RuntimeContext stays unchanged** - it keeps `project_dir` as the detected/specified host path. The container path is configuration, not runtime context.
+**RuntimeContext stays unchanged** - it keeps `project_dir` as the detected/specified host path (Path type).
+
+**Add validation for config file project_mount:**
+
+```python
+def validate_config_project_mount(project_mount_str: str, config_path: Path) -> None:
+    """Validate project_mount from config file.
+
+    project_mount should be a simple absolute path string.
+    """
+    if not project_mount_str or not project_mount_str.strip():
+        raise ValueError(f"In config file {config_path}: project_mount cannot be empty")
+
+    if not project_mount_str.startswith("/"):
+        raise ValueError(
+            f"In config file {config_path}: project_mount must be an absolute path. "
+            f"Got: '{project_mount_str}'"
+        )
+```
 
 ### Changes to `cli.py`
 
@@ -57,7 +79,7 @@ def _parse_project_dir_arg(project_dir_arg: Optional[str]) -> tuple[Optional[str
     """Parse --project-dir argument, which may include volume syntax.
 
     Returns:
-        (host_path, container_path) - container_path is None if not specified
+        (host_path, container_path) - either can be None if not specified
     """
     if project_dir_arg is None:
         return None, None
@@ -65,7 +87,9 @@ def _parse_project_dir_arg(project_dir_arg: Optional[str]) -> tuple[Optional[str
     if ":" in project_dir_arg:
         # Volume syntax: /path:/container or ./path:/container
         spec = VolumeSpec.parse(project_dir_arg)
-        return spec.host_path, spec.container_path or None
+        host = spec.host_path if spec.host_path else None
+        container = spec.container_path if spec.container_path else None
+        return host, container
     else:
         return project_dir_arg, None
 ```
@@ -75,57 +99,58 @@ def _parse_project_dir_arg(project_dir_arg: Optional[str]) -> tuple[Optional[str
 ```python
 def cmd_run(args, command):
     # Parse project-dir with volume syntax support
-    project_host, project_container = _parse_project_dir_arg(args.project_dir)
+    project_dir, project_mount = _parse_project_dir_arg(args.project_dir)
 
     runtime = RuntimeContext.current(
         cwd=Path.cwd(),
-        project_dir=project_host,  # Host path only
+        project_dir=project_dir,  # Host path only (None = auto-detect)
     )
 
     # ... load config ...
 
-    # Add project_container_path to CLI overrides if specified
+    # Add project_mount to CLI overrides if container path specified
     cli_args_dict = {
         # ... existing fields ...
-        "project_container_path": project_container,  # NEW - from -p syntax
+        "project_mount": project_mount,  # Simple path string (e.g., "/repo")
     }
 ```
 
 ### Changes to `container.py`
 
-**Resolve `project_container_path` in `parse_container_config`:**
+**Resolve project mount path in `parse_container_config`:**
 
 ```python
 def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> ContainerSpec:
-    # Resolve project_container_path early (needed for workspace/volume parsing)
-    if config.project_container_path is not NOTSET:
-        project_container_path = config.project_container_path
+    # Resolve project mount path early (needed for workspace/volume parsing)
+    # project_mount is a simple absolute path string (e.g., "/repo")
+    if config.project_mount is not NOTSET:
+        project_mount = config.project_mount
     else:
-        project_container_path = str(runtime.project_dir)  # Default: same as host
+        project_mount = str(runtime.project_dir)  # Default: same as host
 
-    # Use project_container_path when parsing workspace and volumes
+    # Use project_mount when parsing workspace and volumes
     # (see #2 and #3 for details)
 ```
 
 ---
 
-## 2. Volume Subpath Remapping
+## 2. Volume Subpath Remapping ✅ DONE
 
 **Goal:** When a volume is a subpath of project directory and has no explicit container path, mount it relative to project container path.
 
-**Note:** These functions receive `project_dir` (from RuntimeContext) and `project_container_path` (resolved from ContainerConfig in `parse_container_config`) as separate parameters.
+**Note:** These functions receive `project_dir` (from RuntimeContext) and `project_mount` (resolved from ContainerConfig in `parse_container_config`) as separate parameters.
 
 ### Changes to `container.py`
 
 **Update `_parse_volume` signature and logic:**
 
 ```python
-def _parse_volume(vol_str: str, project_dir: Path, project_container_path: str) -> VolumeSpec:
+def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> VolumeSpec:
     """Parse volume specification with project-aware path defaulting.
 
     If the volume's host path is a subpath of project_dir and no container
     path is specified, the container path is computed relative to
-    project_container_path.
+    project_mount.
     """
     if vol_str is NOTSET or vol_str is None:
         raise ValueError(f"Invalid volume: {vol_str}")
@@ -143,10 +168,10 @@ def _parse_volume(vol_str: str, project_dir: Path, project_container_path: str) 
             if not rel_path.startswith(".."):
                 # It's a subpath - mount relative to project container path
                 if rel_path == ".":
-                    spec.container_path = project_container_path
+                    spec.container_path = project_mount
                 else:
                     spec.container_path = os.path.join(
-                        project_container_path, rel_path
+                        project_mount, rel_path
                     )
             else:
                 # Outside project - mount at same path as host
@@ -161,26 +186,25 @@ def _parse_volume(vol_str: str, project_dir: Path, project_container_path: str) 
 **Update call sites in `parse_container_config`:**
 
 ```python
-# In parse_container_config, after resolving project_container_path:
-project_container_path = (
-    config.project_container_path
-    if config.project_container_path is not NOTSET
-    else str(runtime.project_dir)
-)
+# In parse_container_config, after resolving project_mount (see #1):
+if config.project_mount is not NOTSET:
+    project_mount = config.project_mount  # Simple absolute path
+else:
+    project_mount = str(runtime.project_dir)
 
 # Then when parsing volumes:
-vol_spec = _parse_volume(vol_str, runtime.project_dir, project_container_path)
+vol_spec = _parse_volume(vol_str, runtime.project_dir, project_mount)
 ```
 
 ### Changes to `_parse_workspace`
 
-**Update to use `project_container_path`:**
+**Update to use `project_mount`:**
 
 ```python
-def _parse_workspace(workspace_str: str, project_dir: Path, project_container_path: str) -> VolumeSpec:
+def _parse_workspace(workspace_str: str, project_dir: Path, project_mount: str) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
-    Uses project_container_path for container path defaulting.
+    Uses project_mount for container path defaulting.
     """
     if workspace_str is NOTSET or workspace_str is None:
         raise ValueError(f"Invalid workspace: {workspace_str}")
@@ -193,16 +217,16 @@ def _parse_workspace(workspace_str: str, project_dir: Path, project_container_pa
     if spec.host_path == "auto":
         spec.host_path = str(project_dir)
 
-    # Default container path using project_container_path
+    # Default container path using project_mount
     if spec.container_path == "auto" or not spec.container_path:
         try:
             rel_path = os.path.relpath(spec.host_path, project_dir)
             if not rel_path.startswith(".."):
                 if rel_path == ".":
-                    spec.container_path = project_container_path
+                    spec.container_path = project_mount
                 else:
                     spec.container_path = os.path.join(
-                        project_container_path, rel_path
+                        project_mount, rel_path
                     )
             else:
                 # Outside project directory
@@ -217,11 +241,11 @@ def _parse_workspace(workspace_str: str, project_dir: Path, project_container_pa
     return spec
 ```
 
-**Update signature:** Change from `(workspace_str, project_dir)` to `(workspace_str, project_dir, project_container_path)`.
+**Update signature:** Change from `(workspace_str, project_dir)` to `(workspace_str, project_dir, project_mount)`.
 
 ---
 
-## 3. Workspace Subdirectory Validation
+## 3. Workspace Subdirectory Validation ✅ DONE
 
 **Goal:** Warn (not error) when workspace is outside project directory.
 
@@ -232,7 +256,7 @@ def _parse_workspace(workspace_str: str, project_dir: Path, project_container_pa
 **Add validation in `_parse_workspace`:**
 
 ```python
-def _parse_workspace(workspace_str: str, project_dir: Path, project_container_path: str) -> VolumeSpec:
+def _parse_workspace(workspace_str: str, project_dir: Path, project_mount: str) -> VolumeSpec:
     # ... existing parsing logic ...
 
     # Validate workspace is within project directory (warning only)
@@ -393,9 +417,9 @@ Recommended order to minimize conflicts:
 
 1. **#5 - Container config precedence** ✅ DONE
 2. **#4 - Config file relative paths** ✅ DONE
-3. **#1 - Project container path in ContainerConfig** (foundation for #2 and #3)
-4. **#3 - Workspace validation** (uses signature changes from #1)
-5. **#2 - Volume subpath remapping** (depends on #1, modifies same functions as #3)
+3. **#1 - Project container path in ContainerConfig** ✅ DONE
+4. **#3 - Workspace validation** ✅ DONE
+5. **#2 - Volume subpath remapping** ✅ DONE
 
 ---
 
@@ -406,8 +430,10 @@ Recommended order to minimize conflicts:
 - `-p /project:/repo` - host `/project`, container `/repo`
 - `-p .:/repo` - host is cwd resolved, container `/repo`
 - Auto-detection when no `-p` specified
-- Config file `project_container_path = "/repo"` applies to all containers
-- CLI `-p /host:/container` overrides config `project_container_path`
+- Config `project_dir = ":/repo"` - sets container path, uses detected host
+- Config `project_dir = "auto:/repo"` - same as above
+- Config `project_dir = "/foo:/repo"` - ERROR (can't set host in config)
+- CLI `-p /host:/container` overrides config `project_dir`
 
 ### Test cases for #2 (Volume subpath remapping):
 - `-p /project:/repo -v /project/src` → mounts at `/repo/src`
@@ -438,9 +464,9 @@ Recommended order to minimize conflicts:
 
 | File | Changes |
 |------|---------|
-| `ctenv/config.py` | Add `project_container_path` to ContainerConfig, fix ConfigFile.load path resolution ✅, remove container merging in CtenvConfig.load ✅ |
-| `ctenv/cli.py` | Parse `--project-dir` with volume syntax, pass container path as config override |
-| `ctenv/container.py` | Update `_parse_workspace` and `_parse_volume` signatures to accept project_container_path, resolve it early in parse_container_config |
+| `ctenv/config.py` | Add `project_mount` to ContainerConfig (absolute path), add validation ✅, fix ConfigFile.load path resolution ✅, remove container merging in CtenvConfig.load ✅ |
+| `ctenv/cli.py` | Parse `--project-dir` with volume syntax, pass mount path as config override ✅ |
+| `ctenv/container.py` | Resolve project_mount from config.project_mount ✅, update `_parse_workspace` and `_parse_volume` signatures ✅ |
 
 ---
 
