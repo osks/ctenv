@@ -1,6 +1,5 @@
 """Integration tests for CLI functionality."""
 
-import pytest
 import subprocess
 import sys
 import tempfile

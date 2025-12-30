@@ -8,7 +8,6 @@ Each test shows a real ctenv command line that can be used as documentation.
 
 import os
 
-import pytest
 
 from .framework import (
     assert_user,

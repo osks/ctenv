@@ -37,19 +37,22 @@ def workspace_without_config():
         yield workspace
 
 
-def run_ctenv(workspace_dir, args, cwd=None, global_args=None):
+def run_ctenv(workspace_dir, args, cwd=None, global_args=None, run_args=None):
     """Helper to run ctenv with dry-run
 
     Args:
         workspace_dir: The workspace directory
-        args: Arguments to pass after 'run'
+        args: Arguments to pass after 'run' and run_args
         cwd: Current working directory (defaults to workspace_dir)
-        global_args: Arguments to pass before 'run' (e.g., ['-p', '.:/repo'])
+        global_args: Arguments to pass before 'run' (e.g., ['-q'])
+        run_args: Arguments to pass after 'run' (e.g., ['-p', '.', '-m', '/repo'])
     """
     if cwd is None:
         cwd = workspace_dir
     if global_args is None:
         global_args = []
+    if run_args is None:
+        run_args = []
 
     cmd = [
         sys.executable,
@@ -61,7 +64,7 @@ def run_ctenv(workspace_dir, args, cwd=None, global_args=None):
         "--dry-run",
         "--gosu-path",
         str(Path(__file__).parent.parent.parent / "ctenv" / "binaries" / "gosu-amd64"),
-    ] + args
+    ] + run_args + args
 
     result = subprocess.run(
         cmd,
@@ -118,11 +121,11 @@ class TestProjectMountSyntax:
         assert "--workdir=/repo" in result.stdout
 
     def test_project_dir_with_mount(self, workspace_with_config):
-        """Test -p .:/repo syntax"""
+        """Test -p and -m arguments for project dir and mount"""
         result = run_ctenv(
             workspace_with_config,
             ["test", "--", "pwd"],
-            global_args=["-p", ".:/custom"],
+            run_args=["-p", ".", "-m", "/custom"],
         )
 
         assert result.returncode == 0
@@ -201,13 +204,13 @@ class TestConfigFileWorkspace:
         assert "--workdir=/repo/src" in result.stdout
 
     def test_cli_overrides_config(self, workspace_with_config):
-        """Test that CLI -p overrides config project_mount"""
+        """Test that CLI -m overrides config project_mount"""
         # Use explicit path to project root (not . from src subdir)
         result = run_ctenv(
             workspace_with_config,
             ["test", "--", "pwd"],
             cwd=workspace_with_config / "src",
-            global_args=["-p", f"{workspace_with_config}:/custom"],
+            run_args=["-p", str(workspace_with_config), "-m", "/custom"],
         )
 
         assert result.returncode == 0

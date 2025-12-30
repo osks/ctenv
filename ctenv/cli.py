@@ -9,14 +9,12 @@ import sys
 from pathlib import Path
 
 from .version import __version__
-from typing import Optional, Tuple
 
 from .config import (
     CtenvConfig,
     ContainerConfig,
     RuntimeContext,
     Verbosity,
-    VolumeSpec,
     convert_notset_strings,
     resolve_relative_paths_in_container_config,
     NOTSET,
@@ -38,31 +36,6 @@ def get_verbosity(args) -> Verbosity:
         return Verbosity.NORMAL
 
 
-def _parse_project_dir_arg(project_dir_arg: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-    """Parse --project-dir argument, which may include volume syntax.
-
-    Supports:
-      - "/path" - host path only, container defaults to same
-      - "/path:/container" - explicit host and container paths
-      - ".:/repo" - relative host, explicit container
-
-    Returns:
-        (host_path, container_path) - either can be None if not specified
-    """
-    if project_dir_arg is None:
-        return None, None
-
-    if ":" in project_dir_arg:
-        # Volume syntax: /path:/container or ./path:/container
-        spec = VolumeSpec.parse(project_dir_arg)
-        host = spec.host_path if spec.host_path else None
-        container = spec.container_path if spec.container_path else None
-        return host, container
-    else:
-        # Just a path, no container path specified
-        return project_dir_arg, None
-
-
 def cmd_run(args, command):
     """Run command in container."""
     verbosity = get_verbosity(args)
@@ -70,10 +43,9 @@ def cmd_run(args, command):
     if verbosity >= Verbosity.NORMAL:
         print("[ctenv] run", file=sys.stderr)
 
-    # Parse -p/--project-dir which sets TWO things:
-    # 1. project_dir → RuntimeContext.project_dir (host path)
-    # 2. project_mount → ContainerConfig.project_mount (where it mounts in container)
-    project_dir, project_mount = _parse_project_dir_arg(args.project_dir)
+    # Get project_dir and project_mount from separate CLI args
+    project_dir = args.project_dir  # Host path (None = auto-detect)
+    project_mount = args.project_mount  # Container path (None = use config or default)
 
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
@@ -208,12 +180,9 @@ def cmd_run(args, command):
 def cmd_config_show(args):
     """Show configuration or container details."""
     try:
-        # Parse project-dir with volume syntax support (only project_dir used here)
-        project_dir, _ = _parse_project_dir_arg(args.project_dir)
-
         runtime = RuntimeContext.current(
             cwd=Path.cwd(),
-            project_dir=project_dir,
+            project_dir=args.project_dir,
         )
 
         # Load configuration early
@@ -251,13 +220,10 @@ def cmd_build(args):
     """Build container image."""
     verbosity = get_verbosity(args)
 
-    # Parse project-dir with volume syntax support (only project_dir used for build)
-    project_dir, _ = _parse_project_dir_arg(args.project_dir)
-
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
         cwd=Path.cwd(),
-        project_dir=project_dir,
+        project_dir=args.project_dir,
     )
 
     # Load configuration early
@@ -359,12 +325,6 @@ def create_parser():
         action="append",
         help="Path to configuration file (can be used multiple times, order matters)",
     )
-    parser.add_argument(
-        "-p",
-        "--project-dir",
-        help="Project directory, where .ctenv.toml is placed and the default workspace (default: dir with .ctenv.toml in, current or in parent tree (except HOME). Using cwd if no .ctenv.toml is found)",
-    )
-
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
 
     # run command
@@ -392,6 +352,18 @@ Note: Use '--' to separate commands from container/options.""",
         "--dry-run",
         action="store_true",
         help="Show commands without running container",
+    )
+    run_parser.add_argument(
+        "-p",
+        "--project-dir",
+        dest="project_dir",
+        help="Project directory on host. Default: auto-detect from .ctenv.toml",
+    )
+    run_parser.add_argument(
+        "-m",
+        "--project-mount",
+        dest="project_mount",
+        help="Where to mount project in container (e.g., /repo). Default: same as host path",
     )
 
     run_parser.add_argument("--image", help="Container image to use")
@@ -474,6 +446,12 @@ Note: Use '--' to separate commands from container/options.""",
 
     # config subcommand group
     config_parser = subparsers.add_parser("config", help="Configuration management commands")
+    config_parser.add_argument(
+        "-p",
+        "--project-dir",
+        dest="project_dir",
+        help="Project directory on host. Default: auto-detect from .ctenv.toml",
+    )
     config_subparsers = config_parser.add_subparsers(
         dest="config_command", help="Config subcommands"
     )
@@ -508,6 +486,12 @@ Note: Use '--' to separate commands from container/options.""",
         action="append",
         dest="build_args",
         help="Build arguments in KEY=VALUE format (can be used multiple times)",
+    )
+    build_parser.add_argument(
+        "-p",
+        "--project",
+        dest="project_dir",
+        help="Project directory (supports volume syntax: /path:/mount). Default: auto-detect from .ctenv.toml",
     )
     build_parser.add_argument("container", help="Container to use for build configuration")
 

@@ -3,7 +3,6 @@
 import pytest
 from unittest.mock import Mock, patch
 import subprocess
-import sys
 from io import StringIO
 
 from ctenv.container import (

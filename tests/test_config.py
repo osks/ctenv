@@ -644,6 +644,7 @@ env = ["NODE_ENV=development"]
         args.platform = None
         args.run_args = None
         args.project_dir = None  # Add project_dir attribute
+        args.project_mount = None  # Add project_mount attribute
         # Add build-related attributes
         args.build_dockerfile = None
         args.build_dockerfile_content = None
@@ -709,7 +710,7 @@ def test_get_builtin_defaults():
     assert (
         defaults["container_name"] == "ctenv-${project_dir|slug}-${pid}"
     )  # Updated default with PID
-    assert defaults["workspace"] == ""  # Empty = use project directory
+    assert defaults["workspace"] == "${project_dir}"  # Default to project directory
     assert defaults["workdir"] == "auto"  # Updated workdir field
     assert defaults["env"] == []
     assert defaults["volumes"] == []

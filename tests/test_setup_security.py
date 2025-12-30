@@ -1,6 +1,5 @@
 """Security tests for checksum utilities."""
 
-import pytest
 import tempfile
 from pathlib import Path
 

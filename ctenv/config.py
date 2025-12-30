@@ -396,7 +396,7 @@ class ContainerConfig:
         """
         return cls(
             # Auto-detect behaviors
-            workspace="",  # Empty = use project directory
+            workspace="${project_dir}",  # Default to project directory
             workdir="auto",  # Preserve relative position
             gosu_path="auto",  # Auto-detect bundled binary
             tty="auto",  # Auto-detect from stdin

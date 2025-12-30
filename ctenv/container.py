@@ -150,6 +150,26 @@ def _expand_tilde_in_volumespec(vol_spec: VolumeSpec, runtime: RuntimeContext) -
 # =============================================================================
 
 
+def _parse_project_mount(project_mount_str: str) -> tuple[str, list[str]]:
+    """Parse project_mount string which may include options.
+
+    Examples:
+        "/repo" -> ("/repo", [])
+        "/repo:ro" -> ("/repo", ["ro"])
+        "/repo:ro,z" -> ("/repo", ["ro", "z"])
+
+    Returns:
+        Tuple of (mount_path, options_list)
+    """
+    if ":" not in project_mount_str:
+        return (project_mount_str, [])
+
+    parts = project_mount_str.split(":")
+    mount_path = parts[0]
+    options = parts[1].split(",") if len(parts) > 1 and parts[1] else []
+    return (mount_path, options)
+
+
 def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> VolumeSpec:
     """Parse volume specification with project-aware path defaulting.
 
@@ -192,21 +212,24 @@ def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> Volume
     return spec
 
 
-def _parse_workspace(workspace_val: str, project_dir: Path, project_mount: str) -> VolumeSpec:
+def _parse_workspace(
+    workspace_val: str, project_dir: Path, project_mount: str, mount_options: list[str] | None = None
+) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
     Workspace is a host path (absolute or relative to project_dir).
     Container path is always derived from project_mount.
-    Empty string means use project directory.
+
+    Args:
+        workspace_val: Workspace path (absolute or relative to project_dir)
+        project_dir: Project directory on host
+        project_mount: Mount path in container (e.g., "/repo")
+        mount_options: Additional mount options (e.g., ["ro"])
     """
     if workspace_val is NOTSET:
         raise ValueError("Workspace not configured")
 
-    # Empty string means use project directory
-    if not workspace_val or not workspace_val.strip():
-        host_path = str(project_dir)
-    else:
-        host_path = workspace_val.strip()
+    host_path = workspace_val.strip()
 
     # Resolve relative paths to project_dir
     if not os.path.isabs(host_path) and not host_path.startswith("~"):
@@ -235,10 +258,17 @@ def _parse_workspace(workspace_val: str, project_dir: Path, project_mount: str) 
         )
         container_path = host_path
 
+    # Build options: always include 'z' for SELinux, plus any user options
+    options = ["z"]
+    if mount_options:
+        for opt in mount_options:
+            if opt not in options:
+                options.append(opt)
+
     return VolumeSpec(
         host_path=host_path,
         container_path=container_path,
-        options=["z"],  # SELinux option
+        options=options,
     )
 
 
@@ -657,12 +687,13 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     substituted_config = _substitute_variables_in_container_config(config, runtime, os.environ)
 
     # Resolve project mount early (needed for workspace/volume parsing)
-    # project_mount is a simple absolute path string (e.g., "/repo")
+    # project_mount can include options (e.g., "/repo:ro")
     # If not set, default to same as runtime.project_dir (host path)
     if substituted_config.project_mount is not NOTSET:
-        project_mount = substituted_config.project_mount
+        project_mount, mount_options = _parse_project_mount(substituted_config.project_mount)
     else:
         project_mount = str(runtime.project_dir)
+        mount_options = []
 
     # Validate required fields are not NOTSET
     required_fields = {
@@ -722,7 +753,9 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     ]
 
     # Parse workspace first since workdir depends on it
-    workspace_spec = _parse_workspace(substituted_config.workspace, runtime.project_dir, project_mount)
+    workspace_spec = _parse_workspace(
+        substituted_config.workspace, runtime.project_dir, project_mount, mount_options
+    )
     workspace_spec = _expand_tilde_in_volumespec(workspace_spec, runtime)
 
     spec_dict = {

@@ -416,6 +416,7 @@ build = { dockerfile = "Dockerfile", context = ".", tag = "dev:latest" }
                 "post_start_commands",
                 "platform",
                 "run_args",
+                "project_mount",
                 "build_dockerfile",
                 "build_dockerfile_content",
                 "build_context",
@@ -825,6 +826,7 @@ CMD ["bash"]"""
                 "post_start_commands",
                 "platform",
                 "run_args",
+                "project_mount",
             ]:
                 setattr(args, attr, None)
 

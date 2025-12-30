@@ -1,0 +1,9 @@
+# Test project configuration
+[defaults]
+project_mount = "/repo"
+
+[containers.test]
+image = "ubuntu:22.04"
+
+[containers.alpine]
+image = "alpine:latest"

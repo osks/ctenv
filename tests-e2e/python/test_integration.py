@@ -7,7 +7,6 @@ Each test shows a real ctenv command line that can be used as documentation.
 import os
 from pathlib import Path
 
-import pytest
 
 from .framework import run_ctenv, start_ctenv, wait_for_container
 

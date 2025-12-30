@@ -1,6 +1,5 @@
 """Security tests for ctenv."""
 
-import pytest
 import tempfile
 
 from ctenv.config import RuntimeContext, CtenvConfig, ContainerConfig, Verbosity
