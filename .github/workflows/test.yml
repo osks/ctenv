@@ -41,3 +41,24 @@ jobs:
       run: |
         make test
 
+  test-e2e:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Lima
+      uses: lima-vm/lima-actions/setup@v1
+      id: lima-setup
+    - name: Cache Lima
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/lima
+        key: lima-${{ steps.lima-setup.outputs.version }}
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: "pyproject.toml"
+    - name: Run e2e tests
+      run: |
+        make test-e2e
+        make lima-down
