@@ -1,0 +1,39 @@
+# Lima VM configuration for ctenv integration tests
+# Extends docker-rootful template for Docker support
+
+minimumLimaVersion: 2.0.0
+
+base:
+  - template:docker-rootful
+
+# Disable default mounts (we copy files instead)
+mounts: []
+
+# VM resources
+cpus: 1
+memory: "2GiB"
+disk: "10GiB"
+
+# Additional provisioning on top of docker-rootful
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      export DEBIAN_FRONTEND=noninteractive
+
+      # Install bats and make
+      apt-get update
+      apt-get install -y bats make git
+
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Install uv
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+
+message: |
+  VM ready. For interactive shell: limactl shell {{.Name}}

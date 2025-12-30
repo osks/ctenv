@@ -20,7 +20,6 @@ from ctenv.image import BuildImageSpec, parse_build_spec, build_container_image
 from ctenv.cli import cmd_run, cmd_build
 
 
-@pytest.mark.unit
 class TestBuildConfig:
     """Unit tests for BuildConfig dataclass."""
 
@@ -75,7 +74,6 @@ class TestBuildConfig:
         assert config.args == {"NODE_ENV": "production"}
 
 
-@pytest.mark.unit
 class TestContainerConfigWithBuild:
     """Unit tests for ContainerConfig with build integration."""
 
@@ -134,7 +132,6 @@ class TestContainerConfigWithBuild:
         assert resolved.build.context == str((base_dir / "../context").resolve())
 
 
-@pytest.mark.unit
 class TestBuildImageSpec:
     """Unit tests for BuildImageSpec and parsing."""
 
@@ -218,7 +215,6 @@ class TestBuildImageSpec:
         assert spec.args == {"USER": "testuser"}
 
 
-@pytest.mark.unit
 class TestBuildContainerImage:
     """Unit tests for build_container_image function."""
 
@@ -336,7 +332,6 @@ class TestBuildContainerImage:
             build_container_image(spec, runtime)
 
 
-@pytest.mark.integration
 class TestBuildIntegration:
     """Integration tests for build functionality."""
 
@@ -532,7 +527,6 @@ build = { dockerfile = "Dockerfile.default", context = ".", tag = "default:lates
             assert merged_config.build.context == str(tmpdir.resolve())
 
 
-@pytest.mark.unit
 class TestDockerfileContentFeature:
     """Unit tests for dockerfile_content feature."""
 
@@ -744,7 +738,6 @@ class TestDockerfileContentFeature:
         assert mock_run.call_args[1]["text"] is False  # Binary mode
 
 
-@pytest.mark.integration
 class TestDockerfileContentIntegration:
     """Integration tests for dockerfile_content feature."""
 
@@ -848,7 +841,6 @@ CMD ["bash"]"""
             assert build_spec.dockerfile is None
 
 
-@pytest.mark.integration
 class TestBuildErrorHandling:
     """Integration tests for build error handling."""
 

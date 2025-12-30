@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 
 
-@pytest.mark.integration
 def test_cli_run_basic():
     """Test basic CLI run command."""
     result = subprocess.run(
@@ -20,7 +19,6 @@ def test_cli_run_basic():
     assert "[ctenv] run" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_run_with_image():
     """Test CLI run command with specific image."""
     result = subprocess.run(
@@ -44,7 +42,6 @@ def test_cli_run_with_image():
     assert "[ctenv] run" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_run_with_container_from_config():
     """Test CLI run command with container from config file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -79,7 +76,6 @@ command = "echo test"
         assert "[ctenv] run" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_run_invalid_container():
     """Test CLI run command with invalid container name."""
     result = subprocess.run(
@@ -93,7 +89,6 @@ def test_cli_run_invalid_container():
     assert "Unknown container" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_config_command():
     """Test CLI config command."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -107,7 +102,6 @@ def test_cli_config_command():
     assert "bash" in result.stdout  # Default command
 
 
-@pytest.mark.integration
 def test_cli_help():
     """Test CLI help command."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -120,7 +114,6 @@ def test_cli_help():
     assert "run" in result.stdout
 
 
-@pytest.mark.integration
 def test_cli_run_with_volumes():
     """Test CLI run command with volume mounting."""
     result = subprocess.run(
@@ -144,7 +137,6 @@ def test_cli_run_with_volumes():
     assert "[ctenv] run" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_run_with_env():
     """Test CLI run command with environment variables."""
     result = subprocess.run(
@@ -168,7 +160,6 @@ def test_cli_run_with_env():
     assert "[ctenv] run" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_build_args_invalid_format():
     """Test error when build arg has no equals sign."""
     result = subprocess.run(
@@ -193,7 +184,6 @@ def test_cli_build_args_invalid_format():
     assert "Expected KEY=VALUE" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_build_command_args_invalid_format():
     """Test error when build command build arg has no equals sign."""
     result = subprocess.run(
@@ -215,7 +205,6 @@ def test_cli_build_command_args_invalid_format():
     assert "Expected KEY=VALUE" in result.stderr
 
 
-@pytest.mark.integration
 def test_cli_invalid_subcommand():
     """Test help output for invalid subcommand."""
     result = subprocess.run(
@@ -228,7 +217,6 @@ def test_cli_invalid_subcommand():
     assert "usage:" in result.stderr or "usage:" in result.stdout
 
 
-@pytest.mark.integration
 def test_cli_quiet_mode():
     """Test quiet mode logging configuration."""
     result = subprocess.run(

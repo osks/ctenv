@@ -60,7 +60,7 @@ def run_ctenv(workspace_dir, args, cwd=None, global_args=None):
         "run",
         "--dry-run",
         "--gosu-path",
-        str(Path(__file__).parent.parent / "ctenv" / "binaries" / "gosu-amd64"),
+        str(Path(__file__).parent.parent.parent / "ctenv" / "binaries" / "gosu-amd64"),
     ] + args
 
     result = subprocess.run(
@@ -72,7 +72,6 @@ def run_ctenv(workspace_dir, args, cwd=None, global_args=None):
     return result
 
 
-@pytest.mark.integration
 class TestWorkspaceAutoDetection:
     """Test workspace auto-detection functionality"""
 
@@ -106,7 +105,6 @@ class TestWorkspaceAutoDetection:
         assert "--workdir=" in result.stdout and "src" in result.stdout
 
 
-@pytest.mark.integration
 class TestProjectMountSyntax:
     """Test project mount syntax variations (replaces old workspace volume syntax)"""
 
@@ -145,7 +143,6 @@ class TestProjectMountSyntax:
         assert "--workdir=/repo/src" in result.stdout
 
 
-@pytest.mark.integration
 class TestWorkingDirectoryTranslation:
     """Test working directory path translation"""
 
@@ -186,7 +183,6 @@ class TestWorkingDirectoryTranslation:
         assert "Working directory: /repo/tests" in result.stderr
 
 
-@pytest.mark.integration
 class TestConfigFileWorkspace:
     """Test workspace settings in config files"""
 
@@ -221,7 +217,6 @@ class TestConfigFileWorkspace:
         assert "--workdir=/custom/src" in result.stdout
 
 
-@pytest.mark.integration
 class TestErrorHandling:
     """Test error handling scenarios"""
 
@@ -249,7 +244,6 @@ class TestErrorHandling:
         assert "not a directory" in result.stderr
 
 
-@pytest.mark.integration
 class TestRealWorldScenarios:
     """Test real-world usage scenarios from the task"""
 

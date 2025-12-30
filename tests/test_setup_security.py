@@ -7,7 +7,6 @@ from pathlib import Path
 from ctenv.container import calculate_sha256
 
 
-@pytest.mark.unit
 def test_calculate_sha256():
     """Test SHA256 calculation function."""
     # Create a test file with known content

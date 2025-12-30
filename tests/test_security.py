@@ -7,7 +7,6 @@ from ctenv.config import RuntimeContext, CtenvConfig, ContainerConfig, Verbosity
 from ctenv.container import parse_container_config, build_entrypoint_script
 
 
-@pytest.mark.unit
 def test_post_start_commands_shell_functionality():
     """Test that post_start_commands support full shell functionality."""
     with tempfile.TemporaryDirectory():
@@ -63,7 +62,6 @@ def test_post_start_commands_shell_functionality():
         assert 'echo "test" > /tmp/file' in script
 
 
-@pytest.mark.unit
 def test_volume_chown_path_injection_prevention():
     """Test that chown paths are properly escaped to prevent command injection."""
     with tempfile.TemporaryDirectory():
@@ -124,7 +122,6 @@ def test_volume_chown_path_injection_prevention():
         assert "touch /tmp/injected\n" not in script
 
 
-@pytest.mark.unit
 def test_complex_shell_scenarios():
     """Test complex shell scenarios work correctly."""
     with tempfile.TemporaryDirectory():
@@ -178,7 +175,6 @@ def test_complex_shell_scenarios():
         assert "sleep 60 &" in script
 
 
-@pytest.mark.unit
 def test_safe_commands_work_normally():
     """Test that legitimate commands work with normal shell interpretation."""
     with tempfile.TemporaryDirectory():

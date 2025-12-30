@@ -15,7 +15,6 @@ from ctenv.container import (
 from ctenv.config import VolumeSpec, Verbosity
 
 
-@pytest.mark.unit
 class TestPlatformDetection:
     """Tests for platform-specific functionality."""
 
@@ -63,7 +62,6 @@ class TestPlatformDetection:
         assert result == "gosu-amd64"
 
 
-@pytest.mark.unit
 class TestPackageDetection:
     """Tests for package detection functionality."""
 
@@ -87,7 +85,6 @@ class TestPackageDetection:
         assert is_installed_package() is False
 
 
-@pytest.mark.unit
 class TestHomeDirectoryExpansion:
     """Tests for home directory expansion functionality."""
 
@@ -116,7 +113,6 @@ class TestHomeDirectoryExpansion:
         assert result == "/absolute/path"
 
 
-@pytest.mark.unit
 class TestContainerExecutionErrors:
     """Tests for container execution error handling."""
 

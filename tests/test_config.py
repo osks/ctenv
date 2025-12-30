@@ -23,7 +23,6 @@ def find_project_config(start_dir: Path):
     return None
 
 
-@pytest.mark.unit
 def test_load_config_file():
     """Test loading TOML config file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -51,7 +50,6 @@ env = ["DEBUG=1", "NODE_ENV=development"]
         assert "NODE_ENV=development" in config_data["containers"]["dev"]["env"]
 
 
-@pytest.mark.unit
 def test_load_config_file_with_run_args():
     """Test loading TOML config file with run_args."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -78,7 +76,6 @@ run_args = ["--cap-add=SYS_PTRACE", "--security-opt=seccomp=unconfined"]
         ]
 
 
-@pytest.mark.unit
 def test_load_config_file_invalid_toml():
     """Test error handling for invalid TOML."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -90,7 +87,6 @@ def test_load_config_file_invalid_toml():
             _load_config_file(config_file)
 
 
-@pytest.mark.unit
 def test_resolve_config_values_defaults():
     """Test resolving config values with default container (no config file defaults)."""
     # Create a CtenvConfig with the test data
@@ -126,7 +122,6 @@ def test_resolve_config_values_defaults():
     assert resolved.sudo is True
 
 
-@pytest.mark.unit
 def test_resolve_config_values_container():
     """Test resolving config values with container (no config file defaults)."""
     from ctenv.config import CtenvConfig
@@ -169,7 +164,6 @@ def test_resolve_config_values_container():
     assert resolved.env == ["DEBUG=1"]
 
 
-@pytest.mark.unit
 def test_resolve_config_values_unknown_container():
     """Test error for unknown container."""
     from ctenv.config import CtenvConfig
@@ -198,7 +192,6 @@ def test_resolve_config_values_unknown_container():
         ctenv_config.get_container(container="unknown")
 
 
-@pytest.mark.unit
 def test_config_create_with_file():
     """Test Config creation with config file (containers only, no defaults section)."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -239,7 +232,6 @@ sudo = true
         assert config.network == "bridge"  # From default container in config file
 
 
-@pytest.mark.unit
 def test_config_create_with_container():
     """Test Config creation with container."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -275,7 +267,6 @@ env = ["CI=true"]
         assert config.env == ["CI=true"]
 
 
-@pytest.mark.unit
 def test_empty_config_structure():
     """Test that CtenvConfig.load works with no config files."""
     import tempfile
@@ -299,7 +290,6 @@ def test_empty_config_structure():
             assert config.image == "ubuntu:latest"  # System default
 
 
-@pytest.mark.unit
 def test_default_container_merging():
     """Test that user-defined default container merges with builtin."""
     import tempfile
@@ -335,7 +325,6 @@ network = "bridge"
         assert config.network == "bridge"  # From user default container
 
 
-@pytest.mark.unit
 def test_config_precedence():
     """Test configuration precedence: CLI > container > defaults."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -380,7 +369,6 @@ network = "bridge"
         assert config.sudo is False
 
 
-@pytest.mark.unit
 def test_substitute_variables_basic():
     """Test basic variable substitution."""
     import os
@@ -394,7 +382,6 @@ def test_substitute_variables_basic():
     assert result == "Image: test:latest"
 
 
-@pytest.mark.unit
 def test_substitute_variables_env():
     """Test environment variable substitution."""
     import os
@@ -413,7 +400,6 @@ def test_substitute_variables_env():
     del os.environ["TEST_VAR"]
 
 
-@pytest.mark.unit
 def test_substitute_variables_slug_filter():
     """Test slug filter for filesystem-safe strings."""
     import os
@@ -424,7 +410,6 @@ def test_substitute_variables_slug_filter():
     assert result == "Cache: docker.example.com-5000-app-v1.0"
 
 
-@pytest.mark.unit
 def test_substitute_variables_unknown_filter():
     """Test error handling for unknown filters."""
     import os
@@ -438,7 +423,6 @@ def test_substitute_variables_unknown_filter():
 # Test removed - substitute_in_container was replaced by ContainerConfig.resolve()
 
 
-@pytest.mark.unit
 def test_volumes_from_config_file():
     """Test that volumes from config file are properly loaded into ContainerConfig."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -482,7 +466,6 @@ env = ["NODE_ENV=development", "DEBUG=true"]
         # (The assertions above already check the resolved volumes)
 
 
-@pytest.mark.unit
 def test_volumes_cli_merge():
     """Test that CLI volumes are appended to config file volumes."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -543,7 +526,6 @@ env = ["NODE_ENV=development"]
         assert config.image == "node:18"  # Other settings preserved
 
 
-@pytest.mark.unit
 def test_volumes_cli_only():
     """Test CLI volumes when no config file volumes exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -587,7 +569,6 @@ image = "alpine:latest"
         # The config dict is already resolved (assertion above verifies this)
 
 
-@pytest.mark.unit
 def test_config_file_resolve_container_with_templating():
     """Test template variable substitution in container resolution."""
     import tempfile
@@ -618,7 +599,6 @@ env = ["CACHE_DIR=/cache/${image|slug}"]
         # Templates will be resolved later in parse_container_config() when creating ContainerSpec
 
 
-@pytest.mark.unit
 def test_config_file_volumes_through_cli_parsing():
     """Test that config file volumes work through actual CLI parsing (regression test for empty list override bug)."""
     import tempfile
@@ -713,7 +693,6 @@ env = ["NODE_ENV=development"]
         assert captured_config["image"] == "node:18"
 
 
-@pytest.mark.unit
 def test_get_builtin_defaults():
     """Test that ContainerConfig.builtin_defaults() returns the expected default values."""
     from ctenv.config import ContainerConfig
@@ -745,7 +724,6 @@ def test_get_builtin_defaults():
     assert "platform" not in defaults
 
 
-@pytest.mark.unit
 def test_working_dir_config():
     """Test that workdir can be configured via CLI and config file."""
     import tempfile
@@ -788,7 +766,6 @@ workdir = "/custom/path"
         assert config_default.workdir == "auto"
 
 
-@pytest.mark.unit
 def test_gosu_path_config():
     """Test that gosu_path can be configured via CLI and config file."""
     import tempfile
@@ -839,7 +816,6 @@ gosu_path = "{fake_gosu}"
         assert config_cli.gosu_path == str(cli_gosu)
 
 
-@pytest.mark.unit
 def test_volume_options_preserved():
     """Test that volume options are properly parsed and preserved."""
     from ctenv.container import _parse_volume
@@ -872,7 +848,6 @@ def test_volume_options_preserved():
             assert option in reconstructed
 
 
-@pytest.mark.unit
 def test_docker_args_volume_options():
     """Test that Docker args correctly merge :z with existing volume options."""
     import tempfile
@@ -941,7 +916,6 @@ def test_docker_args_volume_options():
         assert "--volume=./cache:/cache:rw,z" in volume_args_str  # :rw preserved, :z added
 
 
-@pytest.mark.unit
 def test_load_project_config_direct_toml():
     """Test that load_project_config finds .ctenv.toml directly (not in .ctenv/ subdir)."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -966,7 +940,6 @@ image = "node:18"
         assert config.containers["test"].image == "node:18"
 
 
-@pytest.mark.unit
 def test_load_project_config_searches_upward():
     """Test that load_project_config searches upward through parent directories."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -992,7 +965,6 @@ image = "python:3.11"
         assert config.containers["dev"].image == "python:3.11"
 
 
-@pytest.mark.unit
 def test_load_project_config_returns_none_when_not_found():
     """Test that load_project_config returns None when no config file is found."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1004,7 +976,6 @@ def test_load_project_config_returns_none_when_not_found():
         assert config_path is None
 
 
-@pytest.mark.unit
 def test_load_user_config_direct_toml(monkeypatch):
     """Test that load_user_config finds ~/.ctenv.toml directly (not in ~/.ctenv/ subdir)."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1034,7 +1005,6 @@ image = "ubuntu:22.04"
         assert config.containers["home"].image == "ubuntu:22.04"
 
 
-@pytest.mark.unit
 def test_load_user_config_returns_none_when_not_found(monkeypatch):
     """Test that load_user_config returns None when no config file is found."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1049,7 +1019,6 @@ def test_load_user_config_returns_none_when_not_found(monkeypatch):
         assert config_path is None
 
 
-@pytest.mark.unit
 def test_resolve_relative_paths_with_notset_string():
     """Test that NOTSET strings are treated as literal paths (bad config case)."""
     from ctenv.config import (

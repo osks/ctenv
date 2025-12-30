@@ -8,7 +8,6 @@ from ctenv.container import validate_platform
 from ctenv.config import VolumeSpec
 
 
-@pytest.mark.unit
 def test_platform_validation():
     """Test platform validation for supported/unsupported platforms."""
     # Supported platforms
@@ -22,7 +21,6 @@ def test_platform_validation():
     assert validate_platform("") is False
 
 
-@pytest.mark.unit
 def test_volume_spec_edge_cases():
     """Test VolumeSpec parsing edge cases."""
     # Empty host path with container path should work
@@ -41,7 +39,6 @@ def test_volume_spec_edge_cases():
     assert spec.container_path == ""
 
 
-@pytest.mark.unit
 def test_volume_spec_malformed_formats():
     """Test that malformed volume specs raise errors."""
     # Too many colons should raise error
@@ -53,7 +50,6 @@ def test_volume_spec_malformed_formats():
         VolumeSpec.parse("/host::/container::extra")
 
 
-@pytest.mark.integration
 def test_config_show_success():
     """Test config show command shows all configuration."""
     import subprocess
@@ -92,7 +88,6 @@ image = "alpine:latest"
         assert "alpine:latest" in result.stdout
 
 
-@pytest.mark.integration
 def test_config_invalid_toml_file():
     """Test behavior with invalid TOML config file."""
     import subprocess
@@ -126,7 +121,6 @@ def test_config_invalid_toml_file():
         assert "Configuration error" in result.stderr
 
 
-@pytest.mark.integration
 def test_run_with_invalid_platform():
     """Test run command with invalid platform."""
     import subprocess
@@ -153,7 +147,6 @@ def test_run_with_invalid_platform():
     assert "Supported platforms: linux/amd64, linux/arm64" in result.stderr
 
 
-@pytest.mark.integration
 def test_help_and_invalid_commands():
     """Test help output and invalid command handling."""
     import subprocess
@@ -179,7 +172,6 @@ def test_help_and_invalid_commands():
     assert result.returncode != 0
 
 
-@pytest.mark.unit
 def test_volume_spec_to_string_edge_cases():
     """Test VolumeSpec.to_string() edge cases for better coverage."""
     # Test empty host path case

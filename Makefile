@@ -9,17 +9,13 @@ help: ## Display this help
 
 
 .PHONY: all
-all: lint typecheck test-all
+all: lint typecheck test-py-versions
 
 
 ##@ Environment
 .PHONY: dev
 dev: ## Setup development environment
-	@echo "Setting up development environment with uv..."
-	@test -d .venv || uv venv
-	@uv pip install -e '.[test]'
-	@echo "✓ Development environment ready"
-	@echo "  Activate with: source .venv/bin/activate"
+	@uv sync --all-extras
 
 
 .PHONY: clean
@@ -47,27 +43,47 @@ build: ## Build
 ##@ Tests
 
 .PHONY: test
-test: dev ## Run tests
-	@echo "Running tests..."
+test: dev ## Run unit tests
 	@uv run pytest tests/ -v
 
-.PHONY: test-unit
-test-unit: dev ## Run unit tests only
-	@echo "Running unit tests only..."
-	@uv run pytest tests/ -v -m unit
+.PHONY: test-all
+test-all: test test-e2e test-py-versions ## Run all tests
 
-.PHONY: test-integration
-test-integration: dev ## Run integration tests only
-	@echo "Running integration tests..."
-	@uv run pytest tests/ -v -m integration
+.PHONY: test-e2e
+test-e2e: lima-setup ## Run e2e tests (in Lima VM)
+	@./scripts/lima.sh run make test-e2e-python-no-vm test-e2e-bats-no-vm
+	@./scripts/lima.sh down
+
+# Run e2e tests (on host, requires Docker)
+.PHONY: test-e2e-no-vm
+test-e2e-no-vm:
+	@bats tests-e2e/bats/
+	@uv run pytest tests-e2e/python/ -v
+
+# Run e2e Python tests (on host, requires Docker)
+.PHONY: test-e2e-python-no-vm
+test-e2e-python-no-vm:
+	@uv run pytest tests-e2e/python/ -v
+
+# Run e2e BATS tests (on host, requires Docker)
+.PHONY: test-e2e-bats-no-vm
+test-e2e-bats-no-vm:
+	@bats tests-e2e/bats/
+
+.PHONY: lima-setup
+lima-setup: ## Setup Lima VM (for e2e tests)
+	@./scripts/lima.sh setup
+
+.PHONY: lima-down
+lima-down: ## Teardown Lima VM (for e2e tests)
+	@./scripts/lima.sh down
 
 .PHONY: test-cov
-test-cov: dev ## Run tests with coverage
-	@echo "Running tests with coverage..."
+test-cov: dev ## Run unit tests with coverage
 	@uv run pytest tests/ -v --cov=ctenv --cov-report=term-missing
 
-.PHONY: test-all
-test-all: dev ## Run tests with multiple Python versions
+.PHONY: test-py-versions
+test-py-versions: dev ## Run tests with multiple Python versions
 	@echo "Running tests on multiple Python versions with tox..."
 	@uv run tox
 

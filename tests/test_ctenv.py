@@ -12,7 +12,6 @@ from ctenv.config import RuntimeContext, Verbosity
 from ctenv.container import parse_container_config, build_entrypoint_script
 
 
-@pytest.mark.unit
 def test_version():
     parser = create_parser()
 
@@ -23,7 +22,6 @@ def test_version():
     assert exc_info.value.code == 0
 
 
-@pytest.mark.unit
 def test_config_user_detection():
     """Test that config correctly loads and merges with runtime context."""
 
@@ -56,7 +54,6 @@ def test_config_user_detection():
     assert resolved_spec.workspace.container_path  # Should have container path
 
 
-@pytest.mark.unit
 def test_config_with_mock_runtime():
     """Test ContainerSpec creation with mock runtime context."""
     from pathlib import Path
@@ -100,7 +97,6 @@ def test_config_with_mock_runtime():
         assert resolved_spec.workspace.container_path
 
 
-@pytest.mark.unit
 def test_container_name_generation():
     """Test consistent container name generation."""
     from pathlib import Path
@@ -156,7 +152,6 @@ def test_container_name_generation():
     assert str(mock_runtime.pid) in spec1.container_name
 
 
-@pytest.mark.unit
 def test_entrypoint_script_generation():
     """Test bash entrypoint script generation."""
     from pathlib import Path
@@ -203,7 +198,6 @@ def test_entrypoint_script_generation():
     assert "TTY_MODE=" in script
 
 
-@pytest.mark.unit
 def test_entrypoint_script_examples():
     """Show example entrypoint scripts for documentation."""
     from pathlib import Path
@@ -283,7 +277,6 @@ def test_entrypoint_script_examples():
     print(f"\n{'=' * 50}")
 
 
-@pytest.mark.unit
 def test_run_command_help():
     """Test run command help output."""
     parser = create_parser()
@@ -296,7 +289,6 @@ def test_run_command_help():
     assert exc_info.value.code == 0
 
 
-@pytest.mark.unit
 def test_run_command_dry_run_mode():
     """Test run command dry-run output."""
     parser = create_parser()
@@ -310,7 +302,6 @@ def test_run_command_dry_run_mode():
             mock_cmd_run.assert_called_once_with(args)
 
 
-@pytest.mark.unit
 def test_verbose_mode():
     """Test verbose logging output."""
     parser = create_parser()
@@ -325,7 +316,6 @@ def test_verbose_mode():
     assert args.verbose == 2
 
 
-@pytest.mark.unit
 def test_quiet_mode():
     """Test quiet mode suppresses output."""
     parser = create_parser()
@@ -336,7 +326,6 @@ def test_quiet_mode():
     assert args.dry_run is True
 
 
-@pytest.mark.unit
 def test_stdout_stderr_separation():
     """Test that ctenv output goes to stderr, leaving stdout clean."""
     parser = create_parser()
@@ -352,7 +341,6 @@ def test_stdout_stderr_separation():
     assert args.dry_run is True
 
 
-@pytest.mark.unit
 def test_post_start_cmd_cli_option():
     """Test --post-start-cmd CLI option."""
 
@@ -373,7 +361,6 @@ def test_post_start_cmd_cli_option():
     assert "npm run build" in config_dict.post_start_commands
 
 
-@pytest.mark.unit
 def test_post_start_cmd_merging():
     """Test that CLI post-start extra commands are merged with config file commands."""
 
@@ -415,7 +402,6 @@ post_start_commands = ["echo config-cmd"]
         os.unlink(config_file)
 
 
-@pytest.mark.unit
 def test_post_start_cmd_in_generated_script():
     """Test that post-start extra commands appear in generated script."""
 
@@ -450,7 +436,6 @@ def test_post_start_cmd_in_generated_script():
     assert "run_post_start_commands" in script
 
 
-@pytest.mark.unit
 def test_volume_parsing_smart_defaulting():
     """Test volume parsing with smart target defaulting."""
     from ctenv.container import _parse_volume
@@ -470,7 +455,6 @@ def test_volume_parsing_smart_defaulting():
     assert _parse_volume("~/config", project_dir, project_mount).to_string() == "~/config:~/config"
 
 
-@pytest.mark.unit
 def test_volume_parsing_empty_target_syntax():
     """Test volume parsing with :: empty target syntax."""
     from ctenv.container import _parse_volume
@@ -498,7 +482,6 @@ def test_volume_parsing_empty_target_syntax():
     assert vol_spec.options == ["ro", "chown", "z"]  # All options preserved
 
 
-@pytest.mark.unit
 def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
     from ctenv.container import _parse_volume
@@ -520,7 +503,6 @@ def test_volume_parsing_backward_compatibility():
     assert vol_spec.options == ["chown"]
 
 
-@pytest.mark.unit
 def test_volume_subpath_remapping():
     """Test that volume subpaths of project_dir are remapped to project_mount."""
     from ctenv.container import _parse_volume
@@ -554,7 +536,6 @@ def test_volume_subpath_remapping():
     assert vol_spec.container_path == "~/.config"  # Same as host (tilde expanded later)
 
 
-@pytest.mark.unit
 def test_cli_volume_template_expansion():
     """Test that CLI volumes get template expansion and variable substitution."""
     import os
@@ -616,7 +597,6 @@ def test_cli_volume_template_expansion():
             assert vol2.options == ["ro", "z"]  # z is added automatically
 
 
-@pytest.mark.unit
 def test_config_file_tilde_expansion():
     """Test tilde expansion in config files."""
     import os

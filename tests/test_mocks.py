@@ -32,7 +32,6 @@ def create_test_runtime(
     )
 
 
-@pytest.mark.unit
 def test_docker_command_examples():
     """Test and display actual Docker commands that would be generated."""
 
@@ -87,7 +86,6 @@ def test_docker_command_examples():
         pass
 
 
-@pytest.mark.unit
 def test_platform_support(tmp_path, monkeypatch):
     """Test platform support in Docker commands."""
     # Prevent loading user config which might have platform set
@@ -141,7 +139,6 @@ def test_platform_support(tmp_path, monkeypatch):
     assert len(platform_args) == 0
 
 
-@pytest.mark.unit
 def test_docker_command_scenarios():
     """Show Docker commands for different common scenarios."""
 
@@ -251,7 +248,6 @@ def test_docker_command_scenarios():
     print(f"\n{'=' * 60}")
 
 
-@pytest.mark.unit
 def test_new_cli_options():
     """Test Docker commands generated with new CLI options."""
 
@@ -309,7 +305,6 @@ def test_new_cli_options():
         pass
 
 
-@pytest.mark.unit
 def test_sudo_entrypoint_script():
     """Test entrypoint script generation with sudo support."""
 
@@ -365,7 +360,6 @@ def test_sudo_entrypoint_script():
     print("Non-sudo script sets ADD_SUDO=0 with same conditional logic")
 
 
-@pytest.mark.unit
 @patch("subprocess.run")
 def test_docker_command_construction(mock_run):
     """Test that Docker commands are constructed correctly."""
@@ -406,7 +400,6 @@ def test_docker_command_construction(mock_run):
         pass
 
 
-@pytest.mark.unit
 @patch("shutil.which")
 @patch("subprocess.run")
 def test_docker_not_available(mock_run, mock_which):
@@ -432,7 +425,6 @@ def test_docker_not_available(mock_run, mock_which):
         ContainerRunner.run_container(container_spec)
 
 
-@pytest.mark.unit
 @patch("subprocess.run")
 def test_container_failure_handling(mock_run):
     """Test handling of container execution failures."""
@@ -474,7 +466,6 @@ def test_container_failure_handling(mock_run):
             assert result.returncode == 1
 
 
-@pytest.mark.unit
 def test_tty_detection():
     """Test TTY flag handling."""
 
@@ -516,7 +507,6 @@ def test_tty_detection():
     assert "-t" not in args and "-i" not in args
 
 
-@pytest.mark.unit
 def test_volume_chown_option():
     """Test volume chown option parsing and entrypoint generation."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -589,7 +579,6 @@ def test_volume_chown_option():
             pass
 
 
-@pytest.mark.unit
 def test_post_start_commands():
     """Test post-start commands execution in container script."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -650,7 +639,6 @@ def test_post_start_commands():
         assert post_start_call < gosu_line
 
 
-@pytest.mark.unit
 def test_ulimits_configuration():
     """Test ulimits configuration and Docker flag generation."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -692,7 +680,6 @@ def test_ulimits_configuration():
         assert "--ulimit=core=0" in ulimit_args
 
 
-@pytest.mark.unit
 def test_container_labels_added():
     """Test that ctenv adds identifying labels to containers."""
     from ctenv.container import ContainerRunner, parse_container_config
