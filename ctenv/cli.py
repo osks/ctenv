@@ -148,13 +148,19 @@ def cmd_run(args, command):
 
     if verbosity >= Verbosity.VERBOSE:
         # Use resolved spec for debugging output to show final values
-        print(f"Project dir: {runtime.project_dir} (mount: {container_config.project_mount})", file=sys.stderr)
+        print(
+            f"Project dir: {runtime.project_dir} (mount: {container_config.project_mount})",
+            file=sys.stderr,
+        )
         print("Configuration:", file=sys.stderr)
         print(f"  Image: {spec.image}", file=sys.stderr)
         print(f"  Command: {spec.command}", file=sys.stderr)
         print(f"  User: {spec.user_name} (UID: {spec.user_id})", file=sys.stderr)
         print(f"  Group: {spec.group_name} (GID: {spec.group_id})", file=sys.stderr)
-        print(f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path}", file=sys.stderr)
+        print(
+            f"  Workspace: {spec.workspace.host_path} -> {spec.workspace.container_path}",
+            file=sys.stderr,
+        )
         print(f"  Working directory: {spec.workdir}", file=sys.stderr)
         print(f"  Container name: {spec.container_name}", file=sys.stderr)
         print(f"  Environment variables: {spec.env}", file=sys.stderr)
@@ -310,13 +316,15 @@ def create_parser():
 
     verbosity_group = parser.add_mutually_exclusive_group()
     verbosity_group.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="count",
         default=0,
         help="Increase verbosity (-v verbose, -vv very verbose)",
     )
     verbosity_group.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
         help="Suppress non-essential output",
     )

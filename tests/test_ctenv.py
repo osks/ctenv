@@ -451,7 +451,10 @@ def test_volume_parsing_smart_defaulting():
     assert vol_spec.options == []
 
     # Test to_string() works correctly for defaulted volumes
-    assert _parse_volume("/host/path", project_dir, project_mount).to_string() == "/host/path:/host/path"
+    assert (
+        _parse_volume("/host/path", project_dir, project_mount).to_string()
+        == "/host/path:/host/path"
+    )
     assert _parse_volume("~/config", project_dir, project_mount).to_string() == "~/config:~/config"
 
 

@@ -21,10 +21,11 @@ from typing import Optional, Dict, Any, List, Union, TYPE_CHECKING
 class Verbosity(IntEnum):
     """Verbosity levels for CLI output."""
 
-    QUIET = -1        # -q: errors only
-    NORMAL = 0        # default: status messages
-    VERBOSE = 1       # -v: detailed info
+    QUIET = -1  # -q: errors only
+    NORMAL = 0  # default: status messages
+    VERBOSE = 1  # -v: detailed info
     VERY_VERBOSE = 2  # -vv: full debug output
+
 
 try:
     import tomllib
@@ -323,7 +324,9 @@ class ContainerConfig:
     image: Union[str, NotSetType] = NOTSET
     build: Union[BuildConfig, NotSetType] = NOTSET
     command: Union[str, NotSetType] = NOTSET
-    project_mount: Union[str, NotSetType] = NOTSET  # Where project mounts in container (e.g., ":/repo")
+    project_mount: Union[str, NotSetType] = (
+        NOTSET  # Where project mounts in container (e.g., ":/repo")
+    )
     workspace: Union[str, NotSetType] = NOTSET
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
@@ -499,9 +502,7 @@ def validate_config_project_mount(project_mount_str: str, config_path: Path) -> 
         ValueError: If project_mount is empty or invalid
     """
     if not project_mount_str or not project_mount_str.strip():
-        raise ValueError(
-            f"In config file {config_path}: project_mount cannot be empty"
-        )
+        raise ValueError(f"In config file {config_path}: project_mount cannot be empty")
 
     # Must be an absolute path
     if not project_mount_str.startswith("/"):

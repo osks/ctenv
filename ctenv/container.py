@@ -213,7 +213,10 @@ def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> Volume
 
 
 def _parse_workspace(
-    workspace_val: str, project_dir: Path, project_mount: str, mount_options: list[str] | None = None
+    workspace_val: str,
+    project_dir: Path,
+    project_mount: str,
+    mount_options: list[str] | None = None,
 ) -> VolumeSpec:
     """Parse workspace configuration and return VolumeSpec.
 
@@ -853,7 +856,10 @@ class ContainerRunner:
             print(f"  Workspace: {spec.workspace.to_string()}", file=sys.stderr)
             print(f"  Working directory: {spec.workdir}", file=sys.stderr)
             print(f"  Gosu binary: {spec.gosu.to_string()}", file=sys.stderr)
-            print(f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh", file=sys.stderr)
+            print(
+                f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh",
+                file=sys.stderr,
+            )
 
         # Additional volume mounts
         if spec.volumes:
@@ -984,7 +990,10 @@ class ContainerRunner:
         else:
             script_fd, entrypoint_script_path = tempfile.mkstemp(suffix=".sh", text=True)
             if verbosity >= Verbosity.VERBOSE:
-                print(f"Created temporary entrypoint script: {entrypoint_script_path}", file=sys.stderr)
+                print(
+                    f"Created temporary entrypoint script: {entrypoint_script_path}",
+                    file=sys.stderr,
+                )
             with os.fdopen(script_fd, "w") as f:
                 f.write(script_content)
             os.chmod(entrypoint_script_path, 0o755)

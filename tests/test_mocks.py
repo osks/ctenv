@@ -90,6 +90,7 @@ def test_platform_support(tmp_path, monkeypatch):
     """Test platform support in Docker commands."""
     # Prevent loading user config which might have platform set
     import ctenv.config
+
     monkeypatch.setattr(ctenv.config, "find_user_config", lambda: None)
 
     # Test with platform specified
