@@ -728,7 +728,10 @@ class CtenvConfig:
 
     @classmethod
     def load(
-        cls, project_dir: Path, explicit_config_files: Optional[List[Path]] = None
+        cls,
+        project_dir: Path,
+        explicit_config_files: Optional[List[Path]] = None,
+        verbosity: Verbosity = Verbosity.NORMAL,
     ) -> "CtenvConfig":
         """Load and compute configuration from files in priority order.
 
@@ -744,6 +747,8 @@ class CtenvConfig:
         if explicit_config_files:
             for config_file in explicit_config_files:
                 try:
+                    if verbosity >= Verbosity.VERBOSE:
+                        print(f"Loading explicit config: {config_file}", file=sys.stderr)
                     loaded_config = ConfigFile.load(config_file, project_dir)
                     config_files.append(loaded_config)
                 except Exception as e:
@@ -753,11 +758,15 @@ class CtenvConfig:
         if not explicit_config_files:
             project_config_path = project_dir / ".ctenv.toml"
             if project_config_path.exists():
+                if verbosity >= Verbosity.VERBOSE:
+                    print(f"Loading project config: {project_config_path}", file=sys.stderr)
                 config_files.append(ConfigFile.load(project_config_path, project_dir))
 
         # User config
         user_config_path = find_user_config()
         if user_config_path:
+            if verbosity >= Verbosity.VERBOSE:
+                print(f"Loading user config: {user_config_path}", file=sys.stderr)
             config_files.append(ConfigFile.load(user_config_path, project_dir))
 
         # Compute defaults (system defaults + first file defaults found)

@@ -56,7 +56,9 @@ def cmd_run(args, command):
     # Load configuration early
     try:
         explicit_configs = [Path(c) for c in args.config] if args.config else None
-        ctenv_config = CtenvConfig.load(runtime.project_dir, explicit_config_files=explicit_configs)
+        ctenv_config = CtenvConfig.load(
+            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=verbosity
+        )
     except Exception as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -185,6 +187,7 @@ def cmd_run(args, command):
 
 def cmd_config_show(args):
     """Show configuration or container details."""
+    verbosity = get_verbosity(args)
     try:
         runtime = RuntimeContext.current(
             cwd=Path.cwd(),
@@ -193,7 +196,9 @@ def cmd_config_show(args):
 
         # Load configuration early
         explicit_configs = [Path(c) for c in getattr(args, "config", None) or []]
-        ctenv_config = CtenvConfig.load(runtime.project_dir, explicit_config_files=explicit_configs)
+        ctenv_config = CtenvConfig.load(
+            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=verbosity
+        )
 
         # Show defaults section if present
         if ctenv_config.defaults:
@@ -235,7 +240,9 @@ def cmd_build(args):
     # Load configuration early
     try:
         explicit_configs = [Path(c) for c in args.config] if args.config else None
-        ctenv_config = CtenvConfig.load(runtime.project_dir, explicit_config_files=explicit_configs)
+        ctenv_config = CtenvConfig.load(
+            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=verbosity
+        )
     except Exception as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
