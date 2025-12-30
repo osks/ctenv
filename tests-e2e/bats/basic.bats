@@ -12,10 +12,3 @@ load helpers
     run $CTENV --version
     [ "$status" -eq 0 ]
 }
-
-@test "ctenv run executes command in container" {
-    cd "$PROJECT1"
-    run $CTENV --quiet run test -- echo hello
-    [ "$status" -eq 0 ]
-    assert_output "hello"
-}

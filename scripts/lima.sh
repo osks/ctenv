@@ -5,12 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIMA_VM_NAME="ctenv-test"
 LIMA_CONFIG="$SCRIPT_DIR/lima.yaml"
+LIMA_WORKSPACE="/ctenv"
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") <command> [args...]
 
 Run commands in the ctenv Lima VM.
+
+For isolating effects of ctenv tests that use docker/podman.
 
 Commands:
     run <cmd>   Run a command in the VM
@@ -36,7 +39,7 @@ lima_setup() {
     if limactl list --quiet 2>/dev/null | grep -q "^${LIMA_VM_NAME}$"; then
         if ! limactl list --format json 2>/dev/null | grep -q '"status":"Running"'; then
             echo "Starting VM..."
-            limactl start --tty=false "$LIMA_VM_NAME"
+            limactl start --plain --tty=false "$LIMA_VM_NAME"
         else
             echo "VM already running"
         fi
@@ -46,8 +49,20 @@ lima_setup() {
         if [[ "$(uname -s)" == "Darwin" ]]; then
             vm_type_flag="--vm-type=vz"
         fi
-        limactl start --tty=false $vm_type_flag --name="$LIMA_VM_NAME" "$LIMA_CONFIG"
+        limactl start --plain --tty=false $vm_type_flag --name="$LIMA_VM_NAME" "$LIMA_CONFIG"
         FRESH_VM=true
+    fi
+
+    if [[ "$FRESH_VM" == true ]]; then
+        # Ensure workspace exists
+        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo mkdir -p "$LIMA_WORKSPACE"
+        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c "sudo chown \$(id -u):\$(id -g) $LIMA_WORKSPACE"
+        # Add user to docker group for docker.sock access
+        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c 'sudo usermod -aG docker $(whoami)'
+        # Reconnect to pick up new group
+        limactl shell --reconnect --tty=false --workdir / "$LIMA_VM_NAME" -- id
+        # Drop sudo rights
+        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo rm /etc/sudoers.d/90-cloud-init-users
     fi
 }
 
@@ -72,20 +87,14 @@ lima_status() {
 sync_code() {
     echo "Syncing code to Lima VM..."
 
-    local workspace="/workspace"
-
-    # Ensure workspace exists
-    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo mkdir -p "$workspace"
-    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c "sudo chown \$(id -u):\$(id -g) $workspace"
-
     # Sync files, excluding .venv to preserve cached dependencies
     tar --no-xattrs --exclude='.venv' --exclude='__pycache__' --exclude='.pytest_cache' -C "$PROJECT_ROOT" -cf - . | \
-        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- tar -C "$workspace" -xf -
+        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- tar -C "$LIMA_WORKSPACE" -xf -
 }
 
 sync_deps() {
     echo "Syncing dependencies..."
-    limactl shell --tty=false --workdir /workspace "$LIMA_VM_NAME" -- bash -c "export PATH=~/.local/bin:\$PATH && uv sync --all-extras"
+    limactl shell --tty=false --workdir "$LIMA_WORKSPACE" "$LIMA_VM_NAME" -- bash -c "export PATH=~/.local/bin:\$PATH && uv sync --all-extras"
 }
 
 sync_full() {
@@ -95,7 +104,7 @@ sync_full() {
 
 run_in_lima() {
     echo "Running in Lima VM: $*"
-    limactl shell --tty=false --workdir /workspace "$LIMA_VM_NAME" -- bash -c "export PATH=~/.local/bin:\$PATH && $*"
+    limactl shell --tty=false --workdir "$LIMA_WORKSPACE" "$LIMA_VM_NAME" -- bash -c "export PATH=~/.local/bin:\$PATH && $*"
 }
 
 # Parse command

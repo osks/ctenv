@@ -9,7 +9,7 @@ load helpers
     cd "$PROJECT1"
     run $CTENV --quiet run test -- pwd
     [ "$status" -eq 0 ]
-    assert_output "/repo"
+    assert_last_line "/repo"
 }
 
 @test "workspace: subdirectory mounted under project mount" {
@@ -17,12 +17,12 @@ load helpers
     cd "$PROJECT1"
     run $CTENV --quiet run --workspace ./src test -- pwd
     [ "$status" -eq 0 ]
-    assert_output "/repo/src"
+    assert_last_line "/repo/src"
 }
 
 @test "workspace: workdir follows workspace not project" {
     cd "$PROJECT1"
     run $CTENV --quiet run --workspace ./src test -- pwd
     [ "$status" -eq 0 ]
-    assert_output "/repo/src"
+    assert_last_line "/repo/src"
 }

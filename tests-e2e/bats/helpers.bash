@@ -26,3 +26,15 @@ assert_output() {
         return 1
     fi
 }
+
+# Assert last line of output equals expected (handles Docker pull noise)
+assert_last_line() {
+    local expected="$1"
+    local actual="${output//$'\r'/}"
+    local last_line="${actual##*$'\n'}"
+    if [[ "$last_line" != "$expected" ]]; then
+        echo "expected last line: '$expected'"
+        echo "actual last line:   '$last_line'"
+        return 1
+    fi
+}
