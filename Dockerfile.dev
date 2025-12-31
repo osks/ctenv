@@ -1,0 +1,63 @@
+FROM ubuntu:latest
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+### Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bats \
+    ca-certificates \
+    curl \
+    dnsutils \
+    git \
+    iptables \
+    jq \
+    less \
+    make \
+    openssh-client \
+    unzip \
+    wget \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
+### Install uv
+
+# Copy uv binary from official image (pinned version for reproducibility)
+COPY --from=ghcr.io/astral-sh/uv:0.9.18 /uv /uvx /bin/
+
+# Enable bytecode compilation for faster startup
+ENV UV_COMPILE_BYTECODE=1
+
+# Use copy link mode for faster installs
+ENV UV_LINK_MODE=copy
+
+
+### Install node via nvm
+# Need do specify exact version for the variable to work in NODE_PATH below
+ARG NODE_VERSION=v20.18.1
+ENV NVM_DIR=/opt/nvm
+RUN mkdir -p $NVM_DIR
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+RUN bash -c "source $NVM_DIR/nvm.sh && nvm install $NODE_VERSION && nvm use --delete-prefix $NODE_VERSION"
+ENV NODE_PATH=$NVM_DIR/versions/node/$NODE_VERSION/bin
+ENV PATH=$NODE_PATH:$PATH
+
+
+### Install Claude Code
+RUN npm install -g @anthropic-ai/claude-code
+
+
+#### Setup ctenv project
+#WORKDIR /workspace
+#
+## Install dependencies (cached layer when pyproject.toml/uv.lock unchanged)
+#COPY pyproject.toml uv.lock ./
+#RUN uv sync --locked --no-install-project --all-extras
+#
+## Copy project and install
+#COPY . .
+#RUN uv sync --locked --all-extras
+#
+#
+## Default command
+#CMD ["bash"]

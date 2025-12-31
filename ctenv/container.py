@@ -549,7 +549,7 @@ run_post_start_commands() {{
     # Use printf and read loop for reliable line-by-line processing
     printf '%s\\n' "$POST_START_COMMANDS" | while IFS= read -r cmd || [ -n "$cmd" ]; do
         [ -n "$cmd" ] || continue  # Skip empty commands
-        log_info "Executing post-start command: $cmd"
+        log_debug "Executing post-start command: $cmd"
         eval "$cmd"
     done
 }}
@@ -587,9 +587,10 @@ if ! getent passwd "$USER_NAME" >/dev/null 2>&1; then
     if [ "$IS_BUSYBOX" = "1" ]; then
         adduser -D -H -h "$USER_HOME" -s /bin/sh -u "$USER_ID" -G "$GROUP_NAME" "$USER_NAME"
     else
-        useradd --no-create-home --home-dir "$USER_HOME" \\
+        useradd_err=$(useradd --no-create-home --home-dir "$USER_HOME" \\
             --shell /bin/sh -u "$USER_ID" -g "$GROUP_ID" \\
-            -o -c "" "$USER_NAME"
+            -o -c "" "$USER_NAME" 2>&1) || true
+        [ "$VERBOSE" = "1" ] && [ -n "$useradd_err" ] && echo "$useradd_err" >&2
     fi
 else
     log_debug "User $USER_NAME already exists"
@@ -655,7 +656,7 @@ if [ "$TTY_MODE" = "1" ]; then
 fi
 
 # Execute command as user
-log_info "Running command as $USER_NAME: $COMMAND"
+log_debug "Running command as $USER_NAME: $COMMAND"
 # Uses shell to execute the command in to handle shell quoting issues in commands.
 # Need to specify interactive shell (-i) when TTY is available for PS1 to be passed.
 if [ "$TTY_MODE" = "1" ]; then

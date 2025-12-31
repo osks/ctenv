@@ -31,3 +31,31 @@ load helpers
     [ "$status" -eq 0 ]
     [[ "$output" == *"fixture"* ]]
 }
+
+@test "volume: multiple volumes with docker inspect verification" {
+    cd "$PROJECT1"
+    local cname=$(container_name "volumes")
+
+    # Start container with sleep to keep it running
+    $CTENV --quiet run --name "$cname" --volume ./src --volume ./scripts::ro test -- sleep 30 &
+    local ctenv_pid=$!
+    sleep 2  # Wait for container to start
+
+    # Inspect mounts
+    local mounts
+    mounts=$(docker inspect "$cname" --format '{{json .Mounts}}')
+
+    # Cleanup
+    docker rm -f "$cname" >/dev/null 2>&1 || true
+    wait $ctenv_pid 2>/dev/null || true
+
+    # Verify src volume exists and is read-write
+    local src_rw
+    src_rw=$(echo "$mounts" | jq -r '.[] | select(.Destination == "/repo/src") | .RW')
+    [ "$src_rw" = "true" ]
+
+    # Verify scripts volume exists and is read-only
+    local scripts_rw
+    scripts_rw=$(echo "$mounts" | jq -r '.[] | select(.Destination == "/repo/scripts") | .RW')
+    [ "$scripts_rw" = "false" ]
+}

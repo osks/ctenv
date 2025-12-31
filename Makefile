@@ -51,7 +51,11 @@ test-all: test test-e2e test-py-versions ## Run all tests
 
 .PHONY: test-e2e
 test-e2e: lima-setup ## Run e2e tests (in Lima VM)
-	@./scripts/lima.sh run make test-e2e-bats-no-vm test-e2e-python-no-vm
+	@./scripts/lima.sh run make test-e2e-python-no-vm test-e2e-bats-no-vm
+
+.PHONY: test-e2e-bats
+test-e2e-bats: lima-setup ## Run e2e tests (in Lima VM)
+	@./scripts/lima.sh run make test-e2e-bats-no-vm
 
 # Run e2e tests (on host, requires Docker)
 .PHONY: test-e2e-no-vm

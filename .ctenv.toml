@@ -1,0 +1,19 @@
+# ctenv configuration for this project
+
+[containers.dev]
+build = { dockerfile = "Dockerfile.dev" }
+volumes = ["~/.claude.json", "~/.claude/"]
+network = "bridge"
+run_args = ["--cap-add=NET_ADMIN"]
+post_start_commands = [
+    "iptables -A OUTPUT -d 10.0.0.0/8 -j DROP",
+    "iptables -A OUTPUT -d 172.16.0.0/12 -j DROP",
+    "iptables -A OUTPUT -d 192.168.0.0/16 -j DROP",
+]
+command = "bash"
+
+
+#[containers.claude]
+#build = { dockerfile = "Dockerfile.dev" }
+#volumes = ["~/.claude.json", "~/.claude/"]
+#command = "claude"

@@ -69,6 +69,7 @@ def cmd_run(args, command):
         # convert "NOTSET" string to NOTSET sentinel
         cli_args_dict = {
             "image": args.image,
+            "container_name": args.name,
             "command": command,
             # Mount path from -p syntax (e.g., -p .:/repo) - host is in RuntimeContext
             "project_mount": project_mount,
@@ -382,6 +383,7 @@ Note: Use '--' to separate commands from container/options.""",
     )
 
     run_parser.add_argument("--image", help="Container image to use")
+    run_parser.add_argument("--name", help="Container name")
     run_parser.add_argument(
         "--env",
         action="append",

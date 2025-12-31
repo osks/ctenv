@@ -11,6 +11,12 @@ CTENV="uv run --project $PROJECT_ROOT python -m ctenv"
 FIXTURES_DIR="$PROJECT_ROOT/tests-e2e/fixtures"
 PROJECT1="$FIXTURES_DIR/project1"
 
+# Generate unique container name for tests
+container_name() {
+    local suffix="${1:-test}"
+    echo "ctenv-test-${suffix}-$$"
+}
+
 # Strip carriage returns from output (Docker on macOS adds \r)
 trim_cr() {
     echo "${1//$'\r'/}"
