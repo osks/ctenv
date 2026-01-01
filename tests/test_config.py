@@ -636,6 +636,7 @@ env = ["NODE_ENV=development"]
         # Set other required attributes that cmd_run expects
         args.image = None
         args.workspace = None  # Add workspace attribute
+        args.subdirs = None  # Add subdirs attribute
         args.workdir = None  # Fixed from working_dir
         args.sudo = None
         args.network = None

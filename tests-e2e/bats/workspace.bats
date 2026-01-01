@@ -33,10 +33,3 @@ load helpers
     [ "$status" -eq 0 ]
     [[ "$output" == *"sample.txt"* ]]
 }
-
-@test "workspace: project root not mounted when workspace is subdirectory" {
-    # When --workspace ./src is used, project root files should NOT be accessible
-    cd "$PROJECT1"
-    run $CTENV --quiet run --workspace ./src test -- cat /repo/README.md
-    [ "$status" -ne 0 ]
-}

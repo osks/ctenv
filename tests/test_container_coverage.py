@@ -152,6 +152,7 @@ class TestContainerExecutionErrors:
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
         )
         spec.chown_paths = []  # No chown paths for this test
+        spec.subdirs = []  # No subdirs for this test
 
         # Mock the entrypoint script creation and path checks
         with (
@@ -205,6 +206,7 @@ class TestContainerExecutionErrors:
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
         )
         spec.chown_paths = []  # No chown paths for this test
+        spec.subdirs = []  # No subdirs for this test
 
         # Mock the entrypoint script creation and path checks
         with (
@@ -260,6 +262,7 @@ class TestContainerExecutionErrors:
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
         )
         spec.chown_paths = []  # No chown paths for this test
+        spec.subdirs = []  # No subdirs for this test
 
         # Mock the entrypoint script creation and path checks
         with (

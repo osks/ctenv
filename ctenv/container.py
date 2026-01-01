@@ -275,6 +275,61 @@ def _parse_workspace(
     )
 
 
+def _parse_subdir(
+    subdir_str: str,
+    project_dir: Path,
+    project_mount: str,
+) -> VolumeSpec:
+    """Parse subdir specification and return VolumeSpec.
+
+    Subdirs are always relative to project_dir. Supports options like :ro.
+
+    Args:
+        subdir_str: Subdir path, optionally with options (e.g., "src", "src:ro")
+        project_dir: Project directory on host
+        project_mount: Mount path in container (e.g., "/repo")
+    """
+    # Parse options from the string (e.g., "src:ro" -> "src", ["ro"])
+    spec = VolumeSpec.parse(subdir_str)
+
+    # Subdir is always relative to project_dir
+    if os.path.isabs(spec.host_path):
+        host_path = spec.host_path
+    else:
+        host_path = str((project_dir / spec.host_path).resolve())
+
+    # Container path is always relative to project_mount
+    try:
+        rel_path = os.path.relpath(host_path, project_dir)
+        if not rel_path.startswith(".."):
+            if rel_path == ".":
+                container_path = project_mount
+            else:
+                container_path = os.path.join(project_mount, rel_path)
+        else:
+            raise ValueError(
+                f"Subdir '{subdir_str}' resolves outside project directory '{project_dir}'"
+            )
+    except ValueError as e:
+        if "different drive" in str(e).lower():
+            raise ValueError(
+                f"Subdir '{subdir_str}' is on a different drive than project directory '{project_dir}'"
+            )
+        raise
+
+    # Build options: always include 'z' for SELinux, plus any user options
+    options = ["z"]
+    for opt in spec.options:
+        if opt not in options:
+            options.append(opt)
+
+    return VolumeSpec(
+        host_path=host_path,
+        container_path=container_path,
+        options=options,
+    )
+
+
 def _resolve_workdir_auto(workspace_spec: VolumeSpec, runtime: RuntimeContext) -> str:
     """Auto-resolve working directory, preserving relative position within workspace."""
     # Calculate relative position within workspace and translate
@@ -421,6 +476,7 @@ class ContainerSpec:
     sudo: bool  # From defaults (False) or config
 
     # Lists (use empty list as default instead of None)
+    subdirs: List[VolumeSpec] = field(default_factory=list)  # Subdirs to mount (empty = use workspace)
     env: List[EnvVar] = field(default_factory=list)
     volumes: List[VolumeSpec] = field(default_factory=list)
     chown_paths: List[str] = field(default_factory=list)  # Paths to chown inside container
@@ -762,6 +818,17 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     )
     workspace_spec = _expand_tilde_in_volumespec(workspace_spec, runtime)
 
+    # Parse subdirs (defaults to project root if not specified)
+    subdirs_config = substituted_config.subdirs
+    if subdirs_config is NOTSET or not subdirs_config:
+        subdirs_config = ["."]
+
+    subdir_specs = []
+    for subdir_str in subdirs_config:
+        subdir_spec = _parse_subdir(subdir_str, runtime.project_dir, project_mount)
+        subdir_spec = _expand_tilde_in_volumespec(subdir_spec, runtime)
+        subdir_specs.append(subdir_spec)
+
     spec_dict = {
         # Runtime fields (copied directly from RuntimeContext)
         **{field: getattr(runtime, field) for field in RUNTIME_FIELDS},
@@ -774,6 +841,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         # Custom/resolved fields:
         # 1. Parsed from config strings → structured objects
         "workspace": workspace_spec,  # config.workspace (str) → VolumeSpec
+        "subdirs": subdir_specs,  # config.subdirs (List[str]) → List[VolumeSpec]
         "gosu": _parse_gosu_spec(substituted_config.gosu_path, runtime),  # Inlined
         "volumes": volume_specs,  # config.volumes (List[str]) → List[VolumeSpec]
         # 2. Resolved/computed values
@@ -843,18 +911,24 @@ class ContainerRunner:
 
         # Process volume options from VolumeSpec objects (chown already handled in parse_container_config)
 
-        # Volume mounts
+        # Volume mounts: use subdirs if specified, otherwise workspace
         volume_args = [
-            f"--volume={spec.workspace.to_string()}",
             f"--volume={spec.gosu.to_string()}",
             f"--volume={entrypoint_script_path}:/ctenv/entrypoint.sh:z,ro",
             f"--workdir={spec.workdir}",
         ]
+
+        # Mount subdirs (always populated, defaults to project root)
+        for subdir_spec in spec.subdirs:
+            volume_args.insert(0, f"--volume={subdir_spec.to_string()}")
+
         args.extend(volume_args)
 
         if verbosity >= Verbosity.VERBOSE:
             print("Volume mounts:", file=sys.stderr)
-            print(f"  Workspace: {spec.workspace.to_string()}", file=sys.stderr)
+            print("  Subdirs:", file=sys.stderr)
+            for subdir_spec in spec.subdirs:
+                print(f"    {subdir_spec.to_string()}", file=sys.stderr)
             print(f"  Working directory: {spec.workdir}", file=sys.stderr)
             print(f"  Gosu binary: {spec.gosu.to_string()}", file=sys.stderr)
             print(

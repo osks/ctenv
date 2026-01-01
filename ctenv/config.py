@@ -340,6 +340,7 @@ class ContainerConfig:
     ulimits: Union[Dict[str, Any], NotSetType] = NOTSET
 
     # Lists (use NOTSET to distinguish from empty list)
+    subdirs: Union[List[str], NotSetType] = NOTSET
     env: Union[List[str], NotSetType] = NOTSET
     volumes: Union[List[str], NotSetType] = NOTSET
     post_start_commands: Union[List[str], NotSetType] = NOTSET
@@ -410,6 +411,7 @@ class ContainerConfig:
             container_name="ctenv-${project_dir|slug}-${pid}",
             sudo=False,
             # Lists with empty defaults
+            subdirs=[],  # Empty = mount project root; non-empty = mount only these
             env=[],
             volumes=[],
             post_start_commands=[],
