@@ -45,19 +45,3 @@ ENV PATH=$NODE_PATH:$PATH
 
 ### Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code
-
-
-#### Setup ctenv project
-#WORKDIR /workspace
-#
-## Install dependencies (cached layer when pyproject.toml/uv.lock unchanged)
-#COPY pyproject.toml uv.lock ./
-#RUN uv sync --locked --no-install-project --all-extras
-#
-## Copy project and install
-#COPY . .
-#RUN uv sync --locked --all-extras
-#
-#
-## Default command
-#CMD ["bash"]
