@@ -133,15 +133,15 @@ class TestProjectMountSyntax:
         assert ":/custom:z" in result.stdout
         assert "--workdir=/custom" in result.stdout
 
-    def test_workspace_subdirectory(self, workspace_with_config):
-        """Test workspace as subdirectory of project"""
+    def test_subpath_subdirectory(self, workspace_with_config):
+        """Test subpath limits mount to subdirectory of project"""
         result = run_ctenv(
             workspace_with_config,
-            ["--workspace", "src", "test", "--", "pwd"],
+            ["--subpath", "src", "test", "--", "pwd"],
         )
 
         assert result.returncode == 0
-        # Workspace is src subdir, mounted relative to project_mount
+        # Subpath mounts only src, relative to project_mount
         assert "src:/repo/src:z" in result.stdout
         assert "--workdir=/repo/src" in result.stdout
 
@@ -223,28 +223,25 @@ class TestConfigFileWorkspace:
 class TestErrorHandling:
     """Test error handling scenarios"""
 
-    def test_nonexistent_workspace(self, workspace_with_config):
-        """Test error when workspace doesn't exist"""
-        nonexistent_path = "/does/not/exist"
+    def test_nonexistent_subpath(self, workspace_with_config):
+        """Test error when subpath doesn't exist"""
         result = run_ctenv(
             workspace_with_config,
-            ["--workspace", nonexistent_path, "test", "--", "pwd"],
+            ["--subpath", "./nonexistent", "test", "--", "pwd"],
         )
 
         assert result.returncode != 0
         assert "does not exist" in result.stderr
 
-    def test_workspace_not_directory(self, workspace_with_config):
-        """Test error when workspace is not a directory"""
-        file_path = workspace_with_config / "file.txt"
-        file_path.write_text("not a directory")
-
+    def test_subpath_outside_project(self, workspace_with_config):
+        """Test error when subpath is outside project directory"""
         result = run_ctenv(
-            workspace_with_config, ["--workspace", str(file_path), "test", "--", "pwd"]
+            workspace_with_config,
+            ["--subpath", "/outside/project", "test", "--", "pwd"],
         )
 
         assert result.returncode != 0
-        assert "not a directory" in result.stderr
+        assert "resolves outside project" in result.stderr
 
 
 class TestRealWorldScenarios:
@@ -268,27 +265,20 @@ class TestRealWorldScenarios:
         # Verify that paths inside container are predictable
         assert "Working directory: /repo/src" in result.stderr
 
-    def test_multi_project_scenario(self, workspace_without_config):
-        """Test Use Case 3: Multiple small projects without .ctenv.toml"""
-        # Create structure: projects/web-scraper/
-        projects_dir = workspace_without_config / "projects"
-        web_scraper_dir = projects_dir / "web-scraper"
-        web_scraper_dir.mkdir(parents=True)
-
+    def test_multiple_subpaths_scenario(self, workspace_with_config):
+        """Test mounting multiple subpaths"""
         result = run_ctenv(
-            workspace_without_config,
+            workspace_with_config,
             [
-                "--workspace",
-                str(projects_dir),
-                "--workdir",
-                str(web_scraper_dir),
+                "--subpath", "src",
+                "--subpath", "tests",
+                "test",
                 "--",
                 "pwd",
             ],
-            cwd=web_scraper_dir,
         )
 
         assert result.returncode == 0
-        # Handle macOS path normalization (/private prefix)
-        assert ":z" in result.stdout and "projects" in result.stdout
-        assert "--workdir=" in result.stdout and "web-scraper" in result.stdout
+        # Both subpaths should be mounted
+        assert "src:/repo/src:z" in result.stdout
+        assert "tests:/repo/tests:z" in result.stdout

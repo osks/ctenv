@@ -73,8 +73,7 @@ def cmd_run(args, command):
             "command": command,
             # Mount path from -p syntax (e.g., -p .:/repo) - host is in RuntimeContext
             "project_mount": project_mount,
-            "workspace": args.workspace,
-            "subdirs": args.subdirs,
+            "subpaths": args.subpaths,
             "workdir": args.workdir,
             "env": args.env,
             "volumes": args.volumes,
@@ -161,9 +160,9 @@ def cmd_run(args, command):
         print(f"  Command: {spec.command}", file=sys.stderr)
         print(f"  User: {spec.user_name} (UID: {spec.user_id})", file=sys.stderr)
         print(f"  Group: {spec.group_name} (GID: {spec.group_id})", file=sys.stderr)
-        print("  Subdirs:", file=sys.stderr)
-        for subdir in spec.subdirs:
-            print(f"    {subdir.host_path} -> {subdir.container_path}", file=sys.stderr)
+        print("  Subpaths:", file=sys.stderr)
+        for subpath in spec.subpaths:
+            print(f"    {subpath.host_path} -> {subpath.container_path}", file=sys.stderr)
         print(f"  Working directory: {spec.workdir}", file=sys.stderr)
         print(f"  Container name: {spec.container_name}", file=sys.stderr)
         print(f"  Environment variables: {spec.env}", file=sys.stderr)
@@ -406,16 +405,11 @@ Note: Use '--' to separate commands from container/options.""",
         "--network", help="Enable container networking (default: disabled for security)"
     )
     run_parser.add_argument(
-        "-w",
-        "--workspace",
-        help="Workspace to mount (supports volume syntax: /path, /host:/container, auto:/repo)",
-    )
-    run_parser.add_argument(
         "-s",
-        "--subdir",
+        "--subpath",
         action="append",
-        dest="subdirs",
-        help="Limit mount to subdirectory (repeatable; default: entire project)",
+        dest="subpaths",
+        help="Limit mount to subpath (repeatable; default: entire project)",
     )
     run_parser.add_argument(
         "--workdir",

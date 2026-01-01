@@ -17,9 +17,9 @@ load helpers
     [ "$status" -eq 2 ]  # argparse returns 2 for invalid choices
 }
 
-@test "error: workspace path does not exist" {
+@test "error: subpath does not exist" {
     cd "$PROJECT1"
-    run $CTENV run --workspace /does/not/exist test -- pwd
+    run $CTENV run --subpath ./nonexistent_dir test -- pwd
     [ "$status" -ne 0 ]
     [[ "$output" == *"does not exist"* ]] || [[ "$stderr" == *"does not exist"* ]]
 }

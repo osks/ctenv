@@ -44,3 +44,28 @@ assert_last_line() {
         return 1
     fi
 }
+
+# Mount assertion helpers (take full docker inspect JSON output)
+assert_mount_rw() {
+    local inspect="$1" dest="$2"
+    local rw=$(echo "$inspect" | jq -r ".[0].Mounts[] | select(.Destination == \"$dest\") | .RW")
+    [ "$rw" = "true" ] || { echo "Expected $dest to be read-write, got RW=$rw"; return 1; }
+}
+
+assert_mount_ro() {
+    local inspect="$1" dest="$2"
+    local rw=$(echo "$inspect" | jq -r ".[0].Mounts[] | select(.Destination == \"$dest\") | .RW")
+    [ "$rw" = "false" ] || { echo "Expected $dest to be read-only, got RW=$rw"; return 1; }
+}
+
+assert_mount_exists() {
+    local inspect="$1" dest="$2"
+    echo "$inspect" | jq -e ".[0].Mounts[] | select(.Destination == \"$dest\")" >/dev/null \
+        || { echo "Expected mount at $dest to exist"; return 1; }
+}
+
+assert_mount_not_exists() {
+    local inspect="$1" dest="$2"
+    echo "$inspect" | jq -e ".[0].Mounts[] | select(.Destination == \"$dest\")" >/dev/null \
+        && { echo "Expected no mount at $dest"; return 1; } || true
+}

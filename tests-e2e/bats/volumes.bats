@@ -41,21 +41,10 @@ load helpers
     local ctenv_pid=$!
     sleep 2  # Wait for container to start
 
-    # Inspect mounts
-    local mounts
-    mounts=$(docker inspect "$cname" --format '{{json .Mounts}}')
-
-    # Cleanup
+    local inspect=$(docker inspect "$cname")
     docker rm -f "$cname" >/dev/null 2>&1 || true
     wait $ctenv_pid 2>/dev/null || true
 
-    # Verify src volume exists and is read-write
-    local src_rw
-    src_rw=$(echo "$mounts" | jq -r '.[] | select(.Destination == "/repo/src") | .RW')
-    [ "$src_rw" = "true" ]
-
-    # Verify scripts volume exists and is read-only
-    local scripts_rw
-    scripts_rw=$(echo "$mounts" | jq -r '.[] | select(.Destination == "/repo/scripts") | .RW')
-    [ "$scripts_rw" = "false" ]
+    assert_mount_rw "$inspect" "/repo/src"
+    assert_mount_ro "$inspect" "/repo/scripts"
 }

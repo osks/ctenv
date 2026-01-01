@@ -636,7 +636,7 @@ env = ["NODE_ENV=development"]
         # Set other required attributes that cmd_run expects
         args.image = None
         args.workspace = None  # Add workspace attribute
-        args.subdirs = None  # Add subdirs attribute
+        args.subpaths = None  # Add subpaths attribute
         args.workdir = None  # Fixed from working_dir
         args.sudo = None
         args.network = None
@@ -711,7 +711,7 @@ def test_get_builtin_defaults():
     assert (
         defaults["container_name"] == "ctenv-${project_dir|slug}-${pid}"
     )  # Updated default with PID
-    assert defaults["workspace"] == "${project_dir}"  # Default to project directory
+    assert defaults["subpaths"] == []  # Empty = mount project root
     assert defaults["workdir"] == "auto"  # Updated workdir field
     assert defaults["env"] == []
     assert defaults["volumes"] == []
@@ -1034,22 +1034,15 @@ def test_resolve_relative_paths_with_notset_string():
     # be treated as literal path values
     config = ContainerConfig(
         image="alpine",
-        workspace="NOTSET",  # Bad: string instead of NOTSET object
         volumes=NOTSET,  # Good: NOTSET object
         gosu_path="./bin/gosu",
     )
 
     resolved_config = resolve_relative_paths_in_container_config(config, Path("/tmp"))
 
-    # NOTSET string gets processed as literal volume spec
-    assert resolved_config.workspace == "NOTSET"  # Becomes invalid volume spec (but symmetric)
-
     # NOTSET object is left unchanged
     assert resolved_config.volumes is NOTSET
 
     # Regular paths are resolved normally
     assert str(resolved_config.gosu_path).endswith("/tmp/bin/gosu")
-
-    # Original config should be unchanged (immutable)
-    assert config.workspace == "NOTSET"
     assert config.gosu_path == "./bin/gosu"

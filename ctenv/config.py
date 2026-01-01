@@ -327,7 +327,6 @@ class ContainerConfig:
     project_mount: Union[str, NotSetType] = (
         NOTSET  # Where project mounts in container (e.g., ":/repo")
     )
-    workspace: Union[str, NotSetType] = NOTSET
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
     container_name: Union[str, NotSetType] = NOTSET
@@ -340,7 +339,7 @@ class ContainerConfig:
     ulimits: Union[Dict[str, Any], NotSetType] = NOTSET
 
     # Lists (use NOTSET to distinguish from empty list)
-    subdirs: Union[List[str], NotSetType] = NOTSET
+    subpaths: Union[List[str], NotSetType] = NOTSET
     env: Union[List[str], NotSetType] = NOTSET
     volumes: Union[List[str], NotSetType] = NOTSET
     post_start_commands: Union[List[str], NotSetType] = NOTSET
@@ -400,7 +399,6 @@ class ContainerConfig:
         """
         return cls(
             # Auto-detect behaviors
-            workspace="${project_dir}",  # Default to project directory
             workdir="auto",  # Preserve relative position
             gosu_path="auto",  # Auto-detect bundled binary
             tty="auto",  # Auto-detect from stdin
@@ -411,7 +409,7 @@ class ContainerConfig:
             container_name="ctenv-${project_dir|slug}-${pid}",
             sudo=False,
             # Lists with empty defaults
-            subdirs=[],  # Empty = mount project root; non-empty = mount only these
+            subpaths=[],  # Empty = mount project root; non-empty = mount only these
             env=[],
             volumes=[],
             post_start_commands=[],
@@ -432,9 +430,6 @@ def resolve_relative_paths_in_container_config(
     updates = {}
 
     # Only update fields that need path resolution
-    if config.workspace is not NOTSET:
-        updates["workspace"] = resolve_relative_volume_spec(config.workspace, base_dir)
-
     if config.volumes is not NOTSET:
         updates["volumes"] = [resolve_relative_volume_spec(vol, base_dir) for vol in config.volumes]
 

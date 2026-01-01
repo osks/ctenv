@@ -49,9 +49,10 @@ def test_config_user_detection():
     assert resolved_spec.group_id == os.getgid()
     assert resolved_spec.image == "ubuntu:latest"
 
-    # Check workspace is properly resolved
-    assert resolved_spec.workspace.host_path  # Should be resolved from "auto"
-    assert resolved_spec.workspace.container_path  # Should have container path
+    # Check subpaths is properly resolved (defaults to project root)
+    assert len(resolved_spec.subpaths) > 0
+    assert resolved_spec.subpaths[0].host_path  # Should be resolved
+    assert resolved_spec.subpaths[0].container_path  # Should have container path
 
 
 def test_config_with_mock_runtime():
@@ -92,9 +93,10 @@ def test_config_with_mock_runtime():
         assert resolved_spec.group_id == 1000
         assert resolved_spec.user_home == "/home/testuser"
 
-        # Check workspace is resolved
-        assert resolved_spec.workspace.host_path  # Should be resolved from "auto"
-        assert resolved_spec.workspace.container_path
+        # Check subpaths is resolved (defaults to project root)
+        assert len(resolved_spec.subpaths) > 0
+        assert resolved_spec.subpaths[0].host_path
+        assert resolved_spec.subpaths[0].container_path
 
 
 def test_container_name_generation():

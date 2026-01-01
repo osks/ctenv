@@ -147,12 +147,11 @@ class TestContainerExecutionErrors:
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
         # Required VolumeSpec attributes
-        spec.workspace = VolumeSpec(host_path="/project", container_path="/workspace", options=[])
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
         )
         spec.chown_paths = []  # No chown paths for this test
-        spec.subdirs = []  # No subdirs for this test
+        spec.subpaths = [VolumeSpec(host_path="/project", container_path="/workspace", options=[])]
 
         # Mock the entrypoint script creation and path checks
         with (
@@ -163,9 +162,9 @@ class TestContainerExecutionErrors:
             patch("shutil.which") as mock_which,
         ):
             mock_build_script.return_value = "#!/bin/bash\necho test"
-            mock_exists.return_value = True  # gosu and workspace exist
+            mock_exists.return_value = True  # gosu and subpaths exist
             mock_is_file.return_value = True  # gosu is a file
-            mock_is_dir.return_value = True  # workspace is a directory
+            mock_is_dir.return_value = True  # subpaths verification
             mock_which.return_value = "/usr/bin/docker"  # docker exists
 
             with pytest.raises(RuntimeError, match="Container execution failed"):
@@ -201,12 +200,11 @@ class TestContainerExecutionErrors:
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
         # Required VolumeSpec attributes
-        spec.workspace = VolumeSpec(host_path="/project", container_path="/workspace", options=[])
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
         )
         spec.chown_paths = []  # No chown paths for this test
-        spec.subdirs = []  # No subdirs for this test
+        spec.subpaths = [VolumeSpec(host_path="/project", container_path="/workspace", options=[])]
 
         # Mock the entrypoint script creation and path checks
         with (
@@ -217,9 +215,9 @@ class TestContainerExecutionErrors:
             patch("shutil.which") as mock_which,
         ):
             mock_build_script.return_value = "#!/bin/bash\necho test"
-            mock_exists.return_value = True  # gosu and workspace exist
+            mock_exists.return_value = True  # gosu and subpaths exist
             mock_is_file.return_value = True  # gosu is a file
-            mock_is_dir.return_value = True  # workspace is a directory
+            mock_is_dir.return_value = True  # subpaths verification
             mock_which.return_value = "/usr/bin/docker"  # docker exists
 
             # In dry-run mode, should return successful result without calling subprocess
@@ -257,12 +255,11 @@ class TestContainerExecutionErrors:
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
         # Required VolumeSpec attributes
-        spec.workspace = VolumeSpec(host_path="/project", container_path="/workspace", options=[])
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
         )
         spec.chown_paths = []  # No chown paths for this test
-        spec.subdirs = []  # No subdirs for this test
+        spec.subpaths = [VolumeSpec(host_path="/project", container_path="/workspace", options=[])]
 
         # Mock the entrypoint script creation and path checks
         with (
@@ -273,9 +270,9 @@ class TestContainerExecutionErrors:
             patch("shutil.which") as mock_which,
         ):
             mock_build_script.return_value = "#!/bin/bash\necho test"
-            mock_exists.return_value = True  # gosu and workspace exist
+            mock_exists.return_value = True  # gosu and subpaths exist
             mock_is_file.return_value = True  # gosu is a file
-            mock_is_dir.return_value = True  # workspace is a directory
+            mock_is_dir.return_value = True  # subpaths verification
             mock_which.return_value = "/usr/bin/docker"  # docker exists
 
             # Capture stderr to verify verbose output

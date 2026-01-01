@@ -408,7 +408,7 @@ build = { dockerfile = "Dockerfile", context = ".", tag = "dev:latest" }
             for attr in [
                 "image",
                 "workspace",
-                "subdirs",
+                "subpaths",
                 "workdir",
                 "env",
                 "volumes",
@@ -819,7 +819,7 @@ CMD ["bash"]"""
             for attr in [
                 "image",
                 "workspace",
-                "subdirs",
+                "subpaths",
                 "workdir",
                 "env",
                 "volumes",

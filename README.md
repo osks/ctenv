@@ -271,18 +271,34 @@ This setup ensures the build environment matches the user's environment while sh
   as on the host. See also _Workspace_.
 
 
-- Workspace (`-w` / `--workspace`)
+- Project directory (`-p` / `--project-dir`)
   
-  Main directory to mount and use. Must be a subdirectory of the
-  _project directory_. Default is the _project directory_.
+  Specifies the _project directory_, the root of your project. Generally
+  your git repo. Define the project by placing a `.ctenv.toml` there,
+  ctenv will look for it automatically.
   
-  Specify a subdirectory to limit which part of a project that gets
-  mounted. (If multiple directories are needed, use `--volume` for the
-  additional directories.)
+  The _project directory_ will be mounted into the container. The
+  `--subpath` option can be used to only mount a subset of the _project
+  directory_.
+
+
+- Project mount (`-m` / `--project-mount`)
   
-  Will be mounted under the _project mount_. Example: If CWD
-  is `/project` and ctenv is run with `-p .:/repo -w ./foo`, then
-  `/project/foo` will be mounted at `/repo/foo`.
+  Specifies where in the container the _project directory_ should be
+  mounted. For example to always mount at a fixed path (example: `-m
+  /repo`). Supports volume option (example:
+  `-m /project/mount:ro`). Default is to mount at the same path as on the
+  host.
+
+
+- Subpath (`-s` / `--subpath`) (multiple)
+  
+  Specifies which subpaths (files or directories) to the _project
+  directory_ that should be mounted. This overrides the mounting of
+  the _project directory_ (which won't be mounted if any subpath is
+  specified) and allows for limiting what gets mounted.  Must be a
+  subpath of the _project directory_. Supports volume option (example:
+  `-s ./scripts:ro`).
 
 
 - Volume (`-v` / `--volume`)
@@ -294,14 +310,10 @@ This setup ensures the build environment matches the user's environment while sh
   the same path as the host directory.
   
   Subpaths of the _project directory_ will be mounted relative to the
-  _project mount_. This is mainly useful when a specific
-  _Workspace_ has been specified, as it allows one to easily mount a
-  subset of the paths of the project and have them all be mounted at
-  the same paths under the _project mount_ as if the entire
-  _project directory_ was mounted. Example: If CWD is `/project` and
-  ctenv is run with `-p .:/repo -w ./foo`, then specifying `-v ./bar`
-  will mount `/project/bar` at `/repo/bar` (and `/project/foo` at
-  `/repo/foo` for the _workspace_).
+  _project mount_. Example: If CWD is `/project` and ctenv is run with
+  `-p .:/repo -w ./foo`, then specifying `-v ./bar` will mount
+  `/project/bar` at `/repo/bar` (and `/project/foo` at `/repo/foo` for
+  the _workspace_).
 
 
 
