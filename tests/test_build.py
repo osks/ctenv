@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from ctenv.config import (
     BuildConfig,
     ContainerConfig,
+    ContainerRuntime,
     RuntimeContext,
     Verbosity,
     NOTSET,
@@ -276,7 +277,7 @@ class TestBuildContainerImage:
             context=".",
             tag="test:latest",
             args={},
-            runtime="podman",
+            runtime=ContainerRuntime.PODMAN_ROOTLESS,
         )
 
         runtime = Mock()

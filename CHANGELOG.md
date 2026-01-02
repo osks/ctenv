@@ -6,12 +6,14 @@
 
 ### Added
 
+- Support for Podman containers (rootless)
+
+- `--subpath`/`-s` replaces `--workspace`. Can be specified multiple
+  times to only mount some of the paths in the project directory.
+
 - `-vv` for very verbose (required for printing the entrypoit script).
 
 ### Changed
-
-- `--project` is the new name for `--project-dir` and it supports
-  volume syntax for specifying where it should be mounted.
 
 - Relative paths in config files (`.ctenv.toml`) are now relative to
   the file, not to the project. This change only affects
@@ -21,8 +23,6 @@
 - Container configs are no longer merged. A container defined in a
   project `.ctenv.toml` will entirely shadow one defined in
   `HOME/.ctenv.toml`.
-
-- `-w` is now a short parameter for `--workspace`.
 
 
 ## v0.7

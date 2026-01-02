@@ -18,6 +18,7 @@ For isolating effects of ctenv tests that use docker/podman.
 Commands:
     run <cmd>   Run a command in the VM
     setup       Create/start Lima VM
+    init        Initialize workspace in VM (run if setup was interrupted)
     status      Show VM status
     sync        Sync files to VM
     down        Stop and delete Lima VM
@@ -33,7 +34,38 @@ Examples:
 EOF
 }
 
-FRESH_VM=false
+DID_INIT=false
+
+needs_init() {
+    # Check if workspace exists and is owned by user
+    if ! limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- test -d "$LIMA_WORKSPACE" 2>/dev/null; then
+        return 0  # needs init
+    fi
+    if ! limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- test -O "$LIMA_WORKSPACE" 2>/dev/null; then
+        return 0  # needs init (not owned by user)
+    fi
+    return 1  # init done
+}
+
+lima_init() {
+    DID_INIT=true
+    echo "Initializing VM workspace..."
+    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo mkdir -p "$LIMA_WORKSPACE"
+    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c "sudo chown \$(id -u):\$(id -g) $LIMA_WORKSPACE"
+    # Add user to docker group for docker.sock access
+    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c 'sudo usermod -aG docker $(whoami)' || true
+    # Configure subuid/subgid for podman rootless
+    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c '
+        USER=$(whoami)
+        grep -q "^${USER}:" /etc/subuid 2>/dev/null || sudo usermod --add-subuids 100000-165535 "$USER"
+        grep -q "^${USER}:" /etc/subgid 2>/dev/null || sudo usermod --add-subgids 100000-165535 "$USER"
+    '
+    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- podman system migrate
+    # Reconnect to pick up new group
+    limactl shell --reconnect --tty=false --workdir / "$LIMA_VM_NAME" -- id
+    # Drop sudo rights
+    limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo rm -f /etc/sudoers.d/90-cloud-init-users
+}
 
 lima_setup() {
     if limactl list --quiet 2>/dev/null | grep -q "^${LIMA_VM_NAME}$"; then
@@ -50,19 +82,10 @@ lima_setup() {
             vm_type_flag="--vm-type=vz"
         fi
         limactl start --plain --tty=false $vm_type_flag --name="$LIMA_VM_NAME" "$LIMA_CONFIG"
-        FRESH_VM=true
     fi
 
-    if [[ "$FRESH_VM" == true ]]; then
-        # Ensure workspace exists
-        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo mkdir -p "$LIMA_WORKSPACE"
-        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c "sudo chown \$(id -u):\$(id -g) $LIMA_WORKSPACE"
-        # Add user to docker group for docker.sock access
-        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- bash -c 'sudo usermod -aG docker $(whoami)'
-        # Reconnect to pick up new group
-        limactl shell --reconnect --tty=false --workdir / "$LIMA_VM_NAME" -- id
-        # Drop sudo rights
-        limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- sudo rm /etc/sudoers.d/90-cloud-init-users
+    if needs_init; then
+        lima_init
     fi
 }
 
@@ -126,6 +149,9 @@ case $1 in
     status)
         lima_status
         ;;
+    init)
+        lima_init
+        ;;
     sync)
         lima_setup
         sync_full
@@ -144,7 +170,7 @@ case $1 in
             exit 1
         fi
         lima_setup
-        if [[ "$FRESH_VM" == true ]]; then
+        if [[ "$DID_INIT" == true ]]; then
             sync_full
         else
             sync_code

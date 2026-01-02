@@ -13,9 +13,18 @@ import re
 import shlex
 import sys
 from dataclasses import dataclass, field, asdict, replace, fields
-from enum import IntEnum
+from enum import Enum, IntEnum
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union, TYPE_CHECKING
+
+try:
+    import tomllib
+except ImportError:
+    # For python < 3.11
+    import tomli as tomllib
+
+if TYPE_CHECKING:
+    from typing_extensions import TypeAlias
 
 
 class Verbosity(IntEnum):
@@ -27,14 +36,30 @@ class Verbosity(IntEnum):
     VERY_VERBOSE = 2  # -vv: full debug output
 
 
-try:
-    import tomllib
-except ImportError:
-    # For python < 3.11
-    import tomli as tomllib
+class ContainerRuntime(Enum):
+    """Container runtime and mode combinations.
 
-if TYPE_CHECKING:
-    from typing_extensions import TypeAlias
+    Each value represents a specific runtime + mode combination that determines
+    how ctenv handles user identity preservation:
+
+    - DOCKER_ROOTFUL: Docker with root-based user creation (current default)
+    - PODMAN_ROOTLESS: Podman with --userns=keep-id (simplified entrypoint)
+    """
+
+    DOCKER_ROOTFUL = "docker"
+    PODMAN_ROOTLESS = "podman"
+    # Future:
+    # PODMAN_ROOTFUL = "podman-rootful"
+    # DOCKER_ROOTLESS = "docker-rootless"
+
+    @property
+    def command(self) -> str:
+        """Return the container runtime command to execute."""
+        _RUNTIME_COMMANDS = {
+            ContainerRuntime.DOCKER_ROOTFUL: "docker",
+            ContainerRuntime.PODMAN_ROOTLESS: "podman",
+        }
+        return _RUNTIME_COMMANDS[self]
 
 
 # Sentinel object for "not configured" values
@@ -336,7 +361,7 @@ class ContainerConfig:
     # Network and platform settings
     network: Union[str, NotSetType] = NOTSET
     platform: Union[str, NotSetType] = NOTSET
-    runtime: Union[str, NotSetType] = NOTSET  # Container runtime: docker or podman
+    runtime: Union[str, NotSetType] = NOTSET  # "docker" or "podman"
     ulimits: Union[Dict[str, Any], NotSetType] = NOTSET
 
     # Lists (use NOTSET to distinguish from empty list)

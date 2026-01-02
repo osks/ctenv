@@ -10,6 +10,7 @@ This module handles all container-related functionality including:
 import hashlib
 import os
 import platform
+import pwd
 import shlex
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ from .version import __version__
 from .config import (
     NOTSET,
     NotSetType,
+    ContainerRuntime,
     EnvVar,
     VolumeSpec,
     RuntimeContext,
@@ -108,6 +110,109 @@ def calculate_sha256(file_path: Path) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             sha256_hash.update(chunk)
     return sha256_hash.hexdigest()
+
+
+def _find_next_subid_range(count: int = 65536) -> tuple[int, int]:
+    """Find the next available subordinate UID/GID range.
+
+    Parses /etc/subuid and /etc/subgid to find allocated ranges,
+    then returns a free range starting after the highest used ID.
+
+    Args:
+        count: Number of IDs to allocate (default 65536)
+
+    Returns:
+        Tuple of (start, end) for the suggested range
+    """
+    max_end = 100000  # Default start if no entries exist
+
+    for subid_file in ["/etc/subuid", "/etc/subgid"]:
+        try:
+            with open(subid_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split(":")
+                    if len(parts) >= 3:
+                        try:
+                            start = int(parts[1])
+                            length = int(parts[2])
+                            end = start + length
+                            if end > max_end:
+                                max_end = end
+                        except ValueError:
+                            continue
+        except (FileNotFoundError, PermissionError):
+            pass
+
+    return max_end, max_end + count - 1
+
+
+def check_podman_rootless_ready() -> tuple[bool, str | None]:
+    """Check if Podman rootless mode is properly configured.
+
+    Podman rootless requires subordinate UID/GID ranges to be configured
+    in /etc/subuid and /etc/subgid for the current user.
+
+    Returns:
+        Tuple of (is_ready, error_message). If ready, error_message is None.
+    """
+
+    try:
+        username = pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        return False, "Could not determine current username"
+
+    subuid_ok = False
+    subgid_ok = False
+
+    # Check /etc/subuid
+    try:
+        with open("/etc/subuid", "r") as f:
+            for line in f:
+                if line.startswith(f"{username}:"):
+                    subuid_ok = True
+                    break
+    except FileNotFoundError:
+        pass
+    except PermissionError:
+        # If we can't read it, assume it might be configured
+        subuid_ok = True
+
+    # Check /etc/subgid
+    try:
+        with open("/etc/subgid", "r") as f:
+            for line in f:
+                if line.startswith(f"{username}:"):
+                    subgid_ok = True
+                    break
+    except FileNotFoundError:
+        pass
+    except PermissionError:
+        # If we can't read it, assume it might be configured
+        subgid_ok = True
+
+    if subuid_ok and subgid_ok:
+        return True, None
+
+    missing = []
+    if not subuid_ok:
+        missing.append("/etc/subuid")
+    if not subgid_ok:
+        missing.append("/etc/subgid")
+
+    # Find a free range to suggest
+    range_start, range_end = _find_next_subid_range()
+
+    error_msg = (
+        f"Podman rootless requires subordinate UID/GID configuration.\n"
+        f"Missing entries for user '{username}' in: {', '.join(missing)}\n"
+        f"Run: \n"
+        f"  sudo usermod --add-subuids {range_start}-{range_end} --add-subgids {range_start}-{range_end} {username}\n"
+        f"  podman system migrate"
+    )
+    return False, error_msg
 
 
 # =============================================================================
@@ -409,7 +514,7 @@ class ContainerSpec:
     container_name: str  # Always generated if not specified
     tty: bool  # From defaults (stdin.isatty()) or config
     sudo: bool  # From defaults (False) or config
-    runtime: str = "docker"  # Container runtime: docker or podman
+    runtime: ContainerRuntime = ContainerRuntime.DOCKER_ROOTFUL
 
     # Lists (use empty list as default instead of None)
     subpaths: List[VolumeSpec] = field(default_factory=list)  # Subpaths to mount (defaults to project root)
@@ -509,14 +614,14 @@ fix_chown_volumes() {{
         log_debug "No chown-enabled volumes configured"
         return
     fi
-    
+
     # Use POSIX-compatible approach to split on delimiter
     # Save original IFS and use delimiter approach for reliability
     OLD_IFS="$IFS"
     IFS='|||CTENV_DELIMITER|||'
     set -- $CHOWN_PATHS
     IFS="$OLD_IFS"
-    
+
     # Process each path
     for path in "$@"; do
         [ -n "$path" ] || continue  # Skip empty paths
@@ -530,14 +635,14 @@ fix_chown_volumes() {{
     done
 }}
 
-# Function to execute post-start commands  
+# Function to execute post-start commands
 run_post_start_commands() {{
     log_debug "Executing post-start commands"
     if [ -z "$POST_START_COMMANDS" ]; then
         log_debug "No post-start commands to execute"
         return
     fi
-    
+
     # Use printf and read loop for reliable line-by-line processing
     printf '%s\\n' "$POST_START_COMMANDS" | while IFS= read -r cmd || [ -n "$cmd" ]; do
         [ -n "$cmd" ] || continue  # Skip empty commands
@@ -612,7 +717,7 @@ run_post_start_commands
 # Setup sudo if requested
 if [ "$ADD_SUDO" = "1" ]; then
     log_debug "Setting up sudo access for $USER_NAME"
-    
+
     # Check if sudo is already installed
     if ! command -v sudo >/dev/null 2>&1; then
         log_debug "sudo not found, installing..."
@@ -641,7 +746,7 @@ fi
 
 # Set environment
 log_debug "Setting up shell environment"
-# PS1 environment variables are filtered out since this entrypoint script runs as 
+# PS1 environment variables are filtered out since this entrypoint script runs as
 # non-interactive /bin/sh i the shebang, so we must explicitly set PS1 here for interactive sessions.
 if [ "$TTY_MODE" = "1" ]; then
     export PS1="$PS1_VALUE"
@@ -649,7 +754,7 @@ fi
 
 # Execute command as user
 log_debug "Running command as $USER_NAME: $COMMAND"
-# Uses shell to execute the command in to handle shell quoting issues in commands.
+# Uses shell to execute the command to handle shell quoting issues in commands.
 # Need to specify interactive shell (-i) when TTY is available for PS1 to be passed.
 if [ "$TTY_MODE" = "1" ]; then
     INTERACTIVE="-i"
@@ -712,6 +817,11 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
             f"Unsupported platform '{substituted_config.platform}'. Supported platforms: linux/amd64, linux/arm64"
         )
 
+    # Convert runtime string to enum (needed early for volume processing)
+    container_runtime = ContainerRuntime.DOCKER_ROOTFUL  # default
+    if substituted_config.runtime is not NOTSET:
+        container_runtime = ContainerRuntime(substituted_config.runtime)
+
     # Process volumes (can't inline due to complexity and chown_paths extraction)
     volume_specs = []
     chown_paths = []
@@ -720,11 +830,16 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         vol_spec = _parse_volume(vol_str, runtime.project_dir, project_mount)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
 
-        # Check for chown option and extract it
+        # Check for chown option and handle it
         if "chown" in vol_spec.options:
-            chown_paths.append(vol_spec.container_path)
-            # Remove chown from options as it's not a Docker option
+            # Remove chown from options
             vol_spec.options = [opt for opt in vol_spec.options if opt != "chown"]
+            if container_runtime == ContainerRuntime.PODMAN_ROOTLESS:
+                # Podman: use native :U option for ownership mapping
+                vol_spec.options.append("U")
+            else:
+                # Docker: handle in entrypoint script
+                chown_paths.append(vol_spec.container_path)
 
         # Add 'z' option if not already present (for SELinux)
         if "z" not in vol_spec.options:
@@ -739,7 +854,6 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "command",
         "container_name",
         "sudo",
-        "runtime",
         "post_start_commands",
         "run_args",
         "network",
@@ -775,6 +889,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "subpaths": subpath_specs,  # config.subpaths (List[str]) → List[VolumeSpec]
         "gosu": _parse_gosu_spec(substituted_config.gosu_path, runtime),  # Inlined
         "volumes": volume_specs,  # config.volumes (List[str]) → List[VolumeSpec]
+        "runtime": container_runtime,  # config.runtime (str) → ContainerRuntime enum
         # 2. Resolved/computed values
         "workdir": _resolve_workdir(substituted_config.workdir, primary_subpath, runtime),
         "tty": _resolve_tty(substituted_config.tty, runtime),  # Inlined
@@ -817,14 +932,20 @@ class ContainerRunner:
             List of Docker run command arguments
         """
         if verbosity >= Verbosity.VERBOSE:
-            print(f"Building {spec.runtime} run arguments", file=sys.stderr)
+            print(f"Building {spec.runtime.command} run arguments", file=sys.stderr)
 
         args = [
-            spec.runtime,
+            spec.runtime.command,
             "run",
             "--rm",
             "--init",
         ]
+
+        # Add --userns=keep-id and --user 0 for podman-rootless mode
+        # --user 0 allows us to run as root inside the user namespace, which means
+        # we can still create users, use gosu, and chown - just like rootful mode
+        if spec.runtime == ContainerRuntime.PODMAN_ROOTLESS:
+            args.extend(["--userns=keep-id", "--user", "0"])
 
         # Add platform flag only if specified
         if spec.platform:
@@ -958,11 +1079,19 @@ class ContainerRunner:
             print("Starting container execution", file=sys.stderr)
 
         # Check if container runtime is available
-        runtime_path = shutil.which(spec.runtime)
+        runtime_path = shutil.which(spec.runtime.command)
         if not runtime_path:
-            raise FileNotFoundError(f"{spec.runtime} not found in PATH. Please install {spec.runtime}.")
+            raise FileNotFoundError(f"{spec.runtime.command} not found in PATH. Please install {spec.runtime.command}.")
         if verbosity >= Verbosity.VERBOSE:
-            print(f"Found {spec.runtime} at: {runtime_path}", file=sys.stderr)
+            print(f"Found {spec.runtime.command} at: {runtime_path}", file=sys.stderr)
+
+        # Check Podman rootless configuration
+        if spec.runtime == ContainerRuntime.PODMAN_ROOTLESS:
+            ready, error_msg = check_podman_rootless_ready()
+            if not ready:
+                raise RuntimeError(error_msg)
+            if verbosity >= Verbosity.VERBOSE:
+                print("Podman rootless configuration verified", file=sys.stderr)
 
         # Verify gosu binary exists
         if verbosity >= Verbosity.VERBOSE:

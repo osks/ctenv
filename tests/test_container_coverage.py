@@ -9,9 +9,10 @@ from ctenv.container import (
     get_platform_specific_gosu_name,
     is_installed_package,
     expand_tilde_in_path,
+    check_podman_rootless_ready,
     ContainerRunner,
 )
-from ctenv.config import VolumeSpec, Verbosity
+from ctenv.config import VolumeSpec, Verbosity, ContainerRuntime
 
 
 class TestPlatformDetection:
@@ -146,7 +147,7 @@ class TestContainerExecutionErrors:
         spec.post_start_commands = []
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
-        spec.runtime = "docker"
+        spec.runtime = ContainerRuntime.DOCKER_ROOTFUL
         # Required VolumeSpec attributes
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
@@ -200,7 +201,7 @@ class TestContainerExecutionErrors:
         spec.post_start_commands = []
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
-        spec.runtime = "docker"
+        spec.runtime = ContainerRuntime.DOCKER_ROOTFUL
         # Required VolumeSpec attributes
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
@@ -256,7 +257,7 @@ class TestContainerExecutionErrors:
         spec.post_start_commands = []
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
-        spec.runtime = "docker"
+        spec.runtime = ContainerRuntime.DOCKER_ROOTFUL
         # Required VolumeSpec attributes
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
@@ -288,3 +289,77 @@ class TestContainerExecutionErrors:
             assert "Custom run arguments:" in output
             assert "--privileged" in output
             assert "--cap-add=SYS_ADMIN" in output
+
+
+class TestPodmanRootlessCheck:
+    """Tests for Podman rootless configuration check."""
+
+    def test_check_podman_rootless_ready_both_configured(self):
+        """Test when both subuid and subgid are configured."""
+        import pwd
+        import os
+
+        username = pwd.getpwuid(os.getuid()).pw_name
+
+        with patch("builtins.open") as mock_open:
+            # Mock both files having the user entry
+            def open_side_effect(path, *args, **kwargs):
+                mock_file = Mock()
+                mock_file.__enter__ = Mock(return_value=mock_file)
+                mock_file.__exit__ = Mock(return_value=False)
+                mock_file.__iter__ = Mock(return_value=iter([f"{username}:100000:65536\n"]))
+                return mock_file
+
+            mock_open.side_effect = open_side_effect
+
+            ready, error = check_podman_rootless_ready()
+            assert ready is True
+            assert error is None
+
+    def test_check_podman_rootless_ready_missing_subuid(self):
+        """Test when subuid is not configured."""
+        import pwd
+        import os
+
+        username = pwd.getpwuid(os.getuid()).pw_name
+
+        with patch("builtins.open") as mock_open:
+            def open_side_effect(path, *args, **kwargs):
+                mock_file = Mock()
+                mock_file.__enter__ = Mock(return_value=mock_file)
+                mock_file.__exit__ = Mock(return_value=False)
+
+                if "/etc/subuid" in str(path):
+                    # subuid has no entry for user
+                    mock_file.__iter__ = Mock(return_value=iter(["otheruser:100000:65536\n"]))
+                else:
+                    # subgid has entry
+                    mock_file.__iter__ = Mock(return_value=iter([f"{username}:100000:65536\n"]))
+                return mock_file
+
+            mock_open.side_effect = open_side_effect
+
+            ready, error = check_podman_rootless_ready()
+            assert ready is False
+            assert "/etc/subuid" in error
+            assert "sudo usermod" in error
+
+    def test_check_podman_rootless_ready_files_not_found(self):
+        """Test when subuid/subgid files don't exist."""
+        with patch("builtins.open") as mock_open:
+            mock_open.side_effect = FileNotFoundError()
+
+            ready, error = check_podman_rootless_ready()
+            assert ready is False
+            assert "/etc/subuid" in error
+            assert "/etc/subgid" in error
+
+    def test_check_podman_rootless_ready_permission_denied(self):
+        """Test when files can't be read due to permissions."""
+        with patch("builtins.open") as mock_open:
+            mock_open.side_effect = PermissionError()
+
+            # Should assume configured if we can't read
+            ready, error = check_podman_rootless_ready()
+            assert ready is True
+            assert error is None

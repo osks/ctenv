@@ -346,7 +346,7 @@ def create_parser():
     parser.add_argument(
         "--runtime",
         choices=["docker", "podman"],
-        help="Container runtime (default: docker)",
+        help="Container runtime: docker (rootful - the default) or podman (rootless with --userns=keep-id)",
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
 

@@ -7,6 +7,7 @@ This module handles image building functionality including:
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from typing import Optional, Dict, List, Tuple
 from .config import (
     NOTSET,
     ContainerConfig,
+    ContainerRuntime,
     RuntimeContext,
     Verbosity,
     _substitute_variables_in_container_config,
@@ -32,7 +34,7 @@ class BuildImageSpec:
     tag: str
     args: Dict[str, str]
     platform: Optional[str] = None
-    runtime: str = "docker"  # Container runtime: docker or podman
+    runtime: ContainerRuntime = ContainerRuntime.DOCKER_ROOTFUL
 
 
 def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildImageSpec:
@@ -75,8 +77,11 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
     if substituted_config.platform is not NOTSET:
         platform = substituted_config.platform
 
-    # Get runtime from container config (defaults to "docker")
-    container_runtime = substituted_config.runtime if substituted_config.runtime is not NOTSET else "docker"
+    # Get runtime from container config (defaults to DOCKER_ROOTFUL)
+    if substituted_config.runtime is not NOTSET:
+        container_runtime = ContainerRuntime(substituted_config.runtime)
+    else:
+        container_runtime = ContainerRuntime.DOCKER_ROOTFUL
 
     # Handle context: NOTSET means empty context (no files sent to Docker)
     context = build_config.context if build_config.context is not NOTSET else ""
@@ -144,7 +149,7 @@ def build_container_image(
 
         # Build command with all arguments
         build_cmd = [
-            container_runtime,
+            container_runtime.command,
             "build",
             *dockerfile_args,
             *(["--platform", build_spec.platform] if build_spec.platform else []),
@@ -201,8 +206,6 @@ def build_container_image(
     finally:
         # Clean up temporary directory if created
         if temp_context_dir:
-            import shutil
-
             try:
                 shutil.rmtree(temp_context_dir)
             except OSError:
