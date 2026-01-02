@@ -14,9 +14,14 @@ teardown() {
     rm -rf "$TEMP_WORKSPACE"
 }
 
-@test "file ownership: created file owned by host user" {
+# -----------------------------------------------------------------------------
+# Parameterized tests (run with both docker and podman)
+# -----------------------------------------------------------------------------
+
+_test_file_ownership_touch() {
+    _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet run --project-dir "$TEMP_WORKSPACE" -- touch created_file.txt
+    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$TEMP_WORKSPACE" -- touch created_file.txt
     [ "$status" -eq 0 ]
 
     # Check file was created
@@ -26,10 +31,12 @@ teardown() {
     file_uid=$(ls -ln "$TEMP_WORKSPACE/created_file.txt" | awk '{print $3}')
     [ "$file_uid" -eq "$host_uid" ]
 }
+register_runtime_test _test_file_ownership_touch "file ownership: created file owned by host user"
 
-@test "file ownership: file with content owned by host user" {
+_test_file_ownership_content() {
+    _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet run --project-dir "$TEMP_WORKSPACE" -- sh -c 'echo "test content" > output.txt'
+    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$TEMP_WORKSPACE" -- sh -c 'echo "test content" > output.txt'
     [ "$status" -eq 0 ]
 
     # Check file exists and has content
@@ -40,10 +47,12 @@ teardown() {
     file_uid=$(ls -ln "$TEMP_WORKSPACE/output.txt" | awk '{print $3}')
     [ "$file_uid" -eq "$host_uid" ]
 }
+register_runtime_test _test_file_ownership_content "file ownership: file with content owned by host user"
 
-@test "file ownership: directory created owned by host user" {
+_test_file_ownership_directory() {
+    _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet run --project-dir "$TEMP_WORKSPACE" -- mkdir subdir
+    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$TEMP_WORKSPACE" -- mkdir subdir
     [ "$status" -eq 0 ]
 
     # Check directory was created with correct ownership
@@ -51,3 +60,4 @@ teardown() {
     dir_uid=$(ls -ldn "$TEMP_WORKSPACE/subdir" | awk '{print $3}')
     [ "$dir_uid" -eq "$host_uid" ]
 }
+register_runtime_test _test_file_ownership_directory "file ownership: directory created owned by host user"
