@@ -6,12 +6,22 @@
 
 ### Added
 
-- Support for Podman containers (rootless)
+- Support for Podman containers (rootless) with `--runtime`
+  `{docker,podman}` (config: `runtime`).
 
-- `--subpath`/`-s` replaces `--workspace`. Can be specified multiple
-  times to only mount some of the paths in the project directory.
+- Limit how much of the project directory that gets mounted with
+  `--subpath`/`-s` (config: `subpath`, a list). Can be specified
+  multiple times to mount several subdirectories/files. Example: `-s
+  ./scripts -s ./`. Replaces `--workspace`.
 
-- `-vv` for very verbose (required for printing the entrypoit script).
+- Specify where in the container the project directory is mounted with
+  `--project-mount`/`-m` (config: `project_mount`). (This was
+  previously part of workspace.)
+
+- `-vv` for very verbose (required for printing the entrypoint script).
+
+- `--name` for specifying container name.
+
 
 ### Changed
 
@@ -23,6 +33,12 @@
 - Container configs are no longer merged. A container defined in a
   project `.ctenv.toml` will entirely shadow one defined in
   `HOME/.ctenv.toml`.
+
+
+### Removed
+
+- Workspace (`--workspace`) has been removed replaced by subpath and
+  project mount.
 
 
 ## v0.7
