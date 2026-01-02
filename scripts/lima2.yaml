@@ -1,0 +1,62 @@
+minimumLimaVersion: 2.0.0
+
+base:
+- template:_images/ubuntu
+
+# Disable default mounts (we copy files instead)
+mounts: []
+
+# VM resources
+cpus: 1
+memory: "2GiB"
+disk: "10GiB"
+
+# containerd is managed by Docker, not by Lima, so the values are set to false here.
+containerd:
+  system: false
+  user: false
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      command -v docker >/dev/null 2>&1 && exit 0
+      export DEBIAN_FRONTEND=noninteractive
+      curl -fsSL https://get.docker.com | sh
+
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      export DEBIAN_FRONTEND=noninteractive
+
+      # Install bats and make
+      apt-get update
+      apt-get install -y bats make git podman
+
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Install uv
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+
+probes:
+- script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    if ! timeout 30s bash -c "until command -v docker >/dev/null 2>&1; do sleep 3; done"; then
+      echo >&2 "docker is not installed yet"
+      exit 1
+    fi
+    if ! timeout 30s bash -c "until pgrep dockerd; do sleep 3; done"; then
+      echo >&2 "dockerd is not running"
+      exit 1
+    fi
+  hint: See "/var/log/cloud-init-output.log" in the guest
+
+message: |
+  VM ready. For interactive shell: limactl shell {{.Name}}

@@ -7,6 +7,32 @@ PROJECT_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
 # Use project's ctenv, not global tool
 CTENV="uv run --project $PROJECT_ROOT python -m ctenv"
 
+# -----------------------------------------------------------------------------
+# Runtime parameterization helpers
+# -----------------------------------------------------------------------------
+
+# Runtimes to test
+RUNTIMES=(docker podman)
+
+# Skip if runtime not available
+_require_runtime() {
+    command -v "$RUNTIME" >/dev/null || skip "$RUNTIME not available"
+}
+
+# Register a test function for all runtimes
+# Usage: register_runtime_test _test_func_name "test description"
+register_runtime_test() {
+    local name="$1"
+    local description="$2"
+
+    for runtime in "${RUNTIMES[@]}"; do
+        eval "${name}_${runtime}() { RUNTIME=$runtime; ${name}; }"
+        bats_test_function \
+            --description "[$runtime] $description" \
+            -- "${name}_${runtime}"
+    done
+}
+
 # Test fixtures
 FIXTURES_DIR="$PROJECT_ROOT/tests-e2e/fixtures"
 PROJECT1="$FIXTURES_DIR/project1"

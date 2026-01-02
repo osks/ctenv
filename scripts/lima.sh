@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIMA_VM_NAME="ctenv-test"
-LIMA_CONFIG="$SCRIPT_DIR/lima.yaml"
+LIMA_CONFIG="$SCRIPT_DIR/lima2.yaml"
 LIMA_WORKSPACE="/ctenv"
 
 usage() {
