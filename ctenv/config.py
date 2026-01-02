@@ -336,6 +336,7 @@ class ContainerConfig:
     # Network and platform settings
     network: Union[str, NotSetType] = NOTSET
     platform: Union[str, NotSetType] = NOTSET
+    runtime: Union[str, NotSetType] = NOTSET  # Container runtime: docker or podman
     ulimits: Union[Dict[str, Any], NotSetType] = NOTSET
 
     # Lists (use NOTSET to distinguish from empty list)
@@ -408,6 +409,7 @@ class ContainerConfig:
             command="bash",
             container_name="ctenv-${project_dir|slug}-${pid}",
             sudo=False,
+            runtime="docker",  # Default container runtime
             # Lists with empty defaults
             subpaths=[],  # Empty = mount project root; non-empty = mount only these
             env=[],

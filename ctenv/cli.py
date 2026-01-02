@@ -83,6 +83,7 @@ def cmd_run(args, command):
             "platform": args.platform,
             "post_start_commands": args.post_start_commands,
             "run_args": args.run_args,
+            "runtime": args.runtime,
         }
 
         # Handle build arguments
@@ -250,7 +251,9 @@ def cmd_build(args):
     # Create build config from CLI arguments
     try:
         # Build CLI overrides for build configuration
-        cli_args_dict = {}
+        cli_args_dict = {
+            "runtime": args.runtime,
+        }
 
         # Handle build arguments - always enable build for build command
         build_dict = {}
@@ -339,6 +342,11 @@ def create_parser():
         "--config",
         action="append",
         help="Path to configuration file (can be used multiple times, order matters)",
+    )
+    parser.add_argument(
+        "--runtime",
+        choices=["docker", "podman"],
+        help="Container runtime (default: docker)",
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
 

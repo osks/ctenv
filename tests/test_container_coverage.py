@@ -146,6 +146,7 @@ class TestContainerExecutionErrors:
         spec.post_start_commands = []
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
+        spec.runtime = "docker"
         # Required VolumeSpec attributes
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
@@ -199,6 +200,7 @@ class TestContainerExecutionErrors:
         spec.post_start_commands = []
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
+        spec.runtime = "docker"
         # Required VolumeSpec attributes
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]
@@ -254,6 +256,7 @@ class TestContainerExecutionErrors:
         spec.post_start_commands = []
         spec.env = []  # Environment variables (iterable)
         spec.tty = False
+        spec.runtime = "docker"
         # Required VolumeSpec attributes
         spec.gosu = VolumeSpec(
             host_path="/usr/local/bin/gosu", container_path="/ctenv/gosu", options=[]

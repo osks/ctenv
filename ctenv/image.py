@@ -32,6 +32,7 @@ class BuildImageSpec:
     tag: str
     args: Dict[str, str]
     platform: Optional[str] = None
+    runtime: str = "docker"  # Container runtime: docker or podman
 
 
 def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildImageSpec:
@@ -74,6 +75,9 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
     if substituted_config.platform is not NOTSET:
         platform = substituted_config.platform
 
+    # Get runtime from container config (defaults to "docker")
+    container_runtime = substituted_config.runtime if substituted_config.runtime is not NOTSET else "docker"
+
     # Handle context: NOTSET means empty context (no files sent to Docker)
     context = build_config.context if build_config.context is not NOTSET else ""
 
@@ -86,6 +90,7 @@ def parse_build_spec(config: ContainerConfig, runtime: RuntimeContext) -> BuildI
         tag=build_config.tag,
         args=build_config.args if build_config.args is not NOTSET else {},
         platform=platform,
+        runtime=container_runtime,
     )
 
 
@@ -121,8 +126,8 @@ def build_container_image(
     Raises:
         RuntimeError: If build fails
     """
-    # Determine container runtime (docker or podman)
-    container_runtime = os.environ.get("RUNNER", "docker")
+    # Use runtime from build spec
+    container_runtime = build_spec.runtime
 
     # Resolve dockerfile input
     dockerfile_args, input_data = _resolve_dockerfile_input(build_spec)

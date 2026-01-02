@@ -422,7 +422,7 @@ def test_docker_not_available(mock_run, mock_which):
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
     container_spec = parse_container_config(config, runtime)
 
-    with pytest.raises(FileNotFoundError, match="Docker not found"):
+    with pytest.raises(FileNotFoundError, match="docker not found"):
         ContainerRunner.run_container(container_spec)
 
 

@@ -26,6 +26,8 @@ provision:
       # Install bats and make
       apt-get update
       apt-get install -y bats make git
+      apt-get install -y podman
+      systemctl enable --now podman.socket
 
   - mode: user
     script: |

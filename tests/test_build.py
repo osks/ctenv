@@ -266,7 +266,6 @@ class TestBuildContainerImage:
         assert call_args[-1] == "."  # context should be last
 
     @patch("ctenv.image.subprocess.run")
-    @patch.dict(os.environ, {"RUNNER": "podman"})
     def test_build_container_image_podman(self, mock_run):
         """Test container image build with podman."""
         mock_run.return_value = Mock(stdout="")
@@ -277,6 +276,7 @@ class TestBuildContainerImage:
             context=".",
             tag="test:latest",
             args={},
+            runtime="podman",
         )
 
         runtime = Mock()
@@ -416,6 +416,7 @@ build = { dockerfile = "Dockerfile", context = ".", tag = "dev:latest" }
                 "network",
                 "post_start_commands",
                 "platform",
+                "runtime",
                 "run_args",
                 "project_mount",
                 "build_dockerfile",
@@ -474,6 +475,7 @@ tag = "api:v1.0"
             args.verbose = False
             args.quiet = True
             args.project_dir = str(tmpdir)
+            args.runtime = None  # Use default runtime
 
             # Set build-specific attributes
             for attr in [
@@ -827,6 +829,7 @@ CMD ["bash"]"""
                 "network",
                 "post_start_commands",
                 "platform",
+                "runtime",
                 "run_args",
                 "project_mount",
             ]:
@@ -907,6 +910,7 @@ image = "ubuntu:latest"
             args.verbose = False
             args.quiet = True
             args.project_dir = str(tmpdir)
+            args.runtime = None  # Use default runtime
 
             # Set build-specific attributes to None
             for attr in [

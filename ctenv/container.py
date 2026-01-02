@@ -409,6 +409,7 @@ class ContainerSpec:
     container_name: str  # Always generated if not specified
     tty: bool  # From defaults (stdin.isatty()) or config
     sudo: bool  # From defaults (False) or config
+    runtime: str = "docker"  # Container runtime: docker or podman
 
     # Lists (use empty list as default instead of None)
     subpaths: List[VolumeSpec] = field(default_factory=list)  # Subpaths to mount (defaults to project root)
@@ -738,6 +739,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "command",
         "container_name",
         "sudo",
+        "runtime",
         "post_start_commands",
         "run_args",
         "network",
@@ -815,10 +817,10 @@ class ContainerRunner:
             List of Docker run command arguments
         """
         if verbosity >= Verbosity.VERBOSE:
-            print("Building Docker run arguments", file=sys.stderr)
+            print(f"Building {spec.runtime} run arguments", file=sys.stderr)
 
         args = [
-            "docker",
+            spec.runtime,
             "run",
             "--rm",
             "--init",
@@ -955,12 +957,12 @@ class ContainerRunner:
         if verbosity >= Verbosity.VERBOSE:
             print("Starting container execution", file=sys.stderr)
 
-        # Check if Docker is available
-        docker_path = shutil.which("docker")
-        if not docker_path:
-            raise FileNotFoundError("Docker not found in PATH. Please install Docker.")
+        # Check if container runtime is available
+        runtime_path = shutil.which(spec.runtime)
+        if not runtime_path:
+            raise FileNotFoundError(f"{spec.runtime} not found in PATH. Please install {spec.runtime}.")
         if verbosity >= Verbosity.VERBOSE:
-            print(f"Found Docker at: {docker_path}", file=sys.stderr)
+            print(f"Found {spec.runtime} at: {runtime_path}", file=sys.stderr)
 
         # Verify gosu binary exists
         if verbosity >= Verbosity.VERBOSE:

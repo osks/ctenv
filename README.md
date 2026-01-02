@@ -38,7 +38,7 @@ Recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation
 
 ```bash
 # Interactive shell in ubuntu container
-$ ctenv run --image ubuntu -- bash
+$ ctenv run --image ubuntu:latest -- bash
 
 # Run a configured container
 $ ctenv run my-node
@@ -98,7 +98,7 @@ Create `.ctenv.toml` for reusable container setups:
 command = "zsh" # Run a shell for interactive use
 
 [containers.python]
-image = "python:3.11"
+image = "python:3.14"
 env = [
     "MY_API_KEY", # passed from environment when run
     "ENV=dev",
@@ -319,13 +319,17 @@ This setup ensures the build environment matches the user's environment while sh
 
 ## History
 
-The background for ctenv was a bash script that I developed at work
+The background of _ctenv_ is that I developed bash script at work
 ([Agama](https://www.agama.tv/)) for running our build system in a
 container. Besides running the build, it was useful to also be able to
 run and use the compiled code in the build system environment, which
 had older libraries than the modern OSes that was used by the
 developers.
 
-ctenv is a much more generic tool than that bash script and without
-the many hard-coded parts. Written in Python and support for config
-files and much more.
+The idea for _ctenv_ came from the need for isolating agents like
+Claude Code and I had a bunch of ideas for how to make it more
+generally useful than what the script at work was, and without the
+many hard-coded aspects of it.
+
+_ctenv_ is written in Python and has flexible and convient command
+line usage, and also config file support.
