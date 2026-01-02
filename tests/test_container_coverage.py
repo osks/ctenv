@@ -324,6 +324,7 @@ class TestPodmanRootlessCheck:
         username = pwd.getpwuid(os.getuid()).pw_name
 
         with patch("builtins.open") as mock_open:
+
             def open_side_effect(path, *args, **kwargs):
                 mock_file = Mock()
                 mock_file.__enter__ = Mock(return_value=mock_file)

@@ -517,7 +517,9 @@ class ContainerSpec:
     runtime: ContainerRuntime = ContainerRuntime.DOCKER_ROOTFUL
 
     # Lists (use empty list as default instead of None)
-    subpaths: List[VolumeSpec] = field(default_factory=list)  # Subpaths to mount (defaults to project root)
+    subpaths: List[VolumeSpec] = field(
+        default_factory=list
+    )  # Subpaths to mount (defaults to project root)
     env: List[EnvVar] = field(default_factory=list)
     volumes: List[VolumeSpec] = field(default_factory=list)
     chown_paths: List[str] = field(default_factory=list)  # Paths to chown inside container
@@ -1081,7 +1083,9 @@ class ContainerRunner:
         # Check if container runtime is available
         runtime_path = shutil.which(spec.runtime.command)
         if not runtime_path:
-            raise FileNotFoundError(f"{spec.runtime.command} not found in PATH. Please install {spec.runtime.command}.")
+            raise FileNotFoundError(
+                f"{spec.runtime.command} not found in PATH. Please install {spec.runtime.command}."
+            )
         if verbosity >= Verbosity.VERBOSE:
             print(f"Found {spec.runtime.command} at: {runtime_path}", file=sys.stderr)
 
