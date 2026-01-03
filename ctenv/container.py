@@ -254,8 +254,8 @@ def _expand_tilde_in_volumespec(vol_spec: VolumeSpec, runtime: RuntimeContext) -
 # =============================================================================
 
 
-def _parse_project_mount(project_mount_str: str) -> tuple[str, list[str]]:
-    """Parse project_mount string which may include options.
+def _parse_project_target(project_target_str: str) -> tuple[str, list[str]]:
+    """Parse project_target string which may include options.
 
     Examples:
         "/repo" -> ("/repo", [])
@@ -263,23 +263,23 @@ def _parse_project_mount(project_mount_str: str) -> tuple[str, list[str]]:
         "/repo:ro,z" -> ("/repo", ["ro", "z"])
 
     Returns:
-        Tuple of (mount_path, options_list)
+        Tuple of (target_path, options_list)
     """
-    if ":" not in project_mount_str:
-        return (project_mount_str, [])
+    if ":" not in project_target_str:
+        return (project_target_str, [])
 
-    parts = project_mount_str.split(":")
-    mount_path = parts[0]
+    parts = project_target_str.split(":")
+    target_path = parts[0]
     options = parts[1].split(",") if len(parts) > 1 and parts[1] else []
-    return (mount_path, options)
+    return (target_path, options)
 
 
-def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> VolumeSpec:
+def _parse_volume(vol_str: str, project_dir: Path, project_target: str) -> VolumeSpec:
     """Parse volume specification with project-aware path defaulting.
 
     If the volume's host path is a subpath of project_dir and no container
     path is specified, the container path is computed relative to
-    project_mount.
+    project_target.
     """
     if vol_str is NOTSET or vol_str is None:
         raise ValueError(f"Invalid volume: {vol_str}")
@@ -298,11 +298,11 @@ def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> Volume
             try:
                 rel_path = os.path.relpath(spec.host_path, project_dir)
                 if not rel_path.startswith(".."):
-                    # It's a subpath - mount relative to project mount
+                    # It's a subpath - mount relative to project target
                     if rel_path == ".":
-                        spec.container_path = project_mount
+                        spec.container_path = project_target
                     else:
-                        spec.container_path = os.path.join(project_mount, rel_path)
+                        spec.container_path = os.path.join(project_target, rel_path)
                 else:
                     # Outside project - mount at same path as host
                     spec.container_path = spec.host_path
@@ -319,7 +319,7 @@ def _parse_volume(vol_str: str, project_dir: Path, project_mount: str) -> Volume
 def _parse_subpath(
     subpath_str: str,
     project_dir: Path,
-    project_mount: str,
+    project_target: str,
 ) -> VolumeSpec:
     """Parse subpath specification and return VolumeSpec.
 
@@ -328,7 +328,7 @@ def _parse_subpath(
     Args:
         subpath_str: Subpath (file or dir), optionally with options (e.g., "src", "src:ro")
         project_dir: Project directory on host
-        project_mount: Mount path in container (e.g., "/repo")
+        project_target: Target path in container (e.g., "/repo")
     """
     # Parse options from the string (e.g., "src:ro" -> "src", ["ro"])
     spec = VolumeSpec.parse(subpath_str)
@@ -339,14 +339,14 @@ def _parse_subpath(
     else:
         host_path = str((project_dir / spec.host_path).resolve())
 
-    # Container path is always relative to project_mount
+    # Container path is always relative to project_target
     try:
         rel_path = os.path.relpath(host_path, project_dir)
         if not rel_path.startswith(".."):
             if rel_path == ".":
-                container_path = project_mount
+                container_path = project_target
             else:
-                container_path = os.path.join(project_mount, rel_path)
+                container_path = os.path.join(project_target, rel_path)
         else:
             raise ValueError(
                 f"Subpath '{subpath_str}' resolves outside project directory '{project_dir}'"
@@ -389,11 +389,14 @@ def _resolve_workdir_auto(primary_subpath: VolumeSpec, runtime: RuntimeContext) 
 
 def _resolve_workdir(
     workdir_config: Union[str, NotSetType, None],
-    primary_subpath: VolumeSpec,
+    primary_subpath: Optional[VolumeSpec],
     runtime: RuntimeContext,
 ) -> str:
     """Resolve working directory based on configuration value."""
     if workdir_config == "auto":
+        if primary_subpath is None:
+            # No project mount, default to /
+            return "/"
         return _resolve_workdir_auto(primary_subpath, runtime)
     elif isinstance(workdir_config, str) and workdir_config != "auto":
         return workdir_config
@@ -789,13 +792,13 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     # Apply variable substitution
     substituted_config = _substitute_variables_in_container_config(config, runtime, os.environ)
 
-    # Resolve project mount early (needed for workspace/volume parsing)
-    # project_mount can include options (e.g., "/repo:ro")
+    # Resolve project target early (needed for workspace/volume parsing)
+    # project_target can include options (e.g., "/repo:ro")
     # If not set, default to same as runtime.project_dir (host path)
-    if substituted_config.project_mount is not NOTSET:
-        project_mount, _ = _parse_project_mount(substituted_config.project_mount)
+    if substituted_config.project_target is not NOTSET:
+        project_target, _ = _parse_project_target(substituted_config.project_target)
     else:
-        project_mount = str(runtime.project_dir)
+        project_target = str(runtime.project_dir)
 
     # Validate required fields are not NOTSET
     required_fields = {
@@ -829,7 +832,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     chown_paths = []
     volumes = substituted_config.volumes if substituted_config.volumes is not NOTSET else []
     for vol_str in volumes:
-        vol_spec = _parse_volume(vol_str, runtime.project_dir, project_mount)
+        vol_spec = _parse_volume(vol_str, runtime.project_dir, project_target)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
 
         # Check for chown option and handle it
@@ -863,19 +866,37 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "ulimits",
     ]
 
-    # Parse subpaths (defaults to project root if not specified)
+    # Check if project mounting is disabled
+    no_project_mount = (
+        substituted_config.no_project_mount is not NOTSET
+        and substituted_config.no_project_mount is True
+    )
+
+    # Parse subpaths
+    # - If no_project_mount=True: only mount explicitly specified subpaths (no default ".")
+    # - If no_project_mount=False: always include "." plus any explicit subpaths
     subpaths_config = substituted_config.subpaths
     if subpaths_config is NOTSET or not subpaths_config:
-        subpaths_config = ["."]
+        # No explicit subpaths specified
+        if no_project_mount:
+            subpaths_config = []  # Mount nothing
+        else:
+            subpaths_config = ["."]  # Default to project root
+    else:
+        # Explicit subpaths specified
+        subpaths_config = list(subpaths_config)
+        if not no_project_mount and "." not in subpaths_config:
+            # Always include project root unless --no-project-mount is used
+            subpaths_config.insert(0, ".")
 
     subpath_specs = []
     for subpath_str in subpaths_config:
-        subpath_spec = _parse_subpath(subpath_str, runtime.project_dir, project_mount)
+        subpath_spec = _parse_subpath(subpath_str, runtime.project_dir, project_target)
         subpath_spec = _expand_tilde_in_volumespec(subpath_spec, runtime)
         subpath_specs.append(subpath_spec)
 
-    # Use first subpath for workdir resolution
-    primary_subpath = subpath_specs[0]
+    # Use first subpath for workdir resolution (None if no subpaths)
+    primary_subpath = subpath_specs[0] if subpath_specs else None
 
     spec_dict = {
         # Runtime fields (copied directly from RuntimeContext)
@@ -972,7 +993,7 @@ class ContainerRunner:
             f"--workdir={spec.workdir}",
         ]
 
-        # Mount subpaths (always populated, defaults to project root)
+        # Mount subpaths (empty if no_project_mount is set)
         for subpath_spec in spec.subpaths:
             volume_args.insert(0, f"--volume={subpath_spec.to_string()}")
 

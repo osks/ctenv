@@ -11,16 +11,16 @@ load helpers
 
 _test_volume_subpath_relative() {
     _require_runtime
-    # Reference: Subpaths of project mounted relative to project mount
-    # Example: -m /repo -v ./src → src at /repo/src
-    # Fixture has project_mount = "/repo" and src/ subdirectory with sample.txt
+    # Reference: Subpaths of project mounted relative to project target
+    # Example: --project-target /repo -v ./src → src at /repo/src
+    # Fixture has project_target = "/repo" and src/ subdirectory with sample.txt
     cd "$PROJECT1"
     run $CTENV --quiet --runtime "$RUNTIME" run --volume ./src test -- ls /repo/src
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"sample.txt"* ]]
 }
-register_runtime_test _test_volume_subpath_relative "volume: subpath mounted relative to project mount"
+register_runtime_test _test_volume_subpath_relative "volume: subpath mounted relative to project target"
 
 _test_volume_explicit_path() {
     _require_runtime

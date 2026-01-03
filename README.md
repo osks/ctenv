@@ -259,18 +259,6 @@ This setup ensures the build environment matches the user's environment while sh
   container with name defined in HOME/global config.
 
 
-- Project (`-p` / `--project`)
-  
-  Specifies the _project directory_, the root of your project. Generally
-  your git repo. Define the project by placing a `.ctenv.toml` there,
-  ctenv will look for it automatically.
-  
-  Supports volume syntax (`/project/dir:/project/mount`) to specify
-  also the _project mount_, i.e. where in the container the _project
-  directory_ should be mounted. Default is to mount at the same path
-  as on the host. See also _Workspace_.
-
-
 - Project directory (`-p` / `--project-dir`)
   
   Specifies the _project directory_, the root of your project. Generally
@@ -282,23 +270,30 @@ This setup ensures the build environment matches the user's environment while sh
   directory_.
 
 
-- Project mount (`-m` / `--project-mount`)
-  
+- Project target (`--project-target`)
+
   Specifies where in the container the _project directory_ should be
-  mounted. For example to always mount at a fixed path (example: `-m
-  /repo`). Supports volume option (example:
-  `-m /project/mount:ro`). Default is to mount at the same path as on the
-  host.
+  mounted. For example to always mount at a fixed path (example:
+  `--project-target /repo`). Supports volume options (example:
+  `--project-target /project/mount:ro`). Default is to mount at the
+  same path as on the host.
+
+
+- No project mount (`-n` / `--no-project-mount`)
+
+  Skips mounting the _project directory_. Use this when you only want
+  to mount specific subpaths without the project root, or when you
+  don't need any project mounts at all.
 
 
 - Subpath (`-s` / `--subpath`) (multiple)
-  
-  Specifies which subpaths (files or directories) to the _project
-  directory_ that should be mounted. This overrides the mounting of
-  the _project directory_ (which won't be mounted if any subpath is
-  specified) and allows for limiting what gets mounted.  Must be a
-  subpath of the _project directory_. Supports volume option (example:
-  `-s ./scripts:ro`).
+
+  Specifies additional subpaths (files or directories) within the
+  _project directory_ to mount. These are mounted in addition to the
+  project root (use `--no-project-mount` if you only want specific
+  subpaths without the project root). Must be a subpath of the
+  _project directory_. Supports volume options (example: `-s
+  ./scripts:ro`).
 
 
 - Volume (`-v` / `--volume`)
@@ -310,10 +305,9 @@ This setup ensures the build environment matches the user's environment while sh
   the same path as the host directory.
   
   Subpaths of the _project directory_ will be mounted relative to the
-  _project mount_. Example: If CWD is `/project` and ctenv is run with
-  `-p .:/repo -w ./foo`, then specifying `-v ./bar` will mount
-  `/project/bar` at `/repo/bar` (and `/project/foo` at `/repo/foo` for
-  the _workspace_).
+  _project target_. Example: If CWD is `/project` and ctenv is run
+  with `--project-target /repo`, then specifying `-v ./bar` will mount
+  `/project/bar` at `/repo/bar`.
 
 
 

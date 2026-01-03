@@ -646,7 +646,8 @@ env = ["NODE_ENV=development"]
         args.platform = None
         args.run_args = None
         args.project_dir = None  # Add project_dir attribute
-        args.project_mount = None  # Add project_mount attribute
+        args.project_target = None  # Add project_target attribute
+        args.no_project_mount = None  # Add no_project_mount attribute
         # Add build-related attributes
         args.build_dockerfile = None
         args.build_dockerfile_content = None
@@ -823,9 +824,9 @@ def test_volume_options_preserved():
     """Test that volume options are properly parsed and preserved."""
     from ctenv.container import _parse_volume
 
-    # Provide project_dir and project_mount (not used when container path is explicit)
+    # Provide project_dir and project_target (not used when container path is explicit)
     project_dir = Path("/project")
-    project_mount = "/project"
+    project_target = "/project"
 
     # Test parsing various volume specification formats
     test_cases = [
@@ -836,7 +837,7 @@ def test_volume_options_preserved():
     ]
 
     for spec_str, expected_host, expected_container, expected_options in test_cases:
-        vol_spec = _parse_volume(spec_str, project_dir, project_mount)
+        vol_spec = _parse_volume(spec_str, project_dir, project_target)
 
         assert vol_spec.host_path == expected_host
         assert vol_spec.container_path == expected_container

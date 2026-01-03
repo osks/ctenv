@@ -349,9 +349,10 @@ class ContainerConfig:
     image: Union[str, NotSetType] = NOTSET
     build: Union[BuildConfig, NotSetType] = NOTSET
     command: Union[str, NotSetType] = NOTSET
-    project_mount: Union[str, NotSetType] = (
-        NOTSET  # Where project mounts in container (e.g., ":/repo")
+    project_target: Union[str, NotSetType] = (
+        NOTSET  # Target path in container for project (e.g., "/repo")
     )
+    no_project_mount: Union[bool, NotSetType] = NOTSET  # Skip all project mounting
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
     container_name: Union[str, NotSetType] = NOTSET
@@ -517,22 +518,22 @@ def validate_container_config(config: ContainerConfig) -> None:
         validate_build_config(config.build)
 
 
-def validate_config_project_mount(project_mount_str: str, config_path: Path) -> None:
-    """Validate project_mount from config file.
+def validate_config_project_target(project_target_str: str, config_path: Path) -> None:
+    """Validate project_target from config file.
 
-    project_mount should be a simple path string (where project mounts in container).
+    project_target should be a simple path string (target path in container for project).
 
     Raises:
-        ValueError: If project_mount is empty or invalid
+        ValueError: If project_target is empty or invalid
     """
-    if not project_mount_str or not project_mount_str.strip():
-        raise ValueError(f"In config file {config_path}: project_mount cannot be empty")
+    if not project_target_str or not project_target_str.strip():
+        raise ValueError(f"In config file {config_path}: project_target cannot be empty")
 
     # Must be an absolute path
-    if not project_mount_str.startswith("/"):
+    if not project_target_str.startswith("/"):
         raise ValueError(
-            f"In config file {config_path}: project_mount must be an absolute path. "
-            f"Got: '{project_mount_str}'"
+            f"In config file {config_path}: project_target must be an absolute path. "
+            f"Got: '{project_target_str}'"
         )
 
 
@@ -609,9 +610,9 @@ class ConfigFile:
         if raw_defaults:
             defaults_config = ContainerConfig.from_dict(convert_notset_strings(raw_defaults))
             defaults_config._config_file_path = str(config_path.resolve())
-            # Validate project_mount if set (must use :/path or auto:/path syntax)
-            if defaults_config.project_mount is not NOTSET:
-                validate_config_project_mount(defaults_config.project_mount, config_path)
+            # Validate project_target if set
+            if defaults_config.project_target is not NOTSET:
+                validate_config_project_target(defaults_config.project_target, config_path)
             defaults_config = resolve_relative_paths_in_container_config(
                 defaults_config, config_base_dir
             )
@@ -621,9 +622,9 @@ class ConfigFile:
         for name, container_dict in raw_containers.items():
             container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
             container_config._config_file_path = str(config_path.resolve())
-            # Validate project_mount if set (must use :/path or auto:/path syntax)
-            if container_config.project_mount is not NOTSET:
-                validate_config_project_mount(container_config.project_mount, config_path)
+            # Validate project_target if set
+            if container_config.project_target is not NOTSET:
+                validate_config_project_target(container_config.project_target, config_path)
             container_config = resolve_relative_paths_in_container_config(
                 container_config, config_base_dir
             )

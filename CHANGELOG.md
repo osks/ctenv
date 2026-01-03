@@ -15,8 +15,11 @@
   ./scripts -s ./`. Replaces `--workspace`.
 
 - Specify where in the container the project directory is mounted with
-  `--project-mount`/`-m` (config: `project_mount`). (This was
+  `--project-target` (config: `project_target`). (This was
   previously part of workspace.)
+
+- `--no-project-mount`/`-n` don't mount the project dir. Useful in
+  combination with `--subpath`.
 
 - `-vv` for very verbose (required for printing the entrypoint script).
 

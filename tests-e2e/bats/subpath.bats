@@ -26,15 +26,26 @@ _test_subpath_single() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"sample.txt"* ]]
 }
-register_runtime_test _test_subpath_single "subpath: single subpath limits mount"
+register_runtime_test _test_subpath_single "subpath: single subpath is accessible"
 
-_test_subpath_root_not_accessible() {
+_test_subpath_root_still_accessible() {
     _require_runtime
     cd "$PROJECT1"
+    # With subpath specified, project root should STILL be accessible (new behavior)
     run $CTENV --quiet --runtime "$RUNTIME" run --subpath ./src test -- cat /repo/README.md
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"fixture"* ]]
+}
+register_runtime_test _test_subpath_root_still_accessible "subpath: project root still accessible when subpath specified"
+
+_test_subpath_no_project_mount_root_not_accessible() {
+    _require_runtime
+    cd "$PROJECT1"
+    # With --no-project-mount, project root should NOT be accessible
+    run $CTENV --quiet --runtime "$RUNTIME" run --no-project-mount --subpath ./src test -- cat /repo/README.md
     [ "$status" -ne 0 ]
 }
-register_runtime_test _test_subpath_root_not_accessible "subpath: project root not accessible when subpath specified"
+register_runtime_test _test_subpath_no_project_mount_root_not_accessible "subpath: --no-project-mount makes project root not accessible"
 
 _test_subpath_multiple() {
     _require_runtime
@@ -46,13 +57,24 @@ _test_subpath_multiple() {
 }
 register_runtime_test _test_subpath_multiple "subpath: multiple subpaths both accessible"
 
-_test_subpath_multiple_root_not_accessible() {
+_test_subpath_multiple_root_still_accessible() {
     _require_runtime
     cd "$PROJECT1"
+    # With multiple subpaths, project root should STILL be accessible (new behavior)
     run $CTENV --quiet --runtime "$RUNTIME" run -s ./src -s ./scripts test -- cat /repo/README.md
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"fixture"* ]]
+}
+register_runtime_test _test_subpath_multiple_root_still_accessible "subpath: project root still accessible with multiple subpaths"
+
+_test_subpath_multiple_no_project_mount() {
+    _require_runtime
+    cd "$PROJECT1"
+    # With --no-project-mount and multiple subpaths, project root should NOT be accessible
+    run $CTENV --quiet --runtime "$RUNTIME" run --no-project-mount -s ./src -s ./scripts test -- cat /repo/README.md
     [ "$status" -ne 0 ]
 }
-register_runtime_test _test_subpath_multiple_root_not_accessible "subpath: project root not accessible with multiple subpaths"
+register_runtime_test _test_subpath_multiple_no_project_mount "subpath: --no-project-mount with multiple subpaths hides root"
 
 _test_subpath_readonly() {
     _require_runtime
@@ -91,13 +113,32 @@ _test_subpath_inspect_volume_options() {
 }
 register_runtime_test _test_subpath_inspect_volume_options "subpath: inspect verifies volume options"
 
-_test_subpath_inspect_root_not_mounted() {
+_test_subpath_inspect_both_mounted() {
+    _require_runtime
+    cd "$PROJECT1"
+    local cname=$(container_name "subpath-both-$RUNTIME")
+
+    # Start container with src subpath - both project root and subpath should be mounted
+    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" -s ./src test -- sleep 30 &
+    local ctenv_pid=$!
+    sleep 2  # Wait for container to start
+
+    local inspect=$($RUNTIME inspect "$cname")
+    $RUNTIME rm -f "$cname" >/dev/null 2>&1 || true
+    wait $ctenv_pid 2>/dev/null || true
+
+    assert_mount_exists "$inspect" "/repo"
+    assert_mount_exists "$inspect" "/repo/src"
+}
+register_runtime_test _test_subpath_inspect_both_mounted "subpath: inspect verifies both project root and subpath mounted"
+
+_test_subpath_inspect_no_project_mount() {
     _require_runtime
     cd "$PROJECT1"
     local cname=$(container_name "subpath-noproj-$RUNTIME")
 
-    # Start container with only src subpath
-    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" -s ./src test -- sleep 30 &
+    # Start container with --no-project-mount and src subpath
+    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" --no-project-mount -s ./src test -- sleep 30 &
     local ctenv_pid=$!
     sleep 2  # Wait for container to start
 
@@ -108,4 +149,4 @@ _test_subpath_inspect_root_not_mounted() {
     assert_mount_not_exists "$inspect" "/repo"
     assert_mount_exists "$inspect" "/repo/src"
 }
-register_runtime_test _test_subpath_inspect_root_not_mounted "subpath: inspect verifies project root not mounted"
+register_runtime_test _test_subpath_inspect_no_project_mount "subpath: --no-project-mount inspect verifies only subpath mounted"

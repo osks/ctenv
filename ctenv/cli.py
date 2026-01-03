@@ -43,9 +43,9 @@ def cmd_run(args, command):
     if verbosity >= Verbosity.NORMAL:
         print("[ctenv] run", file=sys.stderr)
 
-    # Get project_dir and project_mount from separate CLI args
+    # Get project_dir and project_target from separate CLI args
     project_dir = args.project_dir  # Host path (None = auto-detect)
-    project_mount = args.project_mount  # Container path (None = use config or default)
+    project_target = args.project_target  # Container path (None = use config or default)
 
     # Get runtime context once at the start
     runtime = RuntimeContext.current(
@@ -71,8 +71,9 @@ def cmd_run(args, command):
             "image": args.image,
             "container_name": args.name,
             "command": command,
-            # Mount path from -p syntax (e.g., -p .:/repo) - host is in RuntimeContext
-            "project_mount": project_mount,
+            # Target path in container for project
+            "project_target": project_target,
+            "no_project_mount": args.no_project_mount,
             "subpaths": args.subpaths,
             "workdir": args.workdir,
             "env": args.env,
@@ -153,7 +154,7 @@ def cmd_run(args, command):
     if verbosity >= Verbosity.VERBOSE:
         # Use resolved spec for debugging output to show final values
         print(
-            f"Project dir: {runtime.project_dir} (mount: {container_config.project_mount})",
+            f"Project dir: {runtime.project_dir} (target: {container_config.project_target})",
             file=sys.stderr,
         )
         print("Configuration:", file=sys.stderr)
@@ -383,10 +384,16 @@ Note: Use '--' to separate commands from container/options.""",
         help="Show commands without running container",
     )
     run_parser.add_argument(
-        "-m",
-        "--project-mount",
-        dest="project_mount",
-        help="Where to mount project in container (e.g., /repo). Default: same as host path",
+        "--project-target",
+        dest="project_target",
+        help="Target path in container for project (e.g., /repo). Default: same as host path",
+    )
+    run_parser.add_argument(
+        "-n",
+        "--no-project-mount",
+        action="store_true",
+        dest="no_project_mount",
+        help="Skip all project mounting (no project/subpath volumes)",
     )
 
     run_parser.add_argument("--image", help="Container image to use")

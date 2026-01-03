@@ -244,19 +244,30 @@ def test_cli_quiet_mode():
 # -----------------------------------------------------------------------------
 
 
-def _run_ctenv_dry(args, cwd=None):
-    """Helper to run ctenv with dry-run and verbose output."""
+def _run_ctenv_dry(args, cwd=None, top_level_args=None):
+    """Helper to run ctenv with dry-run and verbose output.
+
+    Args:
+        args: Arguments to pass after 'run --dry-run --gosu-path ...'
+        cwd: Working directory
+        top_level_args: Arguments to pass before 'run' (e.g., ['-p', '/path'])
+    """
     gosu_path = Path(__file__).parent.parent.parent / "ctenv" / "binaries" / "gosu-amd64"
     cmd = [
         sys.executable,
         "-m",
         "ctenv",
         "--verbose",
+    ]
+    if top_level_args:
+        cmd.extend(top_level_args)
+    cmd.extend([
         "run",
         "--dry-run",
         "--gosu-path",
         str(gosu_path),
-    ] + args
+    ])
+    cmd.extend(args)
 
     return subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
 
@@ -270,7 +281,7 @@ def test_project_dir_detection_from_subdirectory():
         config = workspace / ".ctenv.toml"
         config.write_text("""
 [defaults]
-project_mount = "/repo"
+project_target = "/repo"
 
 [containers.test]
 image = "ubuntu:22.04"
@@ -306,7 +317,7 @@ def test_workdir_override():
         config = workspace / ".ctenv.toml"
         config.write_text("""
 [defaults]
-project_mount = "/repo"
+project_target = "/repo"
 
 [containers.test]
 image = "ubuntu:22.04"
@@ -324,15 +335,15 @@ image = "ubuntu:22.04"
         assert "Working directory: /repo/tests" in result.stderr
 
 
-def test_cli_mount_overrides_config():
-    """Test that CLI -m overrides config project_mount."""
+def test_cli_target_overrides_config():
+    """Test that CLI -m overrides config project_target."""
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
 
         config = workspace / ".ctenv.toml"
         config.write_text("""
 [defaults]
-project_mount = "/repo"
+project_target = "/repo"
 
 [containers.test]
 image = "ubuntu:22.04"
@@ -340,8 +351,9 @@ image = "ubuntu:22.04"
         (workspace / "src").mkdir()
 
         result = _run_ctenv_dry(
-            ["-p", str(workspace), "-m", "/custom", "test", "--", "pwd"],
+            ["--project-target", "/custom", "test", "--", "pwd"],
             cwd=workspace / "src",
+            top_level_args=["-p", str(workspace)],
         )
 
         assert result.returncode == 0

@@ -444,20 +444,20 @@ def test_volume_parsing_smart_defaulting():
 
     # Volumes outside project_dir get host path as container path
     project_dir = Path("/project")
-    project_mount = "/repo"
+    project_target = "/repo"
 
     # Test single path format - outside project, uses host path
-    vol_spec = _parse_volume("~/.docker", project_dir, project_mount)
+    vol_spec = _parse_volume("~/.docker", project_dir, project_target)
     assert vol_spec.host_path == "~/.docker"
     assert vol_spec.container_path == "~/.docker"  # Outside project, same as host
     assert vol_spec.options == []
 
     # Test to_string() works correctly for defaulted volumes
     assert (
-        _parse_volume("/host/path", project_dir, project_mount).to_string()
+        _parse_volume("/host/path", project_dir, project_target).to_string()
         == "/host/path:/host/path"
     )
-    assert _parse_volume("~/config", project_dir, project_mount).to_string() == "~/config:~/config"
+    assert _parse_volume("~/config", project_dir, project_target).to_string() == "~/config:~/config"
 
 
 def test_volume_parsing_empty_target_syntax():
@@ -466,22 +466,22 @@ def test_volume_parsing_empty_target_syntax():
 
     # Volumes outside project_dir get host path as container path
     project_dir = Path("/project")
-    project_mount = "/repo"
+    project_target = "/repo"
 
     # Test empty target with options
-    vol_spec = _parse_volume("~/.docker::ro", project_dir, project_mount)
+    vol_spec = _parse_volume("~/.docker::ro", project_dir, project_target)
     assert vol_spec.host_path == "~/.docker"
     assert vol_spec.container_path == "~/.docker"  # Outside project, same as host
     assert vol_spec.options == ["ro"]
 
     # Test empty target with chown option - chown will be handled during parse_container_config
-    vol_spec = _parse_volume("~/data::chown,rw", project_dir, project_mount)
+    vol_spec = _parse_volume("~/data::chown,rw", project_dir, project_target)
     assert vol_spec.host_path == "~/data"
     assert vol_spec.container_path == "~/data"  # Outside project, same as host
     assert vol_spec.options == ["chown", "rw"]  # Options are preserved in VolumeSpec
 
     # Test empty target with multiple options
-    vol_spec = _parse_volume("/path::ro,chown,z", project_dir, project_mount)
+    vol_spec = _parse_volume("/path::ro,chown,z", project_dir, project_target)
     assert vol_spec.host_path == "/path"
     assert vol_spec.container_path == "/path"  # Outside project, same as host
     assert vol_spec.options == ["ro", "chown", "z"]  # All options preserved
@@ -491,52 +491,52 @@ def test_volume_parsing_backward_compatibility():
     """Test that existing volume formats still work."""
     from ctenv.container import _parse_volume
 
-    # Explicit container paths are not affected by project_mount
+    # Explicit container paths are not affected by project_target
     project_dir = Path("/project")
-    project_mount = "/repo"
+    project_target = "/repo"
 
     # Test standard format still works
-    vol_spec = _parse_volume("/host:/container:ro", project_dir, project_mount)
+    vol_spec = _parse_volume("/host:/container:ro", project_dir, project_target)
     assert vol_spec.host_path == "/host"
     assert vol_spec.container_path == "/container"
     assert vol_spec.options == ["ro"]
 
     # Test chown option still works - preserved in VolumeSpec
-    vol_spec = _parse_volume("/host:/container:chown", project_dir, project_mount)
+    vol_spec = _parse_volume("/host:/container:chown", project_dir, project_target)
     assert vol_spec.host_path == "/host"
     assert vol_spec.container_path == "/container"
     assert vol_spec.options == ["chown"]
 
 
 def test_volume_subpath_remapping():
-    """Test that volume subpaths of project_dir are remapped to project_mount."""
+    """Test that volume subpaths of project_dir are remapped to project_target."""
     from ctenv.container import _parse_volume
 
     project_dir = Path("/project")
-    project_mount = "/repo"
+    project_target = "/repo"
 
-    # Subpath of project - should remap to project_mount
-    vol_spec = _parse_volume("/project/src", project_dir, project_mount)
+    # Subpath of project - should remap to project_target
+    vol_spec = _parse_volume("/project/src", project_dir, project_target)
     assert vol_spec.host_path == "/project/src"
     assert vol_spec.container_path == "/repo/src"  # Remapped!
 
-    # Exact project_dir - should map to project_mount
-    vol_spec = _parse_volume("/project", project_dir, project_mount)
+    # Exact project_dir - should map to project_target
+    vol_spec = _parse_volume("/project", project_dir, project_target)
     assert vol_spec.host_path == "/project"
     assert vol_spec.container_path == "/repo"
 
     # Outside project - should use host path
-    vol_spec = _parse_volume("/other/path", project_dir, project_mount)
+    vol_spec = _parse_volume("/other/path", project_dir, project_target)
     assert vol_spec.host_path == "/other/path"
     assert vol_spec.container_path == "/other/path"  # Not remapped
 
     # Explicit container path - should not be overwritten
-    vol_spec = _parse_volume("/project/src:/custom", project_dir, project_mount)
+    vol_spec = _parse_volume("/project/src:/custom", project_dir, project_target)
     assert vol_spec.host_path == "/project/src"
     assert vol_spec.container_path == "/custom"  # Explicit, not remapped
 
     # Tilde path - should not try to remap (not absolute)
-    vol_spec = _parse_volume("~/.config", project_dir, project_mount)
+    vol_spec = _parse_volume("~/.config", project_dir, project_target)
     assert vol_spec.host_path == "~/.config"
     assert vol_spec.container_path == "~/.config"  # Same as host (tilde expanded later)
 

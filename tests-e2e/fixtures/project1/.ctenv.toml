@@ -1,6 +1,6 @@
 # Test project configuration
 [defaults]
-project_mount = "/repo"
+project_target = "/repo"
 
 [containers.test]
 image = "ubuntu:22.04"
