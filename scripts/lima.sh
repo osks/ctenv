@@ -115,7 +115,7 @@ sync_code() {
         find . -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +
 
     # Sync files, excluding .venv to preserve cached dependencies
-    tar --no-xattrs --exclude='.venv' --exclude='__pycache__' --exclude='.pytest_cache' -C "$PROJECT_ROOT" -cf - . | \
+    tar --no-xattrs --exclude='.git' --exclude='.venv' --exclude='__pycache__' --exclude='.pytest_cache' -C "$PROJECT_ROOT" -cf - . | \
         limactl shell --tty=false --workdir / "$LIMA_VM_NAME" -- tar -C "$LIMA_WORKSPACE" -xf -
 }
 

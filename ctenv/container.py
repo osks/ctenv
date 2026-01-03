@@ -936,18 +936,18 @@ class ContainerRunner:
         if verbosity >= Verbosity.VERBOSE:
             print(f"Building {spec.runtime.command} run arguments", file=sys.stderr)
 
+        # --user=root forces root to override any USER directive in Dockerfile.
         args = [
             spec.runtime.command,
             "run",
             "--rm",
             "--init",
+            "--user=root",
         ]
 
-        # Add --userns=keep-id and --user 0 for podman-rootless mode
-        # --user 0 allows us to run as root inside the user namespace, which means
-        # we can still create users, use gosu, and chown - just like rootful mode
         if spec.runtime == ContainerRuntime.PODMAN_ROOTLESS:
-            args.extend(["--userns=keep-id", "--user", "0"])
+            # For podman-rootless, --userns=keep-id maps host UID to container UID
+            args.append("--userns=keep-id")
 
         # Add platform flag only if specified
         if spec.platform:

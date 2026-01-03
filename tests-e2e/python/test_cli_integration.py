@@ -237,3 +237,133 @@ def test_cli_quiet_mode():
     assert result.returncode == 0
     # In quiet mode, should have minimal output
     assert len(result.stderr.strip()) < 50  # Very minimal stderr output
+
+
+# -----------------------------------------------------------------------------
+# Project directory and workdir tests
+# -----------------------------------------------------------------------------
+
+
+def _run_ctenv_dry(args, cwd=None):
+    """Helper to run ctenv with dry-run and verbose output."""
+    gosu_path = Path(__file__).parent.parent.parent / "ctenv" / "binaries" / "gosu-amd64"
+    cmd = [
+        sys.executable,
+        "-m",
+        "ctenv",
+        "--verbose",
+        "run",
+        "--dry-run",
+        "--gosu-path",
+        str(gosu_path),
+    ] + args
+
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+
+
+def test_project_dir_detection_from_subdirectory():
+    """Test that project dir is detected when running from subdirectory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+
+        # Create .ctenv.toml
+        config = workspace / ".ctenv.toml"
+        config.write_text("""
+[defaults]
+project_mount = "/repo"
+
+[containers.test]
+image = "ubuntu:22.04"
+""")
+        (workspace / "src").mkdir()
+
+        result = _run_ctenv_dry(["test", "--", "pwd"], cwd=workspace / "src")
+
+        assert result.returncode == 0
+        assert ":/repo:z" in result.stdout
+        assert "--workdir=/repo/src" in result.stdout
+        assert "Working directory: /repo/src" in result.stderr
+
+
+def test_project_behavior_without_config():
+    """Test behavior when no .ctenv.toml exists."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        (workspace / "src").mkdir()
+
+        result = _run_ctenv_dry(["--", "pwd"], cwd=workspace / "src")
+
+        assert result.returncode == 0
+        # When no project is detected, mounts cwd to itself
+        assert ":z" in result.stdout and "src:" in result.stdout
+
+
+def test_workdir_override():
+    """Test --workdir flag overrides auto-detection."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+
+        config = workspace / ".ctenv.toml"
+        config.write_text("""
+[defaults]
+project_mount = "/repo"
+
+[containers.test]
+image = "ubuntu:22.04"
+""")
+        (workspace / "src").mkdir()
+        (workspace / "tests").mkdir()
+
+        result = _run_ctenv_dry(
+            ["--workdir", "/repo/tests", "test", "--", "pwd"],
+            cwd=workspace / "src",
+        )
+
+        assert result.returncode == 0
+        assert "--workdir=/repo/tests" in result.stdout
+        assert "Working directory: /repo/tests" in result.stderr
+
+
+def test_cli_mount_overrides_config():
+    """Test that CLI -m overrides config project_mount."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+
+        config = workspace / ".ctenv.toml"
+        config.write_text("""
+[defaults]
+project_mount = "/repo"
+
+[containers.test]
+image = "ubuntu:22.04"
+""")
+        (workspace / "src").mkdir()
+
+        result = _run_ctenv_dry(
+            ["-p", str(workspace), "-m", "/custom", "test", "--", "pwd"],
+            cwd=workspace / "src",
+        )
+
+        assert result.returncode == 0
+        assert ":/custom:z" in result.stdout
+        assert "--workdir=/custom/src" in result.stdout
+
+
+def test_subpath_outside_project_error():
+    """Test error when subpath resolves outside project directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+
+        config = workspace / ".ctenv.toml"
+        config.write_text("""
+[containers.test]
+image = "ubuntu:22.04"
+""")
+
+        result = _run_ctenv_dry(
+            ["--subpath", "/outside/project", "test", "--", "pwd"],
+            cwd=workspace,
+        )
+
+        assert result.returncode != 0
+        assert "resolves outside project" in result.stderr

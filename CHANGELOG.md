@@ -35,6 +35,14 @@
   `HOME/.ctenv.toml`.
 
 
+### Fixed
+
+- Always start container with `--user=root`, to override USER set in
+  Dockerfile. We need to run as root to be able to setup the container
+  properly. And we don't want to run as the user in the image, but as
+  the host user.
+
+
 ### Removed
 
 - Workspace (`--workspace`) has been removed replaced by subpath and

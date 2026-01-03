@@ -1,0 +1,6 @@
+FROM ubuntu:latest
+
+RUN groupadd nonroot && \
+    useradd --gid nonroot --shell /bin/bash --create-home nonroot
+
+USER nonroot
