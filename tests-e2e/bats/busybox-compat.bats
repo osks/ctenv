@@ -21,7 +21,7 @@ teardown() {
 _test_busybox_uid() {
     _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet --runtime "$RUNTIME" run --image alpine:latest --project-dir "$TEMP_WORKSPACE" -- id -u
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run --image alpine:latest -- id -u
     [ "$status" -eq 0 ]
     assert_last_line "$host_uid"
 }
@@ -30,7 +30,7 @@ register_runtime_test _test_busybox_uid "busybox: user created with correct UID 
 _test_busybox_username() {
     _require_runtime
     host_user=$(whoami)
-    run $CTENV --quiet --runtime "$RUNTIME" run --image alpine:latest --project-dir "$TEMP_WORKSPACE" -- whoami
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run --image alpine:latest -- whoami
     [ "$status" -eq 0 ]
     assert_last_line "$host_user"
 }
@@ -39,7 +39,7 @@ register_runtime_test _test_busybox_username "busybox: username matches host in 
 _test_busybox_gid() {
     _require_runtime
     host_gid=$(id -g)
-    run $CTENV --quiet --runtime "$RUNTIME" run --image alpine:latest --project-dir "$TEMP_WORKSPACE" -- id -g
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run --image alpine:latest -- id -g
     [ "$status" -eq 0 ]
     assert_last_line "$host_gid"
 }
@@ -48,7 +48,7 @@ register_runtime_test _test_busybox_gid "busybox: group created with correct GID
 _test_busybox_ownership() {
     _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet --runtime "$RUNTIME" run --image alpine:latest --project-dir "$TEMP_WORKSPACE" -- touch testfile.txt
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run --image alpine:latest -- touch testfile.txt
     [ "$status" -eq 0 ]
 
     [ -f "$TEMP_WORKSPACE/testfile.txt" ]

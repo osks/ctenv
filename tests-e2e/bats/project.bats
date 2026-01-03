@@ -38,7 +38,7 @@ register_runtime_test _test_project_mount_flag "project: --project-mount sets mo
 
 _test_project_dir_flag() {
     _require_runtime
-    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$PROJECT1" test -- pwd
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$PROJECT1" run test -- pwd
     [ "$status" -eq 0 ]
     assert_last_line "/repo"
 }
@@ -46,7 +46,7 @@ register_runtime_test _test_project_dir_flag "project: --project-dir sets projec
 
 _test_project_dir_and_mount() {
     _require_runtime
-    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$PROJECT1" --project-mount /custom test -- pwd
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$PROJECT1" run --project-mount /custom test -- pwd
     [ "$status" -eq 0 ]
     assert_last_line "/custom"
 }

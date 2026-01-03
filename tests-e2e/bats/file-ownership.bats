@@ -21,7 +21,7 @@ teardown() {
 _test_file_ownership_touch() {
     _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$TEMP_WORKSPACE" -- touch created_file.txt
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run -- touch created_file.txt
     [ "$status" -eq 0 ]
 
     # Check file was created
@@ -36,7 +36,7 @@ register_runtime_test _test_file_ownership_touch "file ownership: created file o
 _test_file_ownership_content() {
     _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$TEMP_WORKSPACE" -- sh -c 'echo "test content" > output.txt'
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run -- sh -c 'echo "test content" > output.txt'
     [ "$status" -eq 0 ]
 
     # Check file exists and has content
@@ -52,7 +52,7 @@ register_runtime_test _test_file_ownership_content "file ownership: file with co
 _test_file_ownership_directory() {
     _require_runtime
     host_uid=$(id -u)
-    run $CTENV --quiet --runtime "$RUNTIME" run --project-dir "$TEMP_WORKSPACE" -- mkdir subdir
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run -- mkdir subdir
     [ "$status" -eq 0 ]
 
     # Check directory was created with correct ownership

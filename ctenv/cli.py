@@ -348,6 +348,12 @@ def create_parser():
         choices=["docker", "podman"],
         help="Container runtime: docker (rootful - the default) or podman (rootless with --userns=keep-id)",
     )
+    parser.add_argument(
+        "-p",
+        "--project-dir",
+        dest="project_dir",
+        help="Project directory on host. Default: auto-detect from .ctenv.toml",
+    )
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
 
     # run command
@@ -375,12 +381,6 @@ Note: Use '--' to separate commands from container/options.""",
         "--dry-run",
         action="store_true",
         help="Show commands without running container",
-    )
-    run_parser.add_argument(
-        "-p",
-        "--project-dir",
-        dest="project_dir",
-        help="Project directory on host. Default: auto-detect from .ctenv.toml",
     )
     run_parser.add_argument(
         "-m",
@@ -441,7 +441,7 @@ Note: Use '--' to separate commands from container/options.""",
         "--post-start-command",
         action="append",
         dest="post_start_commands",
-        help="Add extra command to run after container starts, but before the COMMAND is executed (can be used multiple times)",
+        help="Add extra command to run after container starts, but before the COMMAND is executed. Will be executed as the root user. (can be used multiple times)",
     )
 
     # Build options
@@ -472,12 +472,6 @@ Note: Use '--' to separate commands from container/options.""",
 
     # config subcommand group
     config_parser = subparsers.add_parser("config", help="Configuration management commands")
-    config_parser.add_argument(
-        "-p",
-        "--project-dir",
-        dest="project_dir",
-        help="Project directory on host. Default: auto-detect from .ctenv.toml",
-    )
     config_subparsers = config_parser.add_subparsers(
         dest="config_command", help="Config subcommands"
     )
@@ -512,12 +506,6 @@ Note: Use '--' to separate commands from container/options.""",
         action="append",
         dest="build_args",
         help="Build arguments in KEY=VALUE format (can be used multiple times)",
-    )
-    build_parser.add_argument(
-        "-p",
-        "--project",
-        dest="project_dir",
-        help="Project directory (supports volume syntax: /path:/mount). Default: auto-detect from .ctenv.toml",
     )
     build_parser.add_argument("container", help="Container to use for build configuration")
 
