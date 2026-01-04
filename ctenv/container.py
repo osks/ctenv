@@ -809,6 +809,16 @@ def parse_container_config(
                     "Subpaths use single colon (PATH:OPTIONS), not double colon. "
                     "Use -v/--volume for volume format (HOST::CONTAINER:OPTIONS)."
                 )
+
+            # Validate subpath is inside project directory
+            subpath_path = subpath_str.split(":")[0]
+            try:
+                Path(subpath_path).resolve().relative_to(runtime.project_dir.resolve())
+            except ValueError:
+                raise ValueError(
+                    f"Subpath '{subpath_path}' resolves outside project directory '{runtime.project_dir}'"
+                )
+
             volumes.append(subpath_str.replace(":", "::", 1))
 
     # 3. Add explicit volumes
