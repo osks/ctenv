@@ -16,9 +16,9 @@ from .config import (
     RuntimeContext,
     Verbosity,
     convert_notset_strings,
+    resolve_project_dir,
     resolve_relative_paths_in_container_config,
     NOTSET,
-    replace,
 )
 from .container import parse_container_config, ContainerRunner
 from .image import build_container_image, parse_build_spec
@@ -36,135 +36,114 @@ def get_verbosity(args) -> Verbosity:
         return Verbosity.NORMAL
 
 
-def cmd_run(args, command):
-    """Run command in container."""
-    verbosity = get_verbosity(args)
-
-    if verbosity >= Verbosity.NORMAL:
-        print("[ctenv] run", file=sys.stderr)
-
-    # Get project_dir and project_target from separate CLI args
-    project_dir = args.project_dir  # Host path (None = auto-detect)
-    project_target = args.project_target  # Container path (None = use config or default)
-
-    # Get runtime context once at the start
-    runtime = RuntimeContext.current(
-        cwd=Path.cwd(),
-        project_dir=project_dir,  # Host path (None = auto-detect)
+def _resolve_container_config(args, command, runtime):
+    # Load configuration early
+    explicit_configs = [Path(c) for c in args.config] if args.config else None
+    ctenv_config = CtenvConfig.load(
+        runtime.project_dir, explicit_config_files=explicit_configs, verbosity=args.verbosity
     )
 
-    # Load configuration early
-    try:
-        explicit_configs = [Path(c) for c in args.config] if args.config else None
-        ctenv_config = CtenvConfig.load(
-            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=verbosity
+    # Convert CLI overrides to ContainerConfig and resolve paths
+    # convert "NOTSET" string to NOTSET sentinel
+    cli_args_dict = {
+        "image": args.image,
+        "container_name": args.name,
+        "command": command,
+        # Target path in container for project
+        "project_target": args.project_target,
+        "no_project_mount": args.no_project_mount,
+        "subpaths": args.subpaths,
+        "workdir": args.workdir,
+        "env": args.env,
+        "volumes": args.volumes,
+        "sudo": args.sudo,
+        "network": args.network,
+        "gosu_path": args.gosu_path,
+        "platform": args.platform,
+        "post_start_commands": args.post_start_commands,
+        "run_args": args.run_args,
+        "runtime": args.runtime,
+    }
+
+    # Handle build arguments
+    if any(
+        [
+            args.build_dockerfile,
+            args.build_dockerfile_content,
+            args.build_context,
+            args.build_tag,
+            args.build_args,
+        ]
+    ):
+        build_dict = {}
+        if args.build_dockerfile:
+            build_dict["dockerfile"] = args.build_dockerfile
+        if args.build_dockerfile_content:
+            build_dict["dockerfile_content"] = args.build_dockerfile_content
+        if args.build_context:
+            build_dict["context"] = args.build_context
+        if args.build_tag:
+            build_dict["tag"] = args.build_tag
+        if args.build_args:
+            # Convert build args from list of "KEY=VALUE" to dict
+            build_dict["args"] = {}
+            for arg in args.build_args:
+                if "=" in arg:
+                    key, value = arg.split("=", 1)
+                    build_dict["args"][key] = value
+                else:
+                    raise ValueError(f"Invalid build argument format: {arg}. Expected KEY=VALUE")
+
+        cli_args_dict["build"] = build_dict
+
+    cli_overrides = resolve_relative_paths_in_container_config(
+        ContainerConfig.from_dict(convert_notset_strings(cli_args_dict)),
+        runtime.cwd,
+    )
+
+    # Get merged ContainerConfig
+    if args.container is None:
+        container_config = ctenv_config.get_default(overrides=cli_overrides)
+    else:
+        container_config = ctenv_config.get_container(
+            container=args.container, overrides=cli_overrides
         )
-    except Exception as e:
-        print(f"Configuration error: {e}", file=sys.stderr)
-        sys.exit(1)
+
+    return container_config
+
+
+def cmd_run(args, command):
+    """Run command in container."""
+    if args.verbosity >= Verbosity.NORMAL:
+        print("[ctenv] run", file=sys.stderr)
+
+    # Get runtime context once at the start
+    cwd = Path.cwd()
+    project_dir = resolve_project_dir(cwd, args.project_dir)
+    runtime = RuntimeContext.current(cwd=cwd, project_dir=project_dir)
 
     # Create config from loaded CtenvConfig and CLI options
     try:
-        # Convert CLI overrides to ContainerConfig and resolve paths
-        # convert "NOTSET" string to NOTSET sentinel
-        cli_args_dict = {
-            "image": args.image,
-            "container_name": args.name,
-            "command": command,
-            # Target path in container for project
-            "project_target": project_target,
-            "no_project_mount": args.no_project_mount,
-            "subpaths": args.subpaths,
-            "workdir": args.workdir,
-            "env": args.env,
-            "volumes": args.volumes,
-            "sudo": args.sudo,
-            "network": args.network,
-            "gosu_path": args.gosu_path,
-            "platform": args.platform,
-            "post_start_commands": args.post_start_commands,
-            "run_args": args.run_args,
-            "runtime": args.runtime,
-        }
-
-        # Handle build arguments
-        if any(
-            [
-                args.build_dockerfile,
-                args.build_dockerfile_content,
-                args.build_context,
-                args.build_tag,
-                args.build_args,
-            ]
-        ):
-            build_dict = {}
-            if args.build_dockerfile:
-                build_dict["dockerfile"] = args.build_dockerfile
-            if args.build_dockerfile_content:
-                build_dict["dockerfile_content"] = args.build_dockerfile_content
-            if args.build_context:
-                build_dict["context"] = args.build_context
-            if args.build_tag:
-                build_dict["tag"] = args.build_tag
-            if args.build_args:
-                # Convert build args from list of "KEY=VALUE" to dict
-                build_dict["args"] = {}
-                for arg in args.build_args:
-                    if "=" in arg:
-                        key, value = arg.split("=", 1)
-                        build_dict["args"][key] = value
-                    else:
-                        raise ValueError(
-                            f"Invalid build argument format: {arg}. Expected KEY=VALUE"
-                        )
-
-            cli_args_dict["build"] = build_dict
-
-        cli_overrides = resolve_relative_paths_in_container_config(
-            ContainerConfig.from_dict(convert_notset_strings(cli_args_dict)),
-            runtime.cwd,
-        )
-
-        # Get merged ContainerConfig
-        if args.container is None:
-            container_config = ctenv_config.get_default(overrides=cli_overrides)
-        else:
-            container_config = ctenv_config.get_container(
-                container=args.container, overrides=cli_overrides
-            )
-
-        # Handle image building if build configuration is present
-        if container_config.build is not NOTSET:
-            # Build the image first
-            build_spec = parse_build_spec(container_config, runtime)
-            built_image_tag = build_container_image(build_spec, runtime, verbosity=verbosity)
-            # Update container config to use the built image
-            container_config = replace(container_config, image=built_image_tag, build=NOTSET)
-
-        # Parse and resolve to ContainerSpec with runtime context
-        spec = parse_container_config(container_config, runtime)
-
+        container_config = _resolve_container_config(args, command, runtime)
+        spec, build_spec = parse_container_config(container_config, runtime)
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    except Exception as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    if verbosity >= Verbosity.VERBOSE:
+    if args.verbosity >= Verbosity.VERBOSE:
         # Use resolved spec for debugging output to show final values
-        print(
-            f"Project dir: {runtime.project_dir} (target: {container_config.project_target})",
-            file=sys.stderr,
-        )
+        print(f"Project dir: {runtime.project_dir}", file=sys.stderr)
         print("Configuration:", file=sys.stderr)
         print(f"  Image: {spec.image}", file=sys.stderr)
         print(f"  Command: {spec.command}", file=sys.stderr)
         print(f"  User: {spec.user_name} (UID: {spec.user_id})", file=sys.stderr)
         print(f"  Group: {spec.group_name} (GID: {spec.group_id})", file=sys.stderr)
-        print("  Subpaths:", file=sys.stderr)
-        for subpath in spec.subpaths:
-            print(f"    {subpath.host_path} -> {subpath.container_path}", file=sys.stderr)
         print(f"  Working directory: {spec.workdir}", file=sys.stderr)
         print(f"  Container name: {spec.container_name}", file=sys.stderr)
         print(f"  Environment variables: {spec.env}", file=sys.stderr)
@@ -177,7 +156,10 @@ def cmd_run(args, command):
 
     # Execute container (or dry-run)
     try:
-        result = ContainerRunner.run_container(spec, verbosity=verbosity, dry_run=args.dry_run)
+        if build_spec is not None:
+            build_container_image(build_spec, runtime, verbosity=args.verbosity)
+
+        result = ContainerRunner.run_container(spec, verbosity=args.verbosity, dry_run=args.dry_run)
         sys.exit(result.returncode)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -189,17 +171,15 @@ def cmd_run(args, command):
 
 def cmd_config_show(args):
     """Show configuration or container details."""
-    verbosity = get_verbosity(args)
     try:
-        runtime = RuntimeContext.current(
-            cwd=Path.cwd(),
-            project_dir=args.project_dir,
-        )
+        cwd = Path.cwd()
+        project_dir = resolve_project_dir(cwd, args.project_dir)
+        runtime = RuntimeContext.current(cwd=cwd, project_dir=project_dir)
 
         # Load configuration early
         explicit_configs = [Path(c) for c in getattr(args, "config", None) or []]
         ctenv_config = CtenvConfig.load(
-            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=verbosity
+            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=args.verbosity
         )
 
         # Show defaults section if present
@@ -231,19 +211,16 @@ def cmd_config_show(args):
 
 def cmd_build(args):
     """Build container image."""
-    verbosity = get_verbosity(args)
-
     # Get runtime context once at the start
-    runtime = RuntimeContext.current(
-        cwd=Path.cwd(),
-        project_dir=args.project_dir,
-    )
+    cwd = Path.cwd()
+    project_dir = resolve_project_dir(cwd, args.project_dir)
+    runtime = RuntimeContext.current(cwd=cwd, project_dir=project_dir)
 
     # Load configuration early
     try:
         explicit_configs = [Path(c) for c in args.config] if args.config else None
         ctenv_config = CtenvConfig.load(
-            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=verbosity
+            runtime.project_dir, explicit_config_files=explicit_configs, verbosity=args.verbosity
         )
     except Exception as e:
         print(f"Configuration error: {e}", file=sys.stderr)
@@ -298,9 +275,9 @@ def cmd_build(args):
 
         # Parse build specification and build the image
         build_spec = parse_build_spec(container_config, runtime)
-        built_image_tag = build_container_image(build_spec, runtime, verbosity=verbosity)
+        built_image_tag = build_container_image(build_spec, runtime, verbosity=args.verbosity)
 
-        if verbosity >= Verbosity.NORMAL:
+        if args.verbosity >= Verbosity.NORMAL:
             print(f"[ctenv] Successfully built image: {built_image_tag}", file=sys.stderr)
 
     except ValueError as e:
@@ -540,6 +517,7 @@ def main(argv=None):
     # Parse only ctenv arguments
     parser = create_parser()
     args = parser.parse_args(ctenv_args)
+    args.verbosity = get_verbosity(args)
 
     # Route to appropriate command handler
     if args.subcommand == "run":

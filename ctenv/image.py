@@ -125,9 +125,6 @@ def build_container_image(
         runtime: Runtime context (used for working directory)
         verbosity: Verbosity level
 
-    Returns:
-        Image tag of the built image
-
     Raises:
         RuntimeError: If build fails
     """
@@ -178,9 +175,6 @@ def build_container_image(
 
         if verbosity >= Verbosity.VERBOSE and result.stdout:
             print(result.stdout, file=sys.stderr)
-
-        return build_spec.tag
-
     except subprocess.CalledProcessError as e:
         # Format Docker error output for better readability
         print(f"\n[ctenv] Image build failed with exit code {e.returncode}", file=sys.stderr)
@@ -210,3 +204,5 @@ def build_container_image(
                 shutil.rmtree(temp_context_dir)
             except OSError:
                 pass  # Ignore cleanup errors
+
+    return build_spec.tag

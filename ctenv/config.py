@@ -173,12 +173,13 @@ class RuntimeContext:
     pid: int
 
     @classmethod
-    def current(cls, *, cwd, project_dir=None) -> "RuntimeContext":
-        """Get current runtime context."""
-        if project_dir is None:
-            project_dir = (find_project_dir(cwd) or cwd).resolve()
-        else:
-            project_dir = Path(project_dir).resolve()
+    def current(cls, *, cwd: Path, project_dir: Path) -> "RuntimeContext":
+        """Get current runtime context.
+
+        Args:
+            cwd: Current working directory
+            project_dir: Resolved project directory (use resolve_project_dir to get this)
+        """
         user_info = pwd.getpwuid(os.getuid())
         group_info = grp.getgrgid(os.getgid())
         return cls(
@@ -192,6 +193,22 @@ class RuntimeContext:
             project_dir=project_dir,
             pid=os.getpid(),
         )
+
+
+def resolve_project_dir(cwd: Path, project_dir_arg: Optional[str] = None) -> Path:
+    """Resolve project directory from CLI arg or auto-detect.
+
+    Args:
+        cwd: Current working directory
+        project_dir_arg: CLI --project-dir argument (None = auto-detect)
+
+    Returns:
+        Resolved absolute path to project directory
+    """
+    if project_dir_arg is None:
+        return (find_project_dir(cwd) or cwd).resolve()
+    else:
+        return Path(project_dir_arg).resolve()
 
 
 def resolve_relative_path(path: str, base_dir: Path) -> str:
@@ -215,6 +232,20 @@ def resolve_relative_volume_spec(vol_spec: str, base_dir: Path) -> str:
         spec.container_path = resolve_relative_path(spec.container_path, base_dir)
 
     return spec.to_string()
+
+
+def resolve_relative_subpath_spec(subpath_str: str, base_dir: Path) -> str:
+    """Resolve relative paths in subpath specification.
+
+    Subpath syntax: HOST_PATH[:OPTIONS]
+    Example: ./src:ro -> /absolute/path/to/src:ro
+    """
+    if ":" in subpath_str:
+        host_path, options = subpath_str.split(":", 1)
+        resolved_host = resolve_relative_path(host_path, base_dir)
+        return f"{resolved_host}:{options}"
+    else:
+        return resolve_relative_path(subpath_str, base_dir)
 
 
 def convert_notset_strings(container_config_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -460,6 +491,11 @@ def resolve_relative_paths_in_container_config(
     # Only update fields that need path resolution
     if config.volumes is not NOTSET:
         updates["volumes"] = [resolve_relative_volume_spec(vol, base_dir) for vol in config.volumes]
+
+    if config.subpaths is not NOTSET:
+        updates["subpaths"] = [
+            resolve_relative_subpath_spec(sp, base_dir) for sp in config.subpaths
+        ]
 
     if config.gosu_path is not NOTSET:
         updates["gosu_path"] = resolve_relative_path(config.gosu_path, base_dir)

@@ -108,19 +108,74 @@ register_runtime_test _test_no_project_mount_with_subpath "project: --no-project
 _test_no_project_mount_workdir() {
     _require_runtime
     cd "$PROJECT1"
-    # Without project mount, workdir should default to /
+    # Without project mount, workdir still resolves based on cwd position
+    # Docker creates the workdir directory, Podman fails if it doesn't exist
     run $CTENV --quiet --runtime "$RUNTIME" run --no-project-mount test -- pwd
-    [ "$status" -eq 0 ]
-    assert_last_line "/"
+    if [ "$RUNTIME" = "docker" ]; then
+        [ "$status" -eq 0 ]
+        assert_last_line "/repo"
+    else
+        # Podman fails because --workdir path doesn't exist
+        [ "$status" -ne 0 ]
+    fi
 }
-register_runtime_test _test_no_project_mount_workdir "project: --no-project-mount sets workdir to /"
+register_runtime_test _test_no_project_mount_workdir "project: --no-project-mount preserves workdir resolution"
 
 _test_no_project_mount_with_subpath_workdir() {
     _require_runtime
+    cd "$PROJECT1"
+    # With --no-project-mount and subpath, workdir still resolves based on cwd
+    # cwd is project root, so workdir is /repo (even though /repo isn't mounted)
+    run $CTENV --quiet --runtime "$RUNTIME" run --no-project-mount -s ./src test -- pwd
+    [ "$status" -eq 0 ]
+    assert_last_line "/repo"
+}
+register_runtime_test _test_no_project_mount_with_subpath_workdir "project: --no-project-mount with subpath preserves workdir"
+
+# -----------------------------------------------------------------------------
+# Workdir auto-resolution tests
+# -----------------------------------------------------------------------------
+
+_test_workdir_at_project_root() {
+    _require_runtime
+    cd "$PROJECT1"
+    # At project root, workdir should be project_target
+    run $CTENV --quiet --runtime "$RUNTIME" run test -- pwd
+    [ "$status" -eq 0 ]
+    assert_last_line "/repo"
+}
+register_runtime_test _test_workdir_at_project_root "workdir: at project root resolves to project_target"
+
+_test_workdir_in_subdirectory() {
+    _require_runtime
     cd "$PROJECT1/src"
-    # With --no-project-mount and subpath, workdir should be the subpath
-    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$PROJECT1" run --no-project-mount -s ./src test -- pwd
+    # In subdirectory, workdir should preserve relative position
+    run $CTENV --quiet --runtime "$RUNTIME" run test -- pwd
     [ "$status" -eq 0 ]
     assert_last_line "/repo/src"
 }
-register_runtime_test _test_no_project_mount_with_subpath_workdir "project: --no-project-mount with subpath sets workdir to subpath"
+register_runtime_test _test_workdir_in_subdirectory "workdir: in subdirectory preserves relative position"
+
+_test_workdir_in_nested_subdirectory() {
+    _require_runtime
+    mkdir -p "$PROJECT1/src/nested/deep"
+    cd "$PROJECT1/src/nested/deep"
+    # In nested subdirectory, workdir should preserve full relative path
+    run $CTENV --quiet --runtime "$RUNTIME" run test -- pwd
+    [ "$status" -eq 0 ]
+    assert_last_line "/repo/src/nested/deep"
+    rmdir "$PROJECT1/src/nested/deep" "$PROJECT1/src/nested"
+}
+register_runtime_test _test_workdir_in_nested_subdirectory "workdir: in nested subdirectory preserves full path"
+
+_test_workdir_outside_project() {
+    _require_runtime
+    local outside_dir=$(mktemp -d)
+    cd "$outside_dir"
+    # Outside project with explicit --project-dir, workdir should be project_target
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$PROJECT1" run test -- pwd
+    [ "$status" -eq 0 ]
+    assert_last_line "/repo"
+    rmdir "$outside_dir"
+}
+register_runtime_test _test_workdir_outside_project "workdir: outside project defaults to project_target"

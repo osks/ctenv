@@ -32,6 +32,7 @@ from .config import (
     Verbosity,
     _substitute_variables_in_container_config,
 )
+from .image import parse_build_spec, BuildImageSpec
 
 # Default PS1 prompt for containers
 DEFAULT_PS1 = "[ctenv] $ "
@@ -316,88 +317,38 @@ def _parse_volume(vol_str: str, project_dir: Path, project_target: str) -> Volum
     return spec
 
 
-def _parse_subpath(
-    subpath_str: str,
-    project_dir: Path,
-    project_target: str,
-) -> VolumeSpec:
-    """Parse subpath specification and return VolumeSpec.
+def _resolve_workdir_auto(project_dir: Path, project_target: str, runtime: RuntimeContext) -> str:
+    """Auto-resolve working directory based on cwd position relative to project.
 
-    Subpaths are always relative to project_dir. Supports options like :ro.
-
-    Args:
-        subpath_str: Subpath (file or dir), optionally with options (e.g., "src", "src:ro")
-        project_dir: Project directory on host
-        project_target: Target path in container (e.g., "/repo")
+    - If cwd is inside project_dir: workdir = project_target + relative position
+    - If cwd is at project_dir root: workdir = project_target
+    - If cwd is outside project_dir: workdir = project_target
     """
-    # Parse options from the string (e.g., "src:ro" -> "src", ["ro"])
-    spec = VolumeSpec.parse(subpath_str)
-
-    # Subpath is always relative to project_dir
-    if os.path.isabs(spec.host_path):
-        host_path = spec.host_path
-    else:
-        host_path = str((project_dir / spec.host_path).resolve())
-
-    # Container path is always relative to project_target
     try:
-        rel_path = os.path.relpath(host_path, project_dir)
-        if not rel_path.startswith(".."):
-            if rel_path == ".":
-                container_path = project_target
-            else:
-                container_path = os.path.join(project_target, rel_path)
+        rel_path = os.path.relpath(str(runtime.cwd), str(project_dir))
+        if rel_path == ".":
+            # At project root
+            return project_target
+        elif rel_path.startswith(".."):
+            # Outside project - default to project_target
+            return project_target
         else:
-            raise ValueError(
-                f"Subpath '{subpath_str}' resolves outside project directory '{project_dir}'"
-            )
-    except ValueError as e:
-        if "different drive" in str(e).lower():
-            raise ValueError(
-                f"Subpath '{subpath_str}' is on a different drive than project directory '{project_dir}'"
-            )
-        raise
-
-    # Build options: always include 'z' for SELinux, plus any user options
-    options = ["z"]
-    for opt in spec.options:
-        if opt not in options:
-            options.append(opt)
-
-    return VolumeSpec(
-        host_path=host_path,
-        container_path=container_path,
-        options=options,
-    )
-
-
-def _resolve_workdir_auto(primary_subpath: VolumeSpec, runtime: RuntimeContext) -> str:
-    """Auto-resolve working directory, preserving relative position within primary subpath."""
-    # Calculate relative position within primary subpath and translate
-    try:
-        rel_path = os.path.relpath(str(runtime.cwd), primary_subpath.host_path)
-        if rel_path == "." or rel_path.startswith(".."):
-            # At subpath root or outside - use container path
-            return primary_subpath.container_path
-        else:
-            # Inside subpath - preserve relative position
-            return os.path.join(primary_subpath.container_path, rel_path).replace("\\", "/")
+            # Inside project - preserve relative position
+            return os.path.join(project_target, rel_path).replace("\\", "/")
     except (ValueError, OSError):
-        # Fallback if path calculation fails
-        return primary_subpath.container_path
+        # Fallback if path calculation fails (e.g., different drives on Windows)
+        return project_target
 
 
 def _resolve_workdir(
     workdir_config: Union[str, NotSetType, None],
-    primary_subpath: Optional[VolumeSpec],
+    project_dir: Path,
+    project_target: str,
     runtime: RuntimeContext,
 ) -> str:
     """Resolve working directory based on configuration value."""
     if workdir_config == "auto":
-        if primary_subpath is None:
-            # No project mount, default to /
-            return "/"
-        return _resolve_workdir_auto(primary_subpath, runtime)
+        return _resolve_workdir_auto(project_dir, project_target, runtime)
     elif isinstance(workdir_config, str) and workdir_config != "auto":
         return workdir_config
     else:
@@ -508,7 +459,7 @@ class ContainerSpec:
     group_id: int
 
     # Paths (always resolved)
-    workdir: str  # Always resolved (defaults to first subpath root)
+    workdir: str  # Always resolved
     gosu: VolumeSpec  # Gosu binary mount
 
     # Container settings (always have defaults)
@@ -520,11 +471,10 @@ class ContainerSpec:
     runtime: ContainerRuntime = ContainerRuntime.DOCKER_ROOTFUL
 
     # Lists (use empty list as default instead of None)
-    subpaths: List[VolumeSpec] = field(
-        default_factory=list
-    )  # Subpaths to mount (defaults to project root)
     env: List[EnvVar] = field(default_factory=list)
-    volumes: List[VolumeSpec] = field(default_factory=list)
+    volumes: List[VolumeSpec] = field(
+        default_factory=list
+    )  # Includes project mounts + explicit volumes
     chown_paths: List[str] = field(default_factory=list)  # Paths to chown inside container
     post_start_commands: List[str] = field(default_factory=list)
     run_args: List[str] = field(default_factory=list)
@@ -771,7 +721,9 @@ exec "$GOSU_MOUNT" "$USER_NAME" /bin/sh $INTERACTIVE -c "$COMMAND"
     return script
 
 
-def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> ContainerSpec:
+def parse_container_config(
+    config: ContainerConfig, runtime: RuntimeContext
+) -> tuple["ContainerSpec", Optional[BuildImageSpec]]:
     """Create ContainerSpec from complete ContainerConfig and runtime context.
 
     This function expects a COMPLETE configuration with all required fields set.
@@ -779,18 +731,28 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     If any required fields are missing or invalid, this function will raise an exception
     rather than trying to find fallback values.
 
+    Also returns a BuildImageSpec if build is requested in the ContainerConfig.
+
     Args:
         config: Complete merged ContainerConfig (no NOTSET values for required fields)
         runtime: Runtime context (user info, cwd, tty)
 
     Returns:
-        ContainerSpec with all fields resolved and ready for execution
+        Tuple of (ContainerSpec, BuildImageSpec or None)
 
     Raises:
         ValueError: If required configuration fields are missing or invalid
     """
     # Apply variable substitution
     substituted_config = _substitute_variables_in_container_config(config, runtime, os.environ)
+
+    # Handle build configuration - use build tag as image
+    build_spec = None
+    if substituted_config.build is not NOTSET:
+        image = substituted_config.build.tag
+        build_spec = parse_build_spec(config, runtime)
+    else:
+        image = substituted_config.image
 
     # Resolve project target early (needed for workspace/volume parsing)
     # project_target can include options (e.g., "/repo:ro")
@@ -802,7 +764,7 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
 
     # Validate required fields are not NOTSET
     required_fields = {
-        "image": substituted_config.image,
+        "image": image,  # May come from build.tag or config.image
         "command": substituted_config.command,
         "workdir": substituted_config.workdir,
         "gosu_path": substituted_config.gosu_path,
@@ -827,26 +789,48 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     if substituted_config.runtime is not NOTSET:
         container_runtime = ContainerRuntime(substituted_config.runtime)
 
-    # Process volumes (can't inline due to complexity and chown_paths extraction)
+    # Build combined volumes list: project mount + subpaths + explicit volumes
+    volumes = []
+    has_subpaths = (
+        substituted_config.subpaths is not NOTSET and len(substituted_config.subpaths) > 0
+    )
+
+    # 1. Auto-mount project directory (unless no_project_mount or subpaths specified)
+    # Subpaths implicitly disable auto project mount (mount specific parts, not whole project)
+    if substituted_config.no_project_mount is not True and not has_subpaths:
+        volumes.append(f"{runtime.project_dir}:{project_target}")
+
+    # 2. Convert subpaths to volume syntax (./src:ro -> ./src::ro)
+    if has_subpaths:
+        for subpath_str in substituted_config.subpaths:
+            if "::" in subpath_str:
+                raise ValueError(
+                    f"Invalid subpath format: '{subpath_str}'. "
+                    "Subpaths use single colon (PATH:OPTIONS), not double colon. "
+                    "Use -v/--volume for volume format (HOST::CONTAINER:OPTIONS)."
+                )
+            volumes.append(subpath_str.replace(":", "::", 1))
+
+    # 3. Add explicit volumes
+    if substituted_config.volumes:
+        volumes.extend(substituted_config.volumes)
+
+    # Process all volumes uniformly
     volume_specs = []
     chown_paths = []
-    volumes = substituted_config.volumes if substituted_config.volumes is not NOTSET else []
     for vol_str in volumes:
         vol_spec = _parse_volume(vol_str, runtime.project_dir, project_target)
         vol_spec = _expand_tilde_in_volumespec(vol_spec, runtime)
 
         # Check for chown option and handle it
         if "chown" in vol_spec.options:
-            # Remove chown from options
             vol_spec.options = [opt for opt in vol_spec.options if opt != "chown"]
             if container_runtime == ContainerRuntime.PODMAN_ROOTLESS:
-                # Podman: use native :U option for ownership mapping
                 vol_spec.options.append("U")
             else:
-                # Docker: handle in entrypoint script
                 chown_paths.append(vol_spec.container_path)
 
-        # Add 'z' option if not already present (for SELinux)
+        # Add 'z' option for SELinux if not present
         if "z" not in vol_spec.options:
             vol_spec.options.append("z")
 
@@ -855,7 +839,6 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
     # Build ContainerSpec systematically
     RUNTIME_FIELDS = ["user_name", "user_id", "user_home", "group_name", "group_id"]
     CONFIG_PASSTHROUGH_FIELDS = [
-        "image",
         "command",
         "container_name",
         "sudo",
@@ -866,38 +849,6 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
         "ulimits",
     ]
 
-    # Check if project mounting is disabled
-    no_project_mount = (
-        substituted_config.no_project_mount is not NOTSET
-        and substituted_config.no_project_mount is True
-    )
-
-    # Parse subpaths
-    # - If no_project_mount=True: only mount explicitly specified subpaths (no default ".")
-    # - If no_project_mount=False: always include "." plus any explicit subpaths
-    subpaths_config = substituted_config.subpaths
-    if subpaths_config is NOTSET or not subpaths_config:
-        # No explicit subpaths specified
-        if no_project_mount:
-            subpaths_config = []  # Mount nothing
-        else:
-            subpaths_config = ["."]  # Default to project root
-    else:
-        # Explicit subpaths specified
-        subpaths_config = list(subpaths_config)
-        if not no_project_mount and "." not in subpaths_config:
-            # Always include project root unless --no-project-mount is used
-            subpaths_config.insert(0, ".")
-
-    subpath_specs = []
-    for subpath_str in subpaths_config:
-        subpath_spec = _parse_subpath(subpath_str, runtime.project_dir, project_target)
-        subpath_spec = _expand_tilde_in_volumespec(subpath_spec, runtime)
-        subpath_specs.append(subpath_spec)
-
-    # Use first subpath for workdir resolution (None if no subpaths)
-    primary_subpath = subpath_specs[0] if subpath_specs else None
-
     spec_dict = {
         # Runtime fields (copied directly from RuntimeContext)
         **{field: getattr(runtime, field) for field in RUNTIME_FIELDS},
@@ -907,21 +858,27 @@ def parse_container_config(config: ContainerConfig, runtime: RuntimeContext) -> 
             for field in CONFIG_PASSTHROUGH_FIELDS
             if getattr(substituted_config, field) is not NOTSET
         },
+        # Image (may come from build.tag or config.image)
+        "image": image,
         # Custom/resolved fields:
         # 1. Parsed from config strings → structured objects
-        "subpaths": subpath_specs,  # config.subpaths (List[str]) → List[VolumeSpec]
         "gosu": _parse_gosu_spec(substituted_config.gosu_path, runtime),  # Inlined
-        "volumes": volume_specs,  # config.volumes (List[str]) → List[VolumeSpec]
+        "volumes": volume_specs,  # Includes converted subpaths + explicit volumes
         "runtime": container_runtime,  # config.runtime (str) → ContainerRuntime enum
         # 2. Resolved/computed values
-        "workdir": _resolve_workdir(substituted_config.workdir, primary_subpath, runtime),
+        "workdir": _resolve_workdir(
+            substituted_config.workdir,
+            runtime.project_dir,
+            project_target,
+            runtime,
+        ),
         "tty": _resolve_tty(substituted_config.tty, runtime),  # Inlined
         # 3. Extracted/derived values
         "chown_paths": chown_paths,  # Extracted from volumes with "chown" option
         "env": _parse_env(substituted_config.env),
     }
 
-    return ContainerSpec(**spec_dict)
+    return ContainerSpec(**spec_dict), build_spec
 
 
 # =============================================================================
@@ -986,40 +943,28 @@ class ContainerRunner:
 
         # Process volume options from VolumeSpec objects (chown already handled in parse_container_config)
 
-        # Volume mounts: use subpaths if specified, otherwise project root
+        # Volume mounts (includes project/subpath mounts + explicit volumes)
         volume_args = [
             f"--volume={spec.gosu.to_string()}",
             f"--volume={entrypoint_script_path}:/ctenv/entrypoint.sh:z,ro",
             f"--workdir={spec.workdir}",
         ]
 
-        # Mount subpaths (empty if no_project_mount is set)
-        for subpath_spec in spec.subpaths:
-            volume_args.insert(0, f"--volume={subpath_spec.to_string()}")
+        for vol_spec in spec.volumes:
+            volume_args.insert(0, f"--volume={vol_spec.to_string()}")
 
         args.extend(volume_args)
 
         if verbosity >= Verbosity.VERBOSE:
             print("Volume mounts:", file=sys.stderr)
-            print("  Subpaths:", file=sys.stderr)
-            for subpath_spec in spec.subpaths:
-                print(f"    {subpath_spec.to_string()}", file=sys.stderr)
+            for vol_spec in spec.volumes:
+                print(f"  {vol_spec.to_string()}", file=sys.stderr)
             print(f"  Working directory: {spec.workdir}", file=sys.stderr)
             print(f"  Gosu binary: {spec.gosu.to_string()}", file=sys.stderr)
             print(
                 f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh",
                 file=sys.stderr,
             )
-
-        # Additional volume mounts
-        if spec.volumes:
-            if verbosity >= Verbosity.VERBOSE:
-                print("Additional volume mounts:", file=sys.stderr)
-            for vol_spec in spec.volumes:
-                volume_arg = f"--volume={vol_spec.to_string()}"
-                args.append(volume_arg)
-                if verbosity >= Verbosity.VERBOSE:
-                    print(f"  {vol_spec.to_string()}", file=sys.stderr)
 
         if spec.chown_paths and verbosity >= Verbosity.VERBOSE:
             print("Volumes with chown enabled:", file=sys.stderr)
@@ -1130,13 +1075,13 @@ class ContainerRunner:
         if not gosu_path.is_file():
             raise FileNotFoundError(f"gosu path {spec.gosu.host_path} is not a file.")
 
-        # Verify subpaths exist
-        for subpath in spec.subpaths:
-            subpath_path = Path(subpath.host_path)
+        # Verify volume paths exist
+        for vol in spec.volumes:
+            vol_path = Path(vol.host_path)
             if verbosity >= Verbosity.VERBOSE:
-                print(f"Verifying subpath: {subpath_path}", file=sys.stderr)
-            if not subpath_path.exists():
-                raise FileNotFoundError(f"Subpath {subpath_path} does not exist.")
+                print(f"Verifying volume: {vol_path}", file=sys.stderr)
+            if not vol_path.exists():
+                raise FileNotFoundError(f"Volume path {vol_path} does not exist.")
 
         # Generate entrypoint script content (chown paths are already in spec)
         script_content = build_entrypoint_script(spec, verbosity)

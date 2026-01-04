@@ -38,8 +38,9 @@ def test_config_user_detection():
         )
 
         # Create runtime context and parse to ContainerSpec
-        runtime = RuntimeContext.current(cwd=Path.cwd())
-        resolved_spec = parse_container_config(config_dict, runtime)
+        cwd = Path.cwd()
+        runtime = RuntimeContext.current(cwd=cwd, project_dir=cwd)
+        resolved_spec, _ = parse_container_config(config_dict, runtime)
 
     import getpass
 
@@ -49,10 +50,10 @@ def test_config_user_detection():
     assert resolved_spec.group_id == os.getgid()
     assert resolved_spec.image == "ubuntu:latest"
 
-    # Check subpaths is properly resolved (defaults to project root)
-    assert len(resolved_spec.subpaths) > 0
-    assert resolved_spec.subpaths[0].host_path  # Should be resolved
-    assert resolved_spec.subpaths[0].container_path  # Should have container path
+    # Check volumes includes project mount (converted from default subpath)
+    assert len(resolved_spec.volumes) > 0
+    assert resolved_spec.volumes[0].host_path  # Should be resolved
+    assert resolved_spec.volumes[0].container_path  # Should have container path
 
 
 def test_config_with_mock_runtime():
@@ -85,7 +86,7 @@ def test_config_with_mock_runtime():
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
-        resolved_spec = parse_container_config(config, mock_runtime)
+        resolved_spec, _ = parse_container_config(config, mock_runtime)
 
         assert resolved_spec.user_name == "testuser"
         assert resolved_spec.user_id == 1000
@@ -93,10 +94,10 @@ def test_config_with_mock_runtime():
         assert resolved_spec.group_id == 1000
         assert resolved_spec.user_home == "/home/testuser"
 
-        # Check subpaths is resolved (defaults to project root)
-        assert len(resolved_spec.subpaths) > 0
-        assert resolved_spec.subpaths[0].host_path
-        assert resolved_spec.subpaths[0].container_path
+        # Check volumes includes project mount (converted from default subpath)
+        assert len(resolved_spec.volumes) > 0
+        assert resolved_spec.volumes[0].host_path
+        assert resolved_spec.volumes[0].container_path
 
 
 def test_container_name_generation():
@@ -138,9 +139,9 @@ def test_container_name_generation():
         )
 
         # Parse to ContainerSpecs
-        spec1 = parse_container_config(config_dict1, mock_runtime)
-        spec2 = parse_container_config(config_dict2, mock_runtime)
-        spec3 = parse_container_config(config_dict3, mock_runtime)
+        spec1, _ = parse_container_config(config_dict1, mock_runtime)
+        spec2, _ = parse_container_config(config_dict2, mock_runtime)
+        spec3, _ = parse_container_config(config_dict3, mock_runtime)
 
     # Container names are now based on project_dir and PID (with variable substitution)
     # The slug filter converts to lowercase and replaces colons/slashes with hyphens
@@ -188,7 +189,7 @@ def test_entrypoint_script_generation():
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_overrides))
 
     # Parse to ContainerSpec
-    spec = parse_container_config(config, mock_runtime)
+    spec, _ = parse_container_config(config, mock_runtime)
 
     script = build_entrypoint_script(spec, verbosity=Verbosity.NORMAL)
 
@@ -263,7 +264,7 @@ def test_entrypoint_script_examples():
         config = ctenv_config.get_default(
             overrides=ContainerConfig.from_dict(scenario["config_dict"])
         )
-        spec = parse_container_config(config, scenario["runtime"])
+        spec, _ = parse_container_config(config, scenario["runtime"])
         script = build_entrypoint_script(spec, verbosity=Verbosity.NORMAL)
 
         print(f"\n{scenario['name']}:")
@@ -423,8 +424,9 @@ def test_post_start_cmd_in_generated_script():
         )
 
         # Create runtime context and parse to ContainerSpec
-        runtime = RuntimeContext.current(cwd=Path.cwd())
-        spec = parse_container_config(config_dict, runtime)
+        cwd = Path.cwd()
+        runtime = RuntimeContext.current(cwd=cwd, project_dir=cwd)
+        spec, _ = parse_container_config(config_dict, runtime)
 
     script = build_entrypoint_script(spec, verbosity=Verbosity.VERBOSE)
 
@@ -575,7 +577,7 @@ def test_cli_volume_template_expansion():
 
             config_dict = ctenv_config.get_default(
                 overrides=ContainerConfig.from_dict(
-                    {"image": "ubuntu:latest", "volumes": cli_volumes}
+                    {"image": "ubuntu:latest", "volumes": cli_volumes, "no_project_mount": True}
                 )
             )
 
@@ -583,11 +585,11 @@ def test_cli_volume_template_expansion():
             assert config_dict.volumes == cli_volumes
 
             # Parse and resolve to ContainerSpec
-            spec = parse_container_config(config_dict, mock_runtime)
+            spec, _ = parse_container_config(config_dict, mock_runtime)
 
             # Check that volumes are resolved with tilde expansion and variable substitution
             volume_specs = spec.volumes
-            assert len(volume_specs) == 2
+            assert len(volume_specs) == 2  # no_project_mount=True, so no auto project mount
 
             # First volume: ~/.docker should expand and smart default
             vol1 = volume_specs[0]
@@ -611,6 +613,7 @@ def test_config_file_tilde_expansion():
     config_content = """
 [containers.test]
 volumes = ["~/.docker", "~/config:/container/config"]
+no_project_mount = true
 """
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -655,11 +658,11 @@ volumes = ["~/.docker", "~/config:/container/config"]
             assert config_dict.volumes == expected_processed
 
             # Parse and resolve to ContainerSpec with runtime context
-            spec = parse_container_config(config_dict, mock_runtime)
+            spec, _ = parse_container_config(config_dict, mock_runtime)
 
             # Check that volumes are resolved with tilde expansion
             volume_specs = spec.volumes
-            assert len(volume_specs) == 2
+            assert len(volume_specs) == 2  # no_project_mount=true, so no auto project mount
 
             # First volume: ~/.docker should expand and smart default
             vol1 = volume_specs[0]

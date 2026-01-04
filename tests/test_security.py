@@ -46,7 +46,7 @@ def test_post_start_commands_shell_functionality():
         # Parse config to get ContainerSpec using complete configuration
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         script = build_entrypoint_script(container_spec, verbosity=Verbosity.NORMAL)
 
@@ -92,7 +92,7 @@ def test_volume_chown_path_injection_prevention():
         # Parse config to get ContainerSpec using complete configuration
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         # Malicious paths with injection attempts
         malicious_paths = [
@@ -164,7 +164,7 @@ def test_complex_shell_scenarios():
         # Parse config to get ContainerSpec using complete configuration
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         script = build_entrypoint_script(container_spec, verbosity=Verbosity.NORMAL)
 
@@ -211,7 +211,7 @@ def test_safe_commands_work_normally():
         # Parse config to get ContainerSpec using complete configuration
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])  # No config files
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         script = build_entrypoint_script(container_spec, verbosity=Verbosity.NORMAL)
 

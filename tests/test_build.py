@@ -402,6 +402,7 @@ build = { dockerfile = "Dockerfile", context = ".", tag = "dev:latest" }
             args.config = [str(config_file)]
             args.verbose = False
             args.quiet = True
+            args.verbosity = Verbosity.QUIET
             args.dry_run = False
             args.project_dir = str(tmpdir)
 
@@ -476,6 +477,7 @@ tag = "api:v1.0"
             args.config = [str(config_file)]
             args.verbose = False
             args.quiet = True
+            args.verbosity = Verbosity.QUIET
             args.project_dir = str(tmpdir)
             args.runtime = None  # Use default runtime
 
@@ -808,6 +810,7 @@ CMD ["bash"]"""
             args.config = [str(config_file)]
             args.verbose = False
             args.quiet = True
+            args.verbosity = Verbosity.QUIET
             args.dry_run = False
             args.project_dir = str(tmpdir)
             args.gosu_path = str(gosu_path)
@@ -912,6 +915,7 @@ image = "ubuntu:latest"
             args.config = [str(config_file)]
             args.verbose = False
             args.quiet = True
+            args.verbosity = Verbosity.QUIET
             args.project_dir = str(tmpdir)
             args.runtime = None  # Use default runtime
 

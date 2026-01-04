@@ -53,7 +53,7 @@ def test_docker_command_examples():
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-    container_spec = parse_container_config(config, runtime)
+    container_spec, _ = parse_container_config(config, runtime)
 
     # Create a test script path for build_run_args
     test_script_path = "/tmp/test_entrypoint.sh"
@@ -112,7 +112,7 @@ def test_platform_support(tmp_path, monkeypatch):
     config = ctenv_config.get_default(
         overrides=ContainerConfig.from_dict(config_dict_with_platform)
     )
-    container_spec = parse_container_config(config, runtime)
+    container_spec, _ = parse_container_config(config, runtime)
     test_script_path = "/tmp/test_entrypoint.sh"
     args = ContainerRunner.build_run_args(container_spec, test_script_path)
 
@@ -132,7 +132,7 @@ def test_platform_support(tmp_path, monkeypatch):
     config2 = ctenv_config2.get_default(
         overrides=ContainerConfig.from_dict(config_dict_no_platform)
     )
-    container_spec_no_platform = parse_container_config(config2, runtime)
+    container_spec_no_platform, _ = parse_container_config(config2, runtime)
     args_no_platform = ContainerRunner.build_run_args(container_spec_no_platform, test_script_path)
 
     # Should not include platform flag when not specified
@@ -213,7 +213,7 @@ def test_docker_command_scenarios():
 
             ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
             config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-            container_spec = parse_container_config(config, runtime)
+            container_spec, _ = parse_container_config(config, runtime)
             # Create a test script path for build_run_args
             test_script_path = "/tmp/test_entrypoint.sh"
             args = ContainerRunner.build_run_args(container_spec, test_script_path)
@@ -272,7 +272,7 @@ def test_new_cli_options():
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-    container_spec = parse_container_config(config, runtime)
+    container_spec, _ = parse_container_config(config, runtime)
 
     try:
         # Create a test script path for build_run_args
@@ -332,13 +332,13 @@ def test_sudo_entrypoint_script():
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict_with_sudo))
-    container_spec_with_sudo = parse_container_config(config, runtime)
+    container_spec_with_sudo, _ = parse_container_config(config, runtime)
     # Parse config using complete configuration
     ctenv_config2 = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config2 = ctenv_config2.get_default(
         overrides=ContainerConfig.from_dict(config_dict_without_sudo)
     )
-    container_spec_without_sudo = parse_container_config(config2, runtime)
+    container_spec_without_sudo, _ = parse_container_config(config2, runtime)
 
     script_with_sudo = build_entrypoint_script(container_spec_with_sudo, verbosity=Verbosity.NORMAL)
     script_without_sudo = build_entrypoint_script(
@@ -382,7 +382,7 @@ def test_docker_command_construction(mock_run):
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-    container_spec = parse_container_config(config, runtime)
+    container_spec, _ = parse_container_config(config, runtime)
 
     # Test argument building
     test_script_path = "/tmp/test_entrypoint.sh"
@@ -420,7 +420,7 @@ def test_docker_not_available(mock_run, mock_which):
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-    container_spec = parse_container_config(config, runtime)
+    container_spec, _ = parse_container_config(config, runtime)
 
     with pytest.raises(FileNotFoundError, match="docker not found"):
         ContainerRunner.run_container(container_spec)
@@ -461,7 +461,7 @@ def test_container_failure_handling(mock_run):
 
             ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[])  # No config files
             config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-            container_spec = parse_container_config(config, runtime)
+            container_spec, _ = parse_container_config(config, runtime)
 
             result = ContainerRunner.run_container(container_spec)
             assert result.returncode == 1
@@ -483,7 +483,7 @@ def test_tty_detection():
 
     ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
     config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict_with_tty))
-    container_spec_with_tty = parse_container_config(config, runtime_with_tty)
+    container_spec_with_tty, _ = parse_container_config(config, runtime_with_tty)
 
     test_script_path = "/tmp/test_entrypoint.sh"
     args = ContainerRunner.build_run_args(container_spec_with_tty, test_script_path)
@@ -502,7 +502,7 @@ def test_tty_detection():
     config2 = ctenv_config2.get_default(
         overrides=ContainerConfig.from_dict(config_dict_without_tty)
     )
-    container_spec_without_tty = parse_container_config(config2, runtime_without_tty)
+    container_spec_without_tty, _ = parse_container_config(config2, runtime_without_tty)
 
     args = ContainerRunner.build_run_args(container_spec_without_tty, test_script_path)
     assert "-t" not in args and "-i" not in args
@@ -537,7 +537,7 @@ def test_volume_chown_option():
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         # Test that build_run_args processes chown correctly
         test_script_path = "/tmp/test_entrypoint.sh"
@@ -609,7 +609,7 @@ def test_post_start_commands():
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         # Generate entrypoint script content directly
         script_content = build_entrypoint_script(container_spec, verbosity=Verbosity.NORMAL)
@@ -665,7 +665,7 @@ def test_ulimits_configuration():
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         # Test that build_run_args generates ulimit flags
         test_script_path = "/tmp/test_entrypoint.sh"
@@ -708,7 +708,7 @@ def test_container_labels_added():
 
         ctenv_config = CtenvConfig.load(Path.cwd(), explicit_config_files=[])
         config = ctenv_config.get_default(overrides=ContainerConfig.from_dict(config_dict))
-        container_spec = parse_container_config(config, runtime)
+        container_spec, _ = parse_container_config(config, runtime)
 
         # Build Docker run arguments
         args = ContainerRunner.build_run_args(container_spec, "/tmp/entrypoint.sh")

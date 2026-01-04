@@ -11,6 +11,7 @@ from ctenv.config import (
     find_user_config,
     ConfigFile,
     ContainerConfig,
+    Verbosity,
 )
 
 
@@ -615,6 +616,7 @@ def test_config_file_volumes_through_cli_parsing():
 image = "node:18"
 volumes = ["./node_modules:/app/node_modules", "./data:/data"]
 env = ["NODE_ENV=development"]
+no_project_mount = true
 """
         config_file.write_text(config_content)
 
@@ -632,6 +634,7 @@ env = ["NODE_ENV=development"]
         # Command is not used in this test since we pass it separately to cmd_run
         args.verbose = False
         args.quiet = False
+        args.verbosity = Verbosity.NORMAL
         args.dry_run = True  # Don't actually run container
         # Set other required attributes that cmd_run expects
         args.image = None
@@ -895,7 +898,7 @@ def test_docker_args_volume_options():
             pid=os.getpid(),
         )
 
-        resolved_config = parse_container_config(config, runtime)
+        resolved_config, _ = parse_container_config(config, runtime)
 
         # Create temporary entrypoint script
         script_path = tmpdir / "entrypoint.sh"
@@ -1048,3 +1051,44 @@ def test_resolve_relative_paths_with_notset_string():
     # Regular paths are resolved normally
     assert str(resolved_config.gosu_path).endswith("/tmp/bin/gosu")
     assert config.gosu_path == "./bin/gosu"
+
+
+def test_resolve_relative_subpaths():
+    """Test that relative subpaths are resolved from base_dir (cwd)."""
+    from ctenv.config import (
+        ContainerConfig,
+        resolve_relative_paths_in_container_config,
+    )
+
+    config = ContainerConfig(
+        image="alpine",
+        subpaths=["./src", "./scripts:ro", "../other"],
+    )
+
+    resolved = resolve_relative_paths_in_container_config(config, Path("/project/subdir"))
+
+    # Relative paths should be resolved from base_dir
+    assert resolved.subpaths[0] == "/project/subdir/src"
+    assert resolved.subpaths[1] == "/project/subdir/scripts:ro"
+    assert resolved.subpaths[2] == "/project/other"
+
+    # Original should be unchanged
+    assert config.subpaths[0] == "./src"
+
+
+def test_resolve_relative_subpaths_notset():
+    """Test that NOTSET subpaths are left unchanged."""
+    from ctenv.config import (
+        ContainerConfig,
+        NOTSET,
+        resolve_relative_paths_in_container_config,
+    )
+
+    config = ContainerConfig(
+        image="alpine",
+        subpaths=NOTSET,
+    )
+
+    resolved = resolve_relative_paths_in_container_config(config, Path("/tmp"))
+
+    assert resolved.subpaths is NOTSET
