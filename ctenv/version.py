@@ -4,4 +4,4 @@
 # - Use .devN suffix during development - add after making a release
 # - Remove .devN for stable releases
 # - Increment MINOR for new features, MAJOR for breaking changes
-__version__ = "0.8"
+__version__ = "0.8.dev1"
