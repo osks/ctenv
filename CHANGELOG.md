@@ -2,7 +2,7 @@
 
 <!-- https://keepachangelog.com/ -->
 
-## [Unreleased]
+## v0.8
 
 ### Added
 

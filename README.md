@@ -18,6 +18,14 @@ on the host. ctenv solves this by creating a matching user (same
 UID/GID) at runtime and dropping privileges with gosu. No image
 modifications needed. Works with both Docker and Podman (rootless).
 
+Highlights:
+
+- Auto-mounted project root
+- Convenient mounts, defaults to same path in container as on host. Example: Claude Code config `-v ~/.claude`
+- Per-project configurable containers. `.ctenv.toml` - which also identifies the project root.
+- Post-start commands as root, before dropping privileges. Example: setup firewall rules.
+- Supports Docker and Podman (rootless)
+
 
 ## Install
 
