@@ -10,7 +10,7 @@ Container runner that executes as your user with correct file permissions.
 
 Bring your own image: existing build environments, CI images, custom Dockerfile - any Docker image. Use for interactive work, AI coding agents, or builds. Mounts your project and supports per-project container definitions.
 
-Containers with mounted directories often have file ownership issues on the host. ctenv solves this by creating a matching user (same UID/GID) at runtime and dropping privileges with gosu. No image modifications needed—works with both Docker and Podman (rootless).
+Containers with mounted directories often have file ownership issues on the host. ctenv solves this by creating a matching user (same UID/GID) at runtime and dropping privileges with gosu. No image modifications needed - works with both Docker and Podman (rootless).
 
 
 ## Install
