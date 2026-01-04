@@ -795,9 +795,9 @@ def parse_container_config(
         substituted_config.subpaths is not NOTSET and len(substituted_config.subpaths) > 0
     )
 
-    # 1. Auto-mount project directory (unless no_project_mount or subpaths specified)
+    # 1. Auto-mount project directory (unless auto_project_mount=False or subpaths specified)
     # Subpaths implicitly disable auto project mount (mount specific parts, not whole project)
-    if substituted_config.no_project_mount is not True and not has_subpaths:
+    if substituted_config.auto_project_mount is not False and not has_subpaths:
         volumes.append(f"{runtime.project_dir}:{project_target}")
 
     # 2. Convert subpaths to volume syntax (./src:ro -> ./src::ro)

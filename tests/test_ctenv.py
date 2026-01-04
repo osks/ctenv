@@ -577,7 +577,7 @@ def test_cli_volume_template_expansion():
 
             config_dict = ctenv_config.get_default(
                 overrides=ContainerConfig.from_dict(
-                    {"image": "ubuntu:latest", "volumes": cli_volumes, "no_project_mount": True}
+                    {"image": "ubuntu:latest", "volumes": cli_volumes, "auto_project_mount": False}
                 )
             )
 
@@ -589,7 +589,7 @@ def test_cli_volume_template_expansion():
 
             # Check that volumes are resolved with tilde expansion and variable substitution
             volume_specs = spec.volumes
-            assert len(volume_specs) == 2  # no_project_mount=True, so no auto project mount
+            assert len(volume_specs) == 2  # auto_project_mount=False, so no auto project mount
 
             # First volume: ~/.docker should expand and smart default
             vol1 = volume_specs[0]
@@ -613,7 +613,7 @@ def test_config_file_tilde_expansion():
     config_content = """
 [containers.test]
 volumes = ["~/.docker", "~/config:/container/config"]
-no_project_mount = true
+auto_project_mount = false
 """
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -662,7 +662,7 @@ no_project_mount = true
 
             # Check that volumes are resolved with tilde expansion
             volume_specs = spec.volumes
-            assert len(volume_specs) == 2  # no_project_mount=true, so no auto project mount
+            assert len(volume_specs) == 2  # auto_project_mount=false, so no auto project mount
 
             # First volume: ~/.docker should expand and smart default
             vol1 = volume_specs[0]

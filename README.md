@@ -6,11 +6,11 @@
 [![Tests](https://github.com/osks/ctenv/actions/workflows/test.yml/badge.svg)](https://github.com/osks/ctenv/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/osks/ctenv/blob/master/LICENSE)
 
-Container environment as current user, in any image, preserving user identity.
+Container runner that executes as your user with correct file permissions.
 
-Start container based on any image, with current directory mounted and
-runs as your own user in the container. Run a command or start an
-interactive shell.
+Bring your own image: existing build environments, CI images, custom Dockerfile - any Docker image. Use for interactive work, AI coding agents, or builds. Mounts your project and supports per-project container definitions.
+
+Containers with mounted directories often have file ownership issues on the host. ctenv solves this by creating a matching user (same UID/GID) at runtime and dropping privileges with gosu. No image modifications needed—works with both Docker and Podman (rootless).
 
 
 ## Install
@@ -57,31 +57,28 @@ When running containers with mounted directories, files created inside often hav
 
 This works with any existing Docker image without modification - no
 custom Dockerfiles needed. Provides similar functionality to Podman's
-`--userns=keep-id` but works with Docker. Also similar to Development
-Containers but focused on running individual commands rather than
-persistent development environments.
+`--userns=keep-id` but also works with Docker. Also similar to
+Development Containers but focused on running individual commands
+rather than persistent development environments.
 
 Under the hood, ctenv starts containers as root for file ownership
 setup, then drops privileges using bundled `gosu` binaries before
 executing your command. It generates bash entrypoint scripts
 dynamically to handle user creation and environment setup.
 
-## Highlights
-
-- Works with existing images without modifications
-- Files created have your UID/GID (preserves permissions)
-- Convenient volume mounting like `-v ~/.gitconfig` (mounts to same path in container)
-- Simple configuration with reusable `.ctenv.toml` setups
-
 ## Features
 
+- Simple configuration with reusable `.ctenv.toml` setups
 - User identity preservation (matching UID/GID in container)
+- Mount specific subpaths instead of entire project (useful for monorepos, supports `:ro`)
 - Volume mounting with shortcuts like `-v ~/.gitconfig` (mounts to same path)
 - Volume ownership fixing with custom `:chown` option (similar to Podman's `:U` and `:chown`)
 - Post-start commands for running setup as root before dropping to user permissions
 - Template variables with environment variables, like `${env.HOME}`
 - Configuration file support with reusable container definitions
 - Cross-platform support for linux/amd64 and linux/arm64 containers
+- Works with existing images without modifications
+- Works with Docker and Podman (rootless)
 - Bundled gosu binaries for privilege dropping
 - Interactive and non-interactive command execution
 
@@ -265,9 +262,8 @@ This setup ensures the build environment matches the user's environment while sh
   your git repo. Define the project by placing a `.ctenv.toml` there,
   ctenv will look for it automatically.
   
-  The _project directory_ will be mounted into the container. The
-  `--subpath` option can be used to only mount a subset of the _project
-  directory_.
+  The _project directory_ is auto-mounted into the container by default.
+  Use `--subpath` to mount only specific subpaths instead.
 
 
 - Project target (`--project-target`)
@@ -279,21 +275,19 @@ This setup ensures the build environment matches the user's environment while sh
   same path as on the host.
 
 
-- No project mount (`-n` / `--no-project-mount`)
-
-  Skips mounting the _project directory_. Use this when you only want
-  to mount specific subpaths without the project root, or when you
-  don't need any project mounts at all.
-
-
 - Subpath (`-s` / `--subpath`) (multiple)
 
-  Specifies additional subpaths (files or directories) within the
-  _project directory_ to mount. These are mounted in addition to the
-  project root (use `--no-project-mount` if you only want specific
-  subpaths without the project root). Must be a subpath of the
+  Mount only specific subpaths instead of the entire _project
+  directory_. Using subpaths disables the auto project mount, so only
+  the specified subpaths are mounted. Must be a subpath of the
   _project directory_. Supports volume options (example: `-s
   ./scripts:ro`).
+
+
+- No auto project mount (`--no-auto-project-mount`)
+
+  Skips auto-mounting the _project directory_. Use this when you don't
+  need any project mounts at all (volumes and subpaths still work).
 
 
 - Volume (`-v` / `--volume`)

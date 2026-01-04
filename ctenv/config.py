@@ -383,7 +383,7 @@ class ContainerConfig:
     project_target: Union[str, NotSetType] = (
         NOTSET  # Target path in container for project (e.g., "/repo")
     )
-    no_project_mount: Union[bool, NotSetType] = NOTSET  # Skip all project mounting
+    auto_project_mount: Union[bool, NotSetType] = NOTSET  # Auto-mount project directory (default: True)
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
     container_name: Union[str, NotSetType] = NOTSET

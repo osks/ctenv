@@ -616,7 +616,7 @@ def test_config_file_volumes_through_cli_parsing():
 image = "node:18"
 volumes = ["./node_modules:/app/node_modules", "./data:/data"]
 env = ["NODE_ENV=development"]
-no_project_mount = true
+auto_project_mount = false
 """
         config_file.write_text(config_content)
 
@@ -650,7 +650,7 @@ no_project_mount = true
         args.run_args = None
         args.project_dir = None  # Add project_dir attribute
         args.project_target = None  # Add project_target attribute
-        args.no_project_mount = None  # Add no_project_mount attribute
+        args.no_auto_project_mount = False  # Add no_auto_project_mount attribute
         # Add build-related attributes
         args.build_dockerfile = None
         args.build_dockerfile_content = None

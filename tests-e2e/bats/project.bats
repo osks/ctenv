@@ -63,16 +63,16 @@ _test_project_target_options() {
 register_runtime_test _test_project_target_options "project: --project-target supports mount options"
 
 # -----------------------------------------------------------------------------
-# --no-project-mount tests
+# --no-auto-project-mount tests
 # -----------------------------------------------------------------------------
 
-_test_no_project_mount_basic() {
+_test_no_auto_project_mount_basic() {
     _require_runtime
     cd "$PROJECT1"
     local cname=$(container_name "no-proj-mount-$RUNTIME")
 
-    # Start container with --no-project-mount
-    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" --no-project-mount test -- sleep 30 &
+    # Start container with --no-auto-project-mount
+    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" --no-auto-project-mount test -- sleep 30 &
     local ctenv_pid=$!
     sleep 2  # Wait for container to start
 
@@ -83,15 +83,15 @@ _test_no_project_mount_basic() {
     # Project root should NOT be mounted
     assert_mount_not_exists "$inspect" "/repo"
 }
-register_runtime_test _test_no_project_mount_basic "project: --no-project-mount skips project mount"
+register_runtime_test _test_no_auto_project_mount_basic "project: --no-auto-project-mount skips project mount"
 
-_test_no_project_mount_with_subpath() {
+_test_no_auto_project_mount_with_subpath() {
     _require_runtime
     cd "$PROJECT1"
     local cname=$(container_name "no-proj-subpath-$RUNTIME")
 
-    # Start container with --no-project-mount and explicit subpath
-    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" --no-project-mount -s ./src test -- sleep 30 &
+    # Start container with --no-auto-project-mount and explicit subpath
+    $CTENV --quiet --runtime "$RUNTIME" run --name "$cname" --no-auto-project-mount -s ./src test -- sleep 30 &
     local ctenv_pid=$!
     sleep 2  # Wait for container to start
 
@@ -103,14 +103,14 @@ _test_no_project_mount_with_subpath() {
     assert_mount_not_exists "$inspect" "/repo"
     assert_mount_exists "$inspect" "/repo/src"
 }
-register_runtime_test _test_no_project_mount_with_subpath "project: --no-project-mount with subpath mounts only subpath"
+register_runtime_test _test_no_auto_project_mount_with_subpath "project: --no-auto-project-mount with subpath mounts only subpath"
 
-_test_no_project_mount_workdir() {
+_test_no_auto_project_mount_workdir() {
     _require_runtime
     cd "$PROJECT1"
     # Without project mount, workdir still resolves based on cwd position
     # Docker creates the workdir directory, Podman fails if it doesn't exist
-    run $CTENV --quiet --runtime "$RUNTIME" run --no-project-mount test -- pwd
+    run $CTENV --quiet --runtime "$RUNTIME" run --no-auto-project-mount test -- pwd
     if [ "$RUNTIME" = "docker" ]; then
         [ "$status" -eq 0 ]
         assert_last_line "/repo"
@@ -119,18 +119,18 @@ _test_no_project_mount_workdir() {
         [ "$status" -ne 0 ]
     fi
 }
-register_runtime_test _test_no_project_mount_workdir "project: --no-project-mount preserves workdir resolution"
+register_runtime_test _test_no_auto_project_mount_workdir "project: --no-auto-project-mount preserves workdir resolution"
 
-_test_no_project_mount_with_subpath_workdir() {
+_test_no_auto_project_mount_with_subpath_workdir() {
     _require_runtime
     cd "$PROJECT1"
-    # With --no-project-mount and subpath, workdir still resolves based on cwd
+    # With --no-auto-project-mount and subpath, workdir still resolves based on cwd
     # cwd is project root, so workdir is /repo (even though /repo isn't mounted)
-    run $CTENV --quiet --runtime "$RUNTIME" run --no-project-mount -s ./src test -- pwd
+    run $CTENV --quiet --runtime "$RUNTIME" run --no-auto-project-mount -s ./src test -- pwd
     [ "$status" -eq 0 ]
     assert_last_line "/repo"
 }
-register_runtime_test _test_no_project_mount_with_subpath_workdir "project: --no-project-mount with subpath preserves workdir"
+register_runtime_test _test_no_auto_project_mount_with_subpath_workdir "project: --no-auto-project-mount with subpath preserves workdir"
 
 # -----------------------------------------------------------------------------
 # Workdir auto-resolution tests
@@ -164,7 +164,6 @@ _test_workdir_in_nested_subdirectory() {
     run $CTENV --quiet --runtime "$RUNTIME" run test -- pwd
     [ "$status" -eq 0 ]
     assert_last_line "/repo/src/nested/deep"
-    rmdir "$PROJECT1/src/nested/deep" "$PROJECT1/src/nested"
 }
 register_runtime_test _test_workdir_in_nested_subdirectory "workdir: in nested subdirectory preserves full path"
 

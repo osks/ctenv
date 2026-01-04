@@ -18,8 +18,7 @@
   `--project-target` (config: `project_target`). (This was
   previously part of workspace.)
 
-- `--no-project-mount`/`-n` don't mount the project dir. Useful in
-  combination with `--subpath`.
+- `--no-auto-project-mount` skips auto-mounting the project dir.
 
 - `-vv` for very verbose (required for printing the entrypoint script).
 

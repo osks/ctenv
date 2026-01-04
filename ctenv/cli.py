@@ -51,7 +51,7 @@ def _resolve_container_config(args, command, runtime):
         "command": command,
         # Target path in container for project
         "project_target": args.project_target,
-        "no_project_mount": args.no_project_mount,
+        "auto_project_mount": False if args.no_auto_project_mount else None,
         "subpaths": args.subpaths,
         "workdir": args.workdir,
         "env": args.env,
@@ -366,11 +366,10 @@ Note: Use '--' to separate commands from container/options.""",
         help="Target path in container for project (e.g., /repo). Default: same as host path",
     )
     run_parser.add_argument(
-        "-n",
-        "--no-project-mount",
+        "--no-auto-project-mount",
         action="store_true",
-        dest="no_project_mount",
-        help="Skip all project mounting (no project/subpath volumes)",
+        dest="no_auto_project_mount",
+        help="Skip auto-mounting project directory (volumes and subpaths will still be mounted)",
     )
 
     run_parser.add_argument("--image", help="Container image to use")
@@ -401,7 +400,7 @@ Note: Use '--' to separate commands from container/options.""",
         "--subpath",
         action="append",
         dest="subpaths",
-        help="Limit mount to subpath (repeatable; default: entire project)",
+        help="Mount only this subpath instead of entire project (repeatable, disables auto project mount)",
     )
     run_parser.add_argument(
         "--workdir",

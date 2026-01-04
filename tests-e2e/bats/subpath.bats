@@ -121,13 +121,7 @@ _test_subpath_relative_to_cwd() {
     cd "$PROJECT1/src"
     # From src/, -s ./nested should resolve to $PROJECT1/src/nested (relative to cwd)
     # NOT $PROJECT1/nested (relative to project_dir)
-    mkdir -p "$PROJECT1/src/nested"
-    echo "nested content" > "$PROJECT1/src/nested/file.txt"
-
     run $CTENV --quiet --runtime "$RUNTIME" run -s ./nested test -- cat /repo/src/nested/file.txt
-
-    rm -rf "$PROJECT1/src/nested"
-
     [ "$status" -eq 0 ]
     [[ "$output" == *"nested content"* ]]
 }

@@ -421,7 +421,7 @@ build = { dockerfile = "Dockerfile", context = ".", tag = "dev:latest" }
                 "runtime",
                 "run_args",
                 "project_target",
-                "no_project_mount",
+                "no_auto_project_mount",
                 "build_dockerfile",
                 "build_dockerfile_content",
                 "build_context",
@@ -837,7 +837,7 @@ CMD ["bash"]"""
                 "runtime",
                 "run_args",
                 "project_target",
-                "no_project_mount",
+                "no_auto_project_mount",
             ]:
                 setattr(args, attr, None)
 
