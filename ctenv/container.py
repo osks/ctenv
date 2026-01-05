@@ -437,6 +437,34 @@ def _parse_env(env_config: Union[List[str], NotSetType]) -> List[EnvVar]:
     return env_vars
 
 
+def _build_labels(config: ContainerConfig, runtime: RuntimeContext) -> Dict[str, str]:
+    """Build container labels for ctenv identification.
+
+    Combines ctenv system labels with user-defined labels from config.
+
+    Args:
+        config: Container configuration with _config_name and labels
+        runtime: Runtime context with project_dir
+
+    Returns:
+        Dict of label key-value pairs
+    """
+    # Start with ctenv system labels
+    labels = {
+        "se.osd.ctenv.managed": "true",
+        "se.osd.ctenv.version": __version__,
+        "se.osd.ctenv.project_dir": str(runtime.project_dir),
+    }
+    if config._config_name:
+        labels["se.osd.ctenv.container"] = config._config_name
+
+    # Add user-defined labels (can override system labels if desired)
+    if config.labels is not NOTSET:
+        labels.update(config.labels)
+
+    return labels
+
+
 # =============================================================================
 # Container Specification
 # =============================================================================
@@ -465,7 +493,7 @@ class ContainerSpec:
     # Container settings (always have defaults)
     image: str  # From defaults or config
     command: str  # From defaults or config
-    container_name: str  # Always generated if not specified
+    name: str  # Always generated if not specified
     tty: bool  # From defaults (stdin.isatty()) or config
     sudo: bool  # From defaults (False) or config
     detach: bool = False  # Run container in background
@@ -484,6 +512,7 @@ class ContainerSpec:
     network: Optional[str] = None  # None = Docker default networking
     platform: Optional[str] = None  # None = Docker default platform
     ulimits: Optional[Dict[str, Any]] = None  # None = no ulimits
+    labels: Dict[str, str] = field(default_factory=dict)  # Container labels
 
 
 def build_entrypoint_script(spec: ContainerSpec, verbosity: Verbosity = Verbosity.NORMAL) -> str:
@@ -723,7 +752,8 @@ exec "$GOSU_MOUNT" "$USER_NAME" /bin/sh $INTERACTIVE -c "$COMMAND"
 
 
 def parse_container_config(
-    config: ContainerConfig, runtime: RuntimeContext
+    config: ContainerConfig,
+    runtime: RuntimeContext,
 ) -> tuple["ContainerSpec", Optional[BuildImageSpec]]:
     """Create ContainerSpec from complete ContainerConfig and runtime context.
 
@@ -769,7 +799,7 @@ def parse_container_config(
         "command": substituted_config.command,
         "workdir": substituted_config.workdir,
         "gosu_path": substituted_config.gosu_path,
-        "container_name": substituted_config.container_name,
+        "name": substituted_config.name,
         "tty": substituted_config.tty,
     }
 
@@ -851,7 +881,7 @@ def parse_container_config(
     RUNTIME_FIELDS = ["user_name", "user_id", "user_home", "group_name", "group_id"]
     CONFIG_PASSTHROUGH_FIELDS = [
         "command",
-        "container_name",
+        "name",
         "sudo",
         "detach",
         "post_start_commands",
@@ -888,6 +918,8 @@ def parse_container_config(
         # 3. Extracted/derived values
         "chown_paths": chown_paths,  # Extracted from volumes with "chown" option
         "env": _parse_env(substituted_config.env),
+        # 4. Labels for container identification
+        "labels": _build_labels(substituted_config, runtime),
     }
 
     return ContainerSpec(**spec_dict), build_spec
@@ -943,15 +975,11 @@ class ContainerRunner:
         if spec.platform:
             args.append(f"--platform={spec.platform}")
 
-        args.append(f"--name={spec.container_name}")
+        args.append(f"--name={spec.name}")
 
-        # Add ctenv labels for container identification and management
-        args.extend(
-            [
-                "--label=se.osd.ctenv.managed=true",
-                f"--label=se.osd.ctenv.version={__version__}",
-            ]
-        )
+        # Add container labels
+        for key, value in spec.labels.items():
+            args.append(f"--label={key}={value}")
 
         # Process volume options from VolumeSpec objects (chown already handled in parse_container_config)
 
@@ -1020,13 +1048,17 @@ class ContainerRunner:
             if verbosity >= Verbosity.VERBOSE:
                 print("Detach mode: enabled (running in background)", file=sys.stderr)
 
-        # TTY flags if running interactively (not compatible with detach)
-        if spec.tty and not spec.detach:
-            args.extend(["-t", "-i"])
+        # TTY flag - needed for commands like bash even when detached
+        if spec.tty:
+            args.append("-t")
             if verbosity >= Verbosity.VERBOSE:
                 print("TTY mode: enabled", file=sys.stderr)
         elif verbosity >= Verbosity.VERBOSE:
             print("TTY mode: disabled", file=sys.stderr)
+
+        # Interactive stdin - not compatible with detach
+        if spec.tty and not spec.detach:
+            args.append("-i")
 
         # Custom run arguments
         if spec.run_args:

@@ -67,7 +67,7 @@ def test_docker_command_examples():
         assert "--init" in args
         # Platform flag should only be present if explicitly specified
         assert "--platform=linux/amd64" not in args
-        assert f"--name={container_spec.container_name}" in args
+        assert f"--name={container_spec.name}" in args
         # With workspace=":", mounts current directory
         current_dir = str(Path.cwd())
         assert f"--volume={current_dir}:" in " ".join(args)  # Path will be in volume mount
@@ -258,7 +258,7 @@ def test_new_cli_options():
         "command": "bash",
         "workspace": "",
         "gosu_path": "/test/gosu",
-        "container_name": "test-container",
+        "name": "test-container",
         "env": ["TEST_VAR=hello", "USER"],
         "volumes": ["/host/data:/container/data"],
         "sudo": True,
@@ -373,7 +373,7 @@ def test_docker_command_construction(mock_run):
         "command": "echo hello",
         "workspace": "",
         "gosu_path": "/test/gosu",
-        "container_name": "test-container",
+        "name": "test-container",
     }
 
     runtime = create_test_runtime()
@@ -395,7 +395,7 @@ def test_docker_command_construction(mock_run):
         assert "--rm" in args
         assert "--init" in args
         assert "ubuntu:latest" in args
-        assert f"--name={container_spec.container_name}" in args
+        assert f"--name={container_spec.name}" in args
     finally:
         # No cleanup needed for test script path
         pass
@@ -452,7 +452,7 @@ def test_container_failure_handling(mock_run):
                 "command": "echo test",
                 "workspace": "",
                 "gosu_path": str(gosu_path),
-                "container_name": "test-container",
+                "name": "test-container",
             }
 
             runtime = create_test_runtime()
@@ -719,14 +719,11 @@ def test_container_labels_added():
             if arg.startswith("--label=se.osd.ctenv."):
                 labels_found.append(arg)
 
-        # Verify expected labels
-        expected_labels = [
-            "--label=se.osd.ctenv.managed=true",
-            f"--label=se.osd.ctenv.version={__version__}",
-        ]
-
-        assert len(labels_found) == 2, (
-            f"Expected 2 labels, found {len(labels_found)}: {labels_found}"
+        # Verify expected labels (managed, version, project_dir)
+        assert len(labels_found) == 3, (
+            f"Expected 3 labels, found {len(labels_found)}: {labels_found}"
         )
-        for expected_label in expected_labels:
-            assert expected_label in labels_found, f"Missing label: {expected_label}"
+        assert "--label=se.osd.ctenv.managed=true" in labels_found
+        assert f"--label=se.osd.ctenv.version={__version__}" in labels_found
+        # project_dir label should exist (value depends on test environment)
+        assert any("--label=se.osd.ctenv.project_dir=" in label for label in labels_found)

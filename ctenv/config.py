@@ -389,7 +389,7 @@ class ContainerConfig:
     )
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
-    container_name: Union[str, NotSetType] = NOTSET
+    name: Union[str, NotSetType] = NOTSET
     tty: Union[str, bool, NotSetType] = NOTSET
     detach: Union[bool, NotSetType] = NOTSET  # Run container in background
     sudo: Union[bool, NotSetType] = NOTSET
@@ -399,6 +399,7 @@ class ContainerConfig:
     platform: Union[str, NotSetType] = NOTSET
     runtime: Union[str, NotSetType] = NOTSET  # "docker" or "podman"
     ulimits: Union[Dict[str, Any], NotSetType] = NOTSET
+    labels: Union[Dict[str, str], NotSetType] = NOTSET  # Container labels
 
     # Lists (use NOTSET to distinguish from empty list)
     subpaths: Union[List[str], NotSetType] = NOTSET
@@ -409,6 +410,7 @@ class ContainerConfig:
 
     # Metadata fields for resolution context
     _config_file_path: Union[str, NotSetType] = NOTSET
+    _config_name: Optional[str] = None  # Name from [containers.X] section
 
     def to_dict(self, include_notset: bool = False) -> Dict[str, Any]:
         """Convert to dictionary.
@@ -440,10 +442,11 @@ class ContainerConfig:
         else:
             filtered_data = data
 
-        # Convert special fields and None to NOTSET
+        # Convert special fields and None to NOTSET (except metadata fields)
         converted_data = {}
         for k, v in filtered_data.items():
-            if v is None:
+            if v is None and not k.startswith("_"):
+                # Convert None to NOTSET for config fields, not metadata fields
                 converted_data[k] = NOTSET
             elif k == "build" and isinstance(v, dict):
                 # Convert build dict to BuildConfig
@@ -468,7 +471,7 @@ class ContainerConfig:
             image="ubuntu:latest",
             build=NOTSET,  # Image and build are mutually exclusive
             command="bash",
-            container_name="ctenv-${project_dir|slug}-${pid}",
+            name="ctenv-${container}-${pid}",
             sudo=False,
             runtime="docker",  # Default container runtime
             # Lists with empty defaults
@@ -662,6 +665,7 @@ class ConfigFile:
         for name, container_dict in raw_containers.items():
             container_config = ContainerConfig.from_dict(convert_notset_strings(container_dict))
             container_config._config_file_path = str(config_path.resolve())
+            container_config._config_name = name
             # Validate project_target if set
             if container_config.project_target is not NOTSET:
                 validate_config_project_target(container_config.project_target, config_path)
@@ -905,6 +909,7 @@ def _substitute_variables_in_container_config(
     """Substitute template variables in all string fields of ContainerConfig."""
     # Define variables dictionary
     variables = {
+        "container": config._config_name or "",
         "image": config.image if config.image is not NOTSET else "",
         "user_home": runtime.user_home,
         "user_name": runtime.user_name,

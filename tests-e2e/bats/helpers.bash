@@ -36,7 +36,7 @@ register_runtime_test() {
 # Test fixtures
 FIXTURES_DIR="$PROJECT_ROOT/tests-e2e/fixtures"
 PROJECT1="$FIXTURES_DIR/project1"
-MULTIPLE_DEFAULTS="$FIXTURES_DIR/multiple-defaults"
+BAD_MULTIPLE_DEFAULTS="$FIXTURES_DIR/bad-multiple-defaults"
 
 # Generate unique container name for tests
 container_name() {
@@ -95,4 +95,17 @@ assert_mount_not_exists() {
     local inspect="$1" dest="$2"
     echo "$inspect" | jq -e ".[0].Mounts[] | select(.Destination == \"$dest\")" >/dev/null \
         && { echo "Expected no mount at $dest"; return 1; } || true
+}
+
+# Label assertion helpers (take full docker inspect JSON output)
+assert_label() {
+    local inspect="$1" key="$2" expected="$3"
+    local value=$(echo "$inspect" | jq -r ".[0].Config.Labels[\"$key\"]")
+    [ "$value" = "$expected" ] || { echo "Expected label $key=$expected, got $value"; return 1; }
+}
+
+assert_label_exists() {
+    local inspect="$1" key="$2"
+    local value=$(echo "$inspect" | jq -r ".[0].Config.Labels[\"$key\"]")
+    [ "$value" != "null" ] || { echo "Expected label $key to exist"; return 1; }
 }

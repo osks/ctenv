@@ -79,10 +79,12 @@ _test_detach_dry_run() {
     [ "$status" -eq 0 ]
     # Should include -d flag
     [[ "$output" == *" -d "* ]]
-    # Should NOT include -t -i (TTY disabled when detached)
-    [[ "$output" != *" -t -i "* ]]
+    # Should include -t (TTY needed for bash to stay running)
+    [[ "$output" == *" -t "* ]]
+    # Should NOT include -i (no interactive stdin when detached)
+    [[ "$output" != *" -i "* ]]
 }
-register_runtime_test _test_detach_dry_run "detach mode shows -d flag and disables TTY"
+register_runtime_test _test_detach_dry_run "detach mode shows -d and -t flags but not -i"
 
 _test_detach_short_flag_dry_run() {
     _require_runtime
@@ -121,4 +123,58 @@ _test_detach_runs_in_background() {
     $RUNTIME rm -f "$container_id" >/dev/null 2>&1 || true
 }
 register_runtime_test _test_detach_runs_in_background "detach mode runs container in background"
+
+_test_labels() {
+    _require_runtime
+    cd "$PROJECT1"
+
+    # Run detached container with custom labels
+    run $CTENV --quiet --runtime "$RUNTIME" run --detach --label com.example.test=myvalue --label environment=testing test -- sleep 300
+    [ "$status" -eq 0 ]
+
+    # Use the container ID returned by ctenv (detach mode outputs the ID)
+    container_id=$(echo "$output" | tr -d '\r' | tail -1)
+    [ -n "$container_id" ]
+
+    # Inspect and verify labels
+    local inspect=$($RUNTIME inspect "$container_id")
+
+    # Check ctenv system labels
+    assert_label "$inspect" "se.osd.ctenv.managed" "true"
+    assert_label_exists "$inspect" "se.osd.ctenv.version"
+
+    # Check user-defined labels
+    assert_label "$inspect" "com.example.test" "myvalue"
+    assert_label "$inspect" "environment" "testing"
+
+    # Clean up
+    $RUNTIME stop "$container_id" >/dev/null 2>&1 || true
+    $RUNTIME rm -f "$container_id" >/dev/null 2>&1 || true
+}
+register_runtime_test _test_labels "custom labels are applied to container"
+
+_test_list_shows_container() {
+    _require_runtime
+    cd "$PROJECT1"
+
+    # Run detached container
+    run $CTENV --quiet --runtime "$RUNTIME" run --detach test -- sleep 300
+    [ "$status" -eq 0 ]
+
+    # Use the container ID returned by ctenv (detach mode outputs the ID)
+    container_id=$(echo "$output" | tr -d '\r' | tail -1)
+    [ -n "$container_id" ]
+
+    # Verify ctenv list shows the container
+    run $CTENV --runtime "$RUNTIME" list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"test"* ]]  # Should show container name "test"
+    [[ "$output" == *"PROJECT"* ]]  # Should have PROJECT header
+    [[ "$output" == *"CONTAINER"* ]]  # Should have CONTAINER header
+
+    # Clean up
+    $RUNTIME stop "$container_id" >/dev/null 2>&1 || true
+    $RUNTIME rm -f "$container_id" >/dev/null 2>&1 || true
+}
+register_runtime_test _test_list_shows_container "list command shows running containers"
 

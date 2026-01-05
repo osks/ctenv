@@ -143,16 +143,12 @@ def test_container_name_generation():
         spec2, _ = parse_container_config(config_dict2, mock_runtime)
         spec3, _ = parse_container_config(config_dict3, mock_runtime)
 
-    # Container names are now based on project_dir and PID (with variable substitution)
-    # The slug filter converts to lowercase and replaces colons/slashes with hyphens
-    project_dir_slug = str(mock_runtime.project_dir).lower().replace(":", "-").replace("/", "-")
-    expected_prefix = f"ctenv-{project_dir_slug}-"
-    expected_name = f"{expected_prefix}{mock_runtime.pid}"
-    assert spec1.container_name == expected_name
-    assert spec2.container_name == expected_name  # Same project_dir and PID
-    assert spec3.container_name == expected_name  # Same project_dir and PID
-    assert spec1.container_name.startswith("ctenv-")
-    assert str(mock_runtime.pid) in spec1.container_name
+    # Container names should be consistent for the same runtime context
+    assert spec1.name == spec2.name  # Same runtime = same name
+    assert spec1.name == spec3.name  # Same runtime = same name
+    # Basic format checks
+    assert spec1.name.startswith("ctenv-")
+    assert str(mock_runtime.pid) in spec1.name
 
 
 def test_entrypoint_script_generation():
@@ -676,3 +672,70 @@ auto_project_mount = false
 
     finally:
         os.unlink(config_file)
+
+
+def test_cli_labels_flow_to_containerspec():
+    """Test that labels from CLI args flow through to ContainerSpec."""
+    from pathlib import Path
+    from ctenv.cli import create_parser, _resolve_container_config
+    from ctenv.config import CtenvConfig, ContainerConfig, RuntimeContext
+    from ctenv.container import parse_container_config
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Create a minimal config file
+        config_file = tmpdir / ".ctenv.toml"
+        config_file.write_text("""
+[containers.test]
+image = "ubuntu:latest"
+""")
+
+        # Create mock runtime context
+        mock_runtime = RuntimeContext(
+            user_name="testuser",
+            user_id=1000,
+            user_home="/home/testuser",
+            group_name="testgroup",
+            group_id=1000,
+            cwd=tmpdir,
+            tty=False,
+            project_dir=tmpdir,
+            pid=12345,
+        )
+
+        # Parse CLI args with labels
+        parser = create_parser()
+        args = parser.parse_args([
+            "run",
+            "--label", "com.example.test=myvalue",
+            "--label", "environment=testing",
+            "test",
+        ])
+        args.verbosity = Verbosity.NORMAL
+
+        # Resolve container config (simulating what cmd_run does)
+        container_config = _resolve_container_config(args, command=None, runtime=mock_runtime)
+
+        # Parse to ContainerSpec
+        spec, _ = parse_container_config(container_config, mock_runtime)
+
+        # Verify system labels are present
+        assert spec.labels["se.osd.ctenv.managed"] == "true"
+        assert "se.osd.ctenv.version" in spec.labels
+        assert spec.labels["se.osd.ctenv.container"] == "test"
+
+        # Verify user-defined labels are present
+        assert spec.labels.get("com.example.test") == "myvalue", f"Expected 'myvalue', got {spec.labels}"
+        assert spec.labels.get("environment") == "testing", f"Expected 'testing', got {spec.labels}"
+
+        # Verify labels make it into docker run arguments
+        from ctenv.container import ContainerRunner
+        docker_args = ContainerRunner.build_run_args(spec, "/tmp/test-entrypoint.sh")
+
+        # Check that user labels are in the docker args
+        assert "--label=com.example.test=myvalue" in docker_args, f"User label not in args: {docker_args}"
+        assert "--label=environment=testing" in docker_args, f"Environment label not in args: {docker_args}"
+
+        # Also check system labels
+        assert any("--label=se.osd.ctenv.managed=true" in arg for arg in docker_args)

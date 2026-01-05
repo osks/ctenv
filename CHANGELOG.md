@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- CLI command `list` for listing containers that were created by ctenv.
+
+- Config `detach` / CLI `--detach`/`-d`: Option to run containers in the background (detached
+  mode). TTY is automatically disabled when running detached.
+
+- Config `labels` / CLI `--labels`: Add labels to containers.
+
+- CLI `--no-tty` for explicitly skipping TTY. Default is detecting if
+  stdin is a TTY or not.
+
+
+### Changed
+
+- Renamed config option `container_name` to `name`, now matches
+  command line argument and docker/podman run.
+
 
 ## v0.9
 
@@ -19,9 +37,6 @@
   If no default container is specified, ctenv will run using the
   default options. An error is raised if multiple containers are
   marked as default.
-
-- `--detach`/`-d` option to run containers in the background (detached
-  mode). TTY is automatically disabled when running detached.
 
 
 ## v0.8

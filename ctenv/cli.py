@@ -48,7 +48,7 @@ def _resolve_container_config(args, command, runtime):
     # which means "not set by CLI, use config file value".
     cli_args_dict = {
         "image": args.image,
-        "container_name": args.name,
+        "name": args.name,
         "command": command,
         # Target path in container for project
         "project_target": args.project_target,
@@ -59,6 +59,7 @@ def _resolve_container_config(args, command, runtime):
         "volumes": args.volumes,
         "sudo": args.sudo,
         "detach": args.detach,
+        "tty": False if args.no_tty else None,
         "network": args.network,
         "gosu_path": args.gosu_path,
         "platform": args.platform,
@@ -98,20 +99,35 @@ def _resolve_container_config(args, command, runtime):
 
         cli_args_dict["build"] = build_dict
 
+    # Handle label arguments (args.labels is a list from argparse append action)
+    labels_list = getattr(args, "labels", None)
+    if labels_list and isinstance(labels_list, list):
+        # Convert labels from list of "KEY=VALUE" to dict
+        labels_dict = {}
+        for label in labels_list:
+            if "=" in label:
+                key, value = label.split("=", 1)
+                labels_dict[key] = value
+            else:
+                raise ValueError(f"Invalid label format: {label}. Expected KEY=VALUE")
+        cli_args_dict["labels"] = labels_dict
+
     cli_overrides = resolve_relative_paths_in_container_config(
         ContainerConfig.from_dict(convert_notset_strings(cli_args_dict)),
         runtime.cwd,
     )
 
-    container = args.container or ctenv_config.find_default_container()
+    config_name = args.container or ctenv_config.find_default_container()
     # Get merged ContainerConfig
-    if container is None:
+    if config_name is None:
         container_config = ctenv_config.get_default(overrides=cli_overrides)
     else:
         # If the container doesn't exist, it will (and should) fail,
         # which is handled by get_container raising.
-        container_config = ctenv_config.get_container(container=container, overrides=cli_overrides)
+        container_config = ctenv_config.get_container(container=config_name, overrides=cli_overrides)
 
+    # Set config name metadata (may already be set from TOML, but CLI selection takes precedence)
+    container_config._config_name = config_name
     return container_config
 
 
@@ -148,7 +164,7 @@ def cmd_run(args, command):
         print(f"  User: {spec.user_name} (UID: {spec.user_id})", file=sys.stderr)
         print(f"  Group: {spec.group_name} (GID: {spec.group_id})", file=sys.stderr)
         print(f"  Working directory: {spec.workdir}", file=sys.stderr)
-        print(f"  Container name: {spec.container_name}", file=sys.stderr)
+        print(f"  Container name: {spec.name}", file=sys.stderr)
         print(f"  Environment variables: {spec.env}", file=sys.stderr)
         print(f"  Volumes: {[vol.to_string() for vol in spec.volumes]}", file=sys.stderr)
         print(f"  Network: {spec.network or 'default (Docker default)'}", file=sys.stderr)
@@ -294,6 +310,116 @@ def cmd_build(args):
         sys.exit(1)
 
 
+def cmd_list(args):
+    """List ctenv containers."""
+    import subprocess
+    import json
+
+    runtime = args.runtime or "docker"
+
+    # Build the ps command (always include stopped containers)
+    cmd = [runtime, "ps", "--all"]
+    cmd.extend(["--filter", "label=se.osd.ctenv.managed=true"])
+
+    if args.quiet:
+        cmd.extend(["--format", "{{.ID}}"])
+        try:
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            output = result.stdout.strip()
+            if output:
+                print(output)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running {runtime}: {e.stderr}", file=sys.stderr)
+            sys.exit(1)
+        except FileNotFoundError:
+            print(f"Error: {runtime} not found", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    # Use JSON format for consistent parsing across Docker and Podman
+    cmd.extend(["--format", "json"])
+
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        output = result.stdout.strip()
+
+        if not output or output == "[]" or output == "null":
+            if args.verbosity >= Verbosity.NORMAL:
+                print("No ctenv containers found.", file=sys.stderr)
+            return
+
+        # Parse JSON output - Docker outputs one JSON object per line, Podman outputs array
+        if output.startswith("["):
+            containers = json.loads(output)
+        else:
+            # Docker: one JSON object per line
+            containers = [json.loads(line) for line in output.splitlines() if line.strip()]
+
+        if not containers:
+            if args.verbosity >= Verbosity.NORMAL:
+                print("No ctenv containers found.", file=sys.stderr)
+            return
+
+        # Build table output
+        rows = []
+        for c in containers:
+            # Handle differences between Docker and Podman JSON output
+            labels_raw = c.get("Labels")
+            # Docker returns labels as comma-separated string "key=val,key2=val2"
+            # Podman returns labels as dict
+            if isinstance(labels_raw, str):
+                labels = {}
+                if labels_raw:
+                    for pair in labels_raw.split(","):
+                        if "=" in pair:
+                            k, v = pair.split("=", 1)
+                            labels[k] = v
+            elif isinstance(labels_raw, dict):
+                labels = labels_raw
+            else:
+                labels = {}
+
+            container_id = c.get("ID") or c.get("Id", "")[:12]
+            names = c.get("Names") or c.get("Name", "")
+            # Docker returns list of names, Podman returns string
+            if isinstance(names, list):
+                names = ",".join(names)
+            status = c.get("Status") or c.get("State", "")
+
+            project_dir = labels.get("se.osd.ctenv.project_dir", "")
+            container_name = labels.get("se.osd.ctenv.container", "")
+
+            rows.append((container_id[:12], project_dir, container_name, status, names))
+
+        # Print table
+        if rows:
+            # Calculate column widths
+            headers = ("ID", "PROJECT DIR", "CONTAINER", "STATUS", "NAMES")
+            widths = [len(h) for h in headers]
+            for row in rows:
+                for i, val in enumerate(row):
+                    widths[i] = max(widths[i], len(str(val)))
+
+            # Print header
+            header_line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+            print(header_line)
+
+            # Print rows
+            for row in rows:
+                row_line = "  ".join(str(val).ljust(widths[i]) for i, val in enumerate(row))
+                print(row_line)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error running {runtime}: {e.stderr}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError:
+        print(f"Error: {runtime} not found", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error parsing {runtime} output: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def create_parser():
     """Create the main argument parser."""
     parser = argparse.ArgumentParser(
@@ -404,6 +530,12 @@ Note: Use '--' to separate commands from container/options.""",
         help="Add custom argument to container run command (can be used multiple times)",
     )
     container_group.add_argument(
+        "--label",
+        action="append",
+        dest="labels",
+        help="Container label in KEY=VALUE format (can be used multiple times)",
+    )
+    container_group.add_argument(
         "--post-start-command",
         action="append",
         dest="post_start_commands",
@@ -415,6 +547,12 @@ Note: Use '--' to separate commands from container/options.""",
         action="store_true",
         default=None,
         help="Run container in the background (detached mode)",
+    )
+    container_group.add_argument(
+        "--no-tty",
+        action="store_true",
+        dest="no_tty",
+        help="Disable TTY allocation (useful for piping output)",
     )
 
     # Volume options group
@@ -515,6 +653,19 @@ Note: Use '--' to separate commands from container/options.""",
     )
     build_parser.add_argument("container", help="Container to use for build configuration")
 
+    # list command
+    list_parser = subparsers.add_parser(
+        "list",
+        aliases=["ls", "ps"],
+        help="List ctenv containers",
+        description="List containers managed by ctenv",
+    )
+    list_parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Only display container IDs",
+    )
+
     return parser
 
 
@@ -551,6 +702,8 @@ def main(argv=None):
             parser.parse_args(["config", "--help"])
     elif args.subcommand == "build":
         cmd_build(args)
+    elif args.subcommand in ("list", "ls", "ps"):
+        cmd_list(args)
     else:
         parser.print_help()
         sys.exit(1)

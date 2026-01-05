@@ -1,6 +1,7 @@
 # Test project configuration
 [defaults]
 project_target = "/repo"
+labels = { "se.osd.ctenv.test" = "true" }
 
 [containers.test]
 image = "ubuntu:22.04"

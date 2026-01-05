@@ -88,7 +88,7 @@ EOF
 }
 
 @test "config: multiple containers with default=true gives error" {
-    cd "$MULTIPLE_DEFAULTS"
+    cd "$BAD_MULTIPLE_DEFAULTS"
 
     # Should fail because multiple containers are marked as default
     run $CTENV run --dry-run
