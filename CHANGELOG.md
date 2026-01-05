@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+
+## v0.10
+
 ### Added
 
 - CLI command `list` for listing containers that were created by ctenv.
