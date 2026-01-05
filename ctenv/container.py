@@ -1048,8 +1048,9 @@ class ContainerRunner:
             if verbosity >= Verbosity.VERBOSE:
                 print("Detach mode: enabled (running in background)", file=sys.stderr)
 
-        # TTY flag - needed for commands like bash even when detached
-        if spec.tty:
+        # TTY flag - needed for commands like bash. Always enabled when detached
+        # since stdin TTY state is irrelevant for background containers.
+        if spec.tty or spec.detach:
             args.append("-t")
             if verbosity >= Verbosity.VERBOSE:
                 print("TTY mode: enabled", file=sys.stderr)
