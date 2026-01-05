@@ -1,6 +1,5 @@
-default_container = "dev"
-
 [containers.dev]
+default = true
 build = { dockerfile = "Dockerfile.dev" }
 volumes = ["~/.claude.json", "~/.claude/"]
 network = "bridge"

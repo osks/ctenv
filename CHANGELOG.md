@@ -6,10 +6,16 @@
 
 ### Added
 
-- Global config option `default_container` for specifing which
-  container to run by default (none specified). If no default
-  container is specified, it will still run a container using the
-  default options.
+- Container option `default = true` for specifying which container to
+  run by default (when none specified). Example:
+  ```toml
+  [containers.dev]
+  image = "node:20"
+  default = true
+  ```
+  If no default container is specified, ctenv will run using the
+  default options. An error is raised if multiple containers are
+  marked as default.
 
 
 ## v0.8

@@ -380,6 +380,7 @@ class ContainerConfig:
     image: Union[str, NotSetType] = NOTSET
     build: Union[BuildConfig, NotSetType] = NOTSET
     command: Union[str, NotSetType] = NOTSET
+    default: Union[bool, NotSetType] = NOTSET  # Mark as default container
     project_target: Union[str, NotSetType] = (
         NOTSET  # Target path in container for project (e.g., "/repo")
     )
@@ -622,7 +623,6 @@ class ConfigFile:
     containers: Dict[str, ContainerConfig]
     defaults: Optional[ContainerConfig]
     path: Optional[Path]  # None for built-in defaults
-    default_container: Optional[str] = None  # Name of container to use when none specified
 
     @classmethod
     def load(cls, config_path: Path, project_dir: Path) -> "ConfigFile":
@@ -667,14 +667,10 @@ class ConfigFile:
             )
             container_configs[name] = container_config
 
-        # Parse top-level default_container setting
-        default_container = config_data.get("default_container")
-
         return cls(
             containers=container_configs,
             defaults=defaults_config,
             path=config_path,
-            default_container=default_container,
         )
 
 
@@ -728,7 +724,28 @@ class CtenvConfig:
 
     defaults: ContainerConfig  # System + file defaults as ContainerConfig
     containers: Dict[str, ContainerConfig]  # Container configs from all files
-    default_container: Optional[str] = None  # Container to use when none specified
+
+    def find_default_container(self) -> Optional[str]:
+        """Find the container marked as default.
+
+        Returns:
+            Container name if one is marked as default, None otherwise.
+
+        Raises:
+            ValueError: If multiple containers are marked as default.
+        """
+        default_containers = [
+            name for name, config in self.containers.items()
+            if config.default is True
+        ]
+
+        if len(default_containers) > 1:
+            raise ValueError(
+                f"Multiple containers marked as default: {', '.join(sorted(default_containers))}. "
+                "Only one container can have 'default = true'."
+            )
+
+        return default_containers[0] if default_containers else None
 
     def get_default(self, overrides: Optional[ContainerConfig] = None) -> ContainerConfig:
         """Get default configuration with optional overrides.
@@ -851,14 +868,7 @@ class CtenvConfig:
                 # Simply overwrite - no merging between config files
                 containers[name] = container_config
 
-        # Find default_container (first config file that sets it wins)
-        default_container = None
-        for config_file in config_files:
-            if config_file.default_container is not None:
-                default_container = config_file.default_container
-                break
-
-        return cls(defaults=defaults, containers=containers, default_container=default_container)
+        return cls(defaults=defaults, containers=containers)
 
 
 def _substitute_variables(text: str, variables: Dict[str, str], environ: Dict[str, str]) -> str:

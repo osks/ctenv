@@ -101,7 +101,7 @@ def _resolve_container_config(args, command, runtime):
         runtime.cwd,
     )
 
-    container = (args.container or ctenv_config.default_container)
+    container = args.container or ctenv_config.find_default_container()
     # Get merged ContainerConfig
     if container is None:
         container_config = ctenv_config.get_default(overrides=cli_overrides)

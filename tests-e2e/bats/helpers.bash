@@ -36,6 +36,7 @@ register_runtime_test() {
 # Test fixtures
 FIXTURES_DIR="$PROJECT_ROOT/tests-e2e/fixtures"
 PROJECT1="$FIXTURES_DIR/project1"
+MULTIPLE_DEFAULTS="$FIXTURES_DIR/multiple-defaults"
 
 # Generate unique container name for tests
 container_name() {

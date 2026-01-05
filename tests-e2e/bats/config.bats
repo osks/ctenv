@@ -51,16 +51,15 @@ teardown() {
     [[ "$output" == *"ubuntu:22.04"* ]]
 }
 
-@test "config: default_container uses specified container when no container arg provided" {
+@test "config: default=true uses specified container when no container arg provided" {
     cd "$TEMP_WORKSPACE"
 
-    # Create config with default_container
+    # Create config with default container
     cat > .ctenv.toml << 'EOF'
-default_container = "mydev"
-
 [containers.mydev]
 image = "alpine:latest"
 command = "echo from-default-container"
+default = true
 EOF
 
     # Run without specifying container - should use mydev
@@ -69,15 +68,14 @@ EOF
     [[ "$output" == *"alpine:latest"* ]]
 }
 
-@test "config: explicit container arg overrides default_container" {
+@test "config: explicit container arg overrides default=true" {
     cd "$TEMP_WORKSPACE"
 
-    # Create config with default_container and another container
+    # Create config with default container and another container
     cat > .ctenv.toml << 'EOF'
-default_container = "mydev"
-
 [containers.mydev]
 image = "alpine:latest"
+default = true
 
 [containers.other]
 image = "ubuntu:22.04"
@@ -89,19 +87,11 @@ EOF
     [[ "$output" == *"ubuntu:22.04"* ]]
 }
 
-@test "config: default_container with non-existent container gives error" {
-    cd "$TEMP_WORKSPACE"
+@test "config: multiple containers with default=true gives error" {
+    cd "$MULTIPLE_DEFAULTS"
 
-    # Create config pointing to non-existent container
-    cat > .ctenv.toml << 'EOF'
-default_container = "doesnotexist"
-
-[containers.dev]
-image = "alpine:latest"
-EOF
-
-    # Should fail because default_container references unknown container
+    # Should fail because multiple containers are marked as default
     run $CTENV run --dry-run
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Unknown container"* ]] || [[ "$output" == *"doesnotexist"* ]]
+    [[ "$output" == *"Multiple containers marked as default"* ]]
 }

@@ -1095,16 +1095,15 @@ def test_resolve_relative_subpaths_notset():
 
 
 def test_default_container_from_config_file():
-    """Test that default_container is loaded from config file."""
+    """Test that container with default=true is found."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-default_container = "dev"
-
 [containers.dev]
 image = "node:18"
+default = true
 
 [containers.prod]
 image = "node:18-slim"
@@ -1115,11 +1114,11 @@ image = "node:18-slim"
 
         ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
 
-        assert ctenv_config.default_container == "dev"
+        assert ctenv_config.find_default_container() == "dev"
 
 
 def test_default_container_none_when_not_set():
-    """Test that default_container is None when not configured."""
+    """Test that find_default_container returns None when no container has default=true."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -1134,66 +1133,54 @@ image = "node:18"
 
         ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
 
-        assert ctenv_config.default_container is None
+        assert ctenv_config.find_default_container() is None
 
 
-def test_default_container_priority():
-    """Test that explicit config file default_container takes priority over user config."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-
-        # Create project config with default_container
-        project_config = tmpdir / "project.toml"
-        project_config_content = """
-default_container = "project-dev"
-
-[containers.project-dev]
-image = "node:18"
-"""
-        project_config.write_text(project_config_content)
-
-        # Create user config with different default_container
-        user_config = tmpdir / "user.toml"
-        user_config_content = """
-default_container = "user-dev"
-
-[containers.user-dev]
-image = "python:3.11"
-"""
-        user_config.write_text(user_config_content)
-
-        from ctenv.config import CtenvConfig
-
-        # Project config listed first = higher priority
-        ctenv_config = CtenvConfig.load(
-            tmpdir, explicit_config_files=[project_config, user_config]
-        )
-
-        # Project config's default_container should take precedence
-        assert ctenv_config.default_container == "project-dev"
-
-
-def test_configfile_default_container_parsing():
-    """Test that ConfigFile correctly parses default_container."""
+def test_default_container_multiple_error():
+    """Test that multiple containers with default=true raises an error."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
         config_file = tmpdir / "ctenv.toml"
         config_content = """
-default_container = "mycontainer"
+[containers.dev]
+image = "node:18"
+default = true
 
+[containers.prod]
+image = "node:18-slim"
+default = true
+"""
+        config_file.write_text(config_content)
+
+        from ctenv.config import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
+
+        with pytest.raises(ValueError, match="Multiple containers marked as default"):
+            ctenv_config.find_default_container()
+
+
+def test_container_default_field_parsing():
+    """Test that default field is correctly parsed from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        config_file = tmpdir / "ctenv.toml"
+        config_content = """
 [containers.mycontainer]
 image = "alpine:latest"
+default = true
 """
         config_file.write_text(config_content)
 
         config = ConfigFile.load(config_file, tmpdir)
 
-        assert config.default_container == "mycontainer"
+        assert config.containers["mycontainer"].default is True
 
 
-def test_configfile_default_container_none():
-    """Test that ConfigFile.default_container is None when not set."""
+def test_container_default_field_not_set():
+    """Test that default field is NOTSET when not specified."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -1204,6 +1191,7 @@ image = "alpine:latest"
 """
         config_file.write_text(config_content)
 
+        from ctenv.config import NOTSET
         config = ConfigFile.load(config_file, tmpdir)
 
-        assert config.default_container is None
+        assert config.containers["test"].default is NOTSET
