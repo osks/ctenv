@@ -678,7 +678,7 @@ def test_cli_labels_flow_to_containerspec():
     """Test that labels from CLI args flow through to ContainerSpec."""
     from pathlib import Path
     from ctenv.cli import create_parser, _resolve_container_config
-    from ctenv.config import CtenvConfig, ContainerConfig, RuntimeContext
+    from ctenv.config import RuntimeContext
     from ctenv.container import parse_container_config
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -706,12 +706,16 @@ image = "ubuntu:latest"
 
         # Parse CLI args with labels
         parser = create_parser()
-        args = parser.parse_args([
-            "run",
-            "--label", "com.example.test=myvalue",
-            "--label", "environment=testing",
-            "test",
-        ])
+        args = parser.parse_args(
+            [
+                "run",
+                "--label",
+                "com.example.test=myvalue",
+                "--label",
+                "environment=testing",
+                "test",
+            ]
+        )
         args.verbosity = Verbosity.NORMAL
 
         # Resolve container config (simulating what cmd_run does)
@@ -726,16 +730,23 @@ image = "ubuntu:latest"
         assert spec.labels["se.osd.ctenv.container"] == "test"
 
         # Verify user-defined labels are present
-        assert spec.labels.get("com.example.test") == "myvalue", f"Expected 'myvalue', got {spec.labels}"
+        assert spec.labels.get("com.example.test") == "myvalue", (
+            f"Expected 'myvalue', got {spec.labels}"
+        )
         assert spec.labels.get("environment") == "testing", f"Expected 'testing', got {spec.labels}"
 
         # Verify labels make it into docker run arguments
         from ctenv.container import ContainerRunner
+
         docker_args = ContainerRunner.build_run_args(spec, "/tmp/test-entrypoint.sh")
 
         # Check that user labels are in the docker args
-        assert "--label=com.example.test=myvalue" in docker_args, f"User label not in args: {docker_args}"
-        assert "--label=environment=testing" in docker_args, f"Environment label not in args: {docker_args}"
+        assert "--label=com.example.test=myvalue" in docker_args, (
+            f"User label not in args: {docker_args}"
+        )
+        assert "--label=environment=testing" in docker_args, (
+            f"Environment label not in args: {docker_args}"
+        )
 
         # Also check system labels
         assert any("--label=se.osd.ctenv.managed=true" in arg for arg in docker_args)

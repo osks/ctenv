@@ -124,7 +124,9 @@ def _resolve_container_config(args, command, runtime):
     else:
         # If the container doesn't exist, it will (and should) fail,
         # which is handled by get_container raising.
-        container_config = ctenv_config.get_container(container=config_name, overrides=cli_overrides)
+        container_config = ctenv_config.get_container(
+            container=config_name, overrides=cli_overrides
+        )
 
     # Set config name metadata (may already be set from TOML, but CLI selection takes precedence)
     container_config._config_name = config_name
@@ -661,7 +663,8 @@ Note: Use '--' to separate commands from container/options.""",
         description="List containers managed by ctenv",
     )
     list_parser.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
         help="Only display container IDs",
     )
