@@ -361,90 +361,102 @@ Note: Use '--' to separate commands from container/options.""",
         help="Show commands without running container",
     )
     run_parser.add_argument(
-        "--project-target",
-        dest="project_target",
-        help="Target path in container for project (e.g., /repo). Default: same as host path",
-    )
-    run_parser.add_argument(
-        "--no-auto-project-mount",
-        action="store_true",
-        dest="no_auto_project_mount",
-        help="Skip auto-mounting project directory (volumes and subpaths will still be mounted)",
+        "--gosu-path",
+        help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
     )
 
-    run_parser.add_argument("--image", help="Container image to use")
-    run_parser.add_argument("--name", help="Container name")
-    run_parser.add_argument(
+    # Container options group
+    container_group = run_parser.add_argument_group(
+        "Container Options", "Configure the container runtime environment"
+    )
+    container_group.add_argument("--image", help="Container image to use")
+    container_group.add_argument("--name", help="Container name")
+    container_group.add_argument(
+        "--workdir",
+        help="Working directory inside container (where to cd) (default: cwd)",
+    )
+    container_group.add_argument(
         "--env",
         action="append",
         dest="env",
         help="Set environment variable (NAME=VALUE) or pass from host (NAME)",
     )
-    run_parser.add_argument(
-        "-v",
-        "--volume",
-        action="append",
-        dest="volumes",
-        help="Mount additional volume (HOST:CONTAINER format)",
+    container_group.add_argument(
+        "--network", help="Enable container networking (default: disabled for security)"
     )
-    run_parser.add_argument(
+    container_group.add_argument(
+        "--platform",
+        help="Container platform (e.g., linux/amd64, linux/arm64)",
+    )
+    container_group.add_argument(
         "--sudo",
         action="store_true",
         help="Add user to sudoers with NOPASSWD inside container",
     )
-    run_parser.add_argument(
-        "--network", help="Enable container networking (default: disabled for security)"
-    )
-    run_parser.add_argument(
-        "-s",
-        "--subpath",
-        action="append",
-        dest="subpaths",
-        help="Mount only this subpath instead of entire project (repeatable, disables auto project mount)",
-    )
-    run_parser.add_argument(
-        "--workdir",
-        help="Working directory inside container (where to cd) (default: cwd)",
-    )
-    run_parser.add_argument(
-        "--platform",
-        help="Container platform (e.g., linux/amd64, linux/arm64)",
-    )
-    run_parser.add_argument(
-        "--gosu-path",
-        help="Path to gosu binary (default: auto-discover from PATH or .ctenv/gosu)",
-    )
-    run_parser.add_argument(
+    container_group.add_argument(
         "--run-arg",
         action="append",
         dest="run_args",
         help="Add custom argument to container run command (can be used multiple times)",
     )
-    run_parser.add_argument(
+    container_group.add_argument(
         "--post-start-command",
         action="append",
         dest="post_start_commands",
         help="Add extra command to run after container starts, but before the COMMAND is executed. Will be executed as the root user. (can be used multiple times)",
     )
 
-    # Build options
-    run_parser.add_argument(
+    # Volume options group
+    volume_group = run_parser.add_argument_group(
+        "Volume Options", "Control how directories are mounted into the container"
+    )
+    volume_group.add_argument(
+        "-v",
+        "--volume",
+        action="append",
+        dest="volumes",
+        help="Mount additional volume (HOST:CONTAINER format)",
+    )
+    volume_group.add_argument(
+        "-s",
+        "--subpath",
+        action="append",
+        dest="subpaths",
+        help="Mount only this subpath instead of entire project (repeatable, disables auto project mount)",
+    )
+    volume_group.add_argument(
+        "--project-target",
+        dest="project_target",
+        help="Target path in container for project (e.g., /repo). Default: same as host path",
+    )
+    volume_group.add_argument(
+        "--no-auto-project-mount",
+        action="store_true",
+        dest="no_auto_project_mount",
+        help="Skip auto-mounting project directory (volumes and subpaths will still be mounted)",
+    )
+
+    # Build options group
+    build_group = run_parser.add_argument_group(
+        "Build Options", "Options for building container image before running"
+    )
+    build_group.add_argument(
         "--build-dockerfile",
         help="Path to Dockerfile for building (default: Dockerfile)",
     )
-    run_parser.add_argument(
+    build_group.add_argument(
         "--build-dockerfile-content",
         help="Inline Dockerfile content (mutually exclusive with --build-dockerfile)",
     )
-    run_parser.add_argument(
+    build_group.add_argument(
         "--build-context",
         help="Build context directory (default: .)",
     )
-    run_parser.add_argument(
+    build_group.add_argument(
         "--build-tag",
         help="Custom image tag (default: auto-generated)",
     )
-    run_parser.add_argument(
+    build_group.add_argument(
         "--build-arg",
         action="append",
         dest="build_args",

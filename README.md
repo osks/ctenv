@@ -9,7 +9,7 @@
 Container runner that executes as your user with correct file permissions.
 
 Bring your own image: existing build environments, CI images, custom
-Dockerfile - any Docker image. Use for interactive work, AI coding
+Dockerfile - any container image. Use for interactive work, AI coding
 agents, or builds. Mounts your project and supports per-project
 container definitions.
 
@@ -20,9 +20,9 @@ modifications needed. Works with both Docker and Podman (rootless).
 
 Highlights:
 
+- Per-project configurable containers. `.ctenv.toml` - which also identifies the project root.
 - Auto-mounted project root
 - Convenient mounts, defaults to same path in container as on host. Example: Claude Code config `-v ~/.claude`
-- Per-project configurable containers. `.ctenv.toml` - which also identifies the project root.
 - Post-start commands as root, before dropping privileges. Example: setup firewall rules.
 - Supports Docker and Podman (rootless)
 
