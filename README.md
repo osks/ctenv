@@ -100,6 +100,22 @@ dynamically to handle user creation and environment setup.
 
 Create `.ctenv.toml` in your project root (also marks the project directory) or `~/.ctenv.toml` for user-wide settings. Run with `ctenv run <container>`.
 
+```toml
+[defaults]
+network = "bridge"
+
+[containers.dev]
+image = "python:3.11"
+volumes = ["~/.gitconfig:ro"]
+env = ["DEBUG=1", "API_KEY"]  # Set value or pass from host
+
+[containers.dev.build]        # Optional: build image instead of pulling
+dockerfile_content = """
+FROM python:3.11
+RUN pip install pytest
+"""
+```
+
 ### Config File Priority
 
 1. Explicit `--config` files (in order specified)
@@ -107,42 +123,116 @@ Create `.ctenv.toml` in your project root (also marks the project directory) or 
 3. User config (`~/.ctenv.toml`)
 4. Built-in defaults
 
+A container configured in the current project config will shadow
+container with name defined in HOME/global config.
+
+
+### General options
+
+- Project directory (`-p`, `--project-dir`) (default: auto-detect)
+  
+  Specifies the _project directory_, the root of your
+  project. Generally your git repo. Define the project by placing a
+  `.ctenv.toml` there; ctenv will look for it automatically by
+  searching upward from cwd.
+  
+  The _project directory_ is auto-mounted into the container by default.
+  Use `--subpath` to mount only specific subpaths instead.
+
+
 ### Container Options
 
-| Option                | Default         | Description |
-|-----------------------|-----------------|-------------|
-| `image`               | `ubuntu:latest` | Container image (mutually exclusive with `build`) |
-| `command`             | `bash`          | Command to execute |
-| `name`                | (auto)          | Container name, default: `ctenv-{container}-{pid}` |
-| `default`             | -               | Mark as default container (only one allowed) |
-| `workdir`             | `auto`          | Working directory (`auto` = preserve relative position) |
-| `project_target`      | same as host    | Where to mount project (e.g., `/repo`) |
-| `auto_project_mount`  | `true`          | Auto-mount project directory |
-| `volumes`             | `[]`            | Volume mounts (see syntax below) |
-| `subpaths`            | `[]`            | Mount only these subpaths (disables auto mount) |
-| `env`                 | `[]`            | Environment: `NAME=value` or `NAME` (pass from host) |
-| `sudo`                | `false`         | Add user to sudoers with NOPASSWD |
-| `tty`                 | `auto`          | TTY allocation |
-| `detach`              | `false`         | Run in background |
-| `post_start_commands` | `[]`            | Commands to run as root before user command |
-| `runtime`             | `docker`        | Runtime: `docker` or `podman` |
-| `network`             | -               | Network: `bridge`, `none`, `host`, or custom |
-| `platform`            | -               | Platform: `linux/amd64` or `linux/arm64` |
-| `run_args`            | `[]`            | Extra `docker run` arguments |
-| `labels`              | `{}`            | Container labels |
-| `ulimits`             | -               | Resource limits: `{ nofile = 4096 }` |
+Options for `[containers.NAME]` sections and their CLI equivalents:
+
+- **`image`** (default: `ubuntu:latest`) (`--image`)
+  Container image. Mutually exclusive with `build`.
+
+- **`command`** (default: `bash`)
+  Command to execute. On CLI, specified after `--`.
+
+- **`name`** (default: auto) (`--name`)
+  Container name. Default template: `ctenv-{container}-{pid}`
+
+- **`default`** (config only)
+  Mark as default container (only one allowed).
+
+- **`workdir`** (default: `auto`) (`--workdir`)
+  Working directory in container. `auto` preserves relative position from project root.
+
+- **`project_target`** (default: same as host) (`--project-target`)
+  Where in the container the project directory should be mounted. For example,
+  `--project-target /repo` to always mount at a fixed path. Supports volume
+  options (e.g., `/repo:ro`). Volumes that are subpaths of the project
+  directory will be mounted relative to this path.
+
+- **`auto_project_mount`** (default: `true`) (`--no-auto-project-mount`)
+  Auto-mount project directory. Set to `false` or use CLI flag when you don't
+  need any project mounts (volumes and subpaths still work).
+
+- **`volumes`** (default: `[]`) (`-v, --volume`)
+  Paths to mount into the container. Supports Docker volume syntax (`host:container`)
+  or just a path to mount at the same location. Subpaths of the project directory
+  will be mounted relative to the project target. See Volume Syntax below.
+
+- **`subpaths`** (default: `[]`) (`-s, --subpath`)
+  Mount only specific subpaths instead of the entire project directory. Using
+  subpaths disables auto project mount, so only the specified subpaths are
+  mounted. Must be inside the project directory. Supports volume options
+  (e.g., `./src:ro`). Can be used multiple times.
+
+- **`env`** (default: `[]`) (`--env`)
+  Environment variables. `NAME=value` sets a value, `NAME` passes from host.
+
+- **`sudo`** (default: `false`) (`--sudo`)
+  Add user to sudoers with NOPASSWD inside container.
+
+- **`tty`** (default: `auto`) (`--no-tty`)
+  TTY allocation. `auto` detects from stdin.
+
+- **`detach`** (default: `false`) (`-d, --detach`)
+  Run container in background.
+
+- **`post_start_commands`** (default: `[]`) (`--post-start-command`)
+  Commands to run as root after container starts but before the main command executes.
+
+- **`runtime`** (default: `docker`) (`--runtime`)
+  Container runtime: `docker` or `podman` (rootless with `--userns=keep-id`).
+
+- **`network`** (`--network`)
+  Network mode: `bridge`, `none`, `host`, or custom network name.
+
+- **`platform`** (`--platform`)
+  Target platform: `linux/amd64` or `linux/arm64`.
+
+- **`run_args`** (default: `[]`) (`--run-arg`)
+  Extra arguments passed directly to `docker run`.
+
+- **`labels`** (default: `{}`) (`--label`)
+  Container labels in KEY=VALUE format.
+
+- **`ulimits`** (config only)
+  Resource limits, e.g., `{ nofile = 4096 }`.
+
 
 ### Build Options
 
 Use `[containers.NAME.build]` to build images on-demand instead of pulling:
 
-| Option                | Default         | Description |
-|-----------------------|-----------------|-------------|
-| `dockerfile`          | `Dockerfile`    | Path to Dockerfile |
-| `dockerfile_content`  | -               | Inline Dockerfile (mutually exclusive with above) |
-| `context`             | `.`             | Build context directory |
-| `tag`                 | (auto)          | Image tag, default: `ctenv-{project_dir|slug}:latest` |
-| `args`                | `{}`            | Build arguments |
+- **`dockerfile`** (default: `Dockerfile`) (`--build-dockerfile`)
+  Path to Dockerfile.
+
+- **`dockerfile_content`** (`--build-dockerfile-content`)
+  Inline Dockerfile content. Mutually exclusive with `dockerfile`.
+
+- **`context`** (default: `.`) (`--build-context`)
+  Build context directory.
+
+- **`tag`** (default: auto) (`--build-tag`)
+  Image tag. Default template: `ctenv-{project_dir|slug}:latest`
+
+- **`args`** (default: `{}`) (`--build-arg`)
+  Build arguments in KEY=VALUE format.
+
 
 ### Volume Syntax
 
@@ -159,6 +249,7 @@ Options: `ro` (read-only), `rw` (read-write), `chown` (fix ownership), `z` (SELi
 
 Path handling: `~/` expands to home, `./` is relative to config file (or cwd on CLI), absolute paths as-is.
 
+
 ### Template Variables
 
 | Variable                       | Description |
@@ -172,12 +263,20 @@ Path handling: `~/` expands to home, `./` is relative to config file (or cwd on 
 
 Filter: `${var|slug}` converts to filesystem-safe string (lowercase, `/` and `:` become `-`)
 
+
 ### Defaults & Merging
 
 The `[defaults]` section applies to all containers:
 - Scalars (image, command, sudo, etc.): container value overrides default
 - Lists (env, volumes, run_args, etc.): concatenated (defaults + container)
 - Dicts (labels, ulimits): merged (container keys override)
+
+
+### Path handling
+
+- Config file: Relative paths are relative to the file.
+- Command line: Relative paths are relative to the current working directory.
+
 
 ### Example
 
@@ -340,68 +439,6 @@ post_start_commands = ["source /venv/bin/activate"]
 ```
 
 This setup ensures the build environment matches the user's environment while sharing caches between different repository clones.
-
-
-## Reference
-
-- Path handling in general
-  
-  - Config file: Relative paths are relative to the file.
-  
-  - Command line: Relative paths are relative to the current working directory.
-
-
-- A container configured in the current project config will shadow
-  container with name defined in HOME/global config.
-
-
-- Project directory (`-p` / `--project-dir`)
-  
-  Specifies the _project directory_, the root of your project. Generally
-  your git repo. Define the project by placing a `.ctenv.toml` there,
-  ctenv will look for it automatically.
-  
-  The _project directory_ is auto-mounted into the container by default.
-  Use `--subpath` to mount only specific subpaths instead.
-
-
-- Project target (`--project-target`)
-
-  Specifies where in the container the _project directory_ should be
-  mounted. For example to always mount at a fixed path (example:
-  `--project-target /repo`). Supports volume options (example:
-  `--project-target /project/mount:ro`). Default is to mount at the
-  same path as on the host.
-
-
-- Subpath (`-s` / `--subpath`) (multiple)
-
-  Mount only specific subpaths instead of the entire _project
-  directory_. Using subpaths disables the auto project mount, so only
-  the specified subpaths are mounted. Must be a subpath of the
-  _project directory_. Supports volume options (example: `-s
-  ./scripts:ro`).
-
-
-- No auto project mount (`--no-auto-project-mount`)
-
-  Skips auto-mounting the _project directory_. Use this when you don't
-  need any project mounts at all (volumes and subpaths still work).
-
-
-- Volume (`-v` / `--volume`)
-  
-  Path to mount into the container.
-  
-  Supports volume syntax (`/host/path:/container/path`) to specify
-  where in the container it should be mounted. Default is to mount at
-  the same path as the host directory.
-  
-  Subpaths of the _project directory_ will be mounted relative to the
-  _project target_. Example: If CWD is `/project` and ctenv is run
-  with `--project-target /repo`, then specifying `-v ./bar` will mount
-  `/project/bar` at `/repo/bar`.
-
 
 
 ## History
