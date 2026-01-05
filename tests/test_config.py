@@ -1092,3 +1092,118 @@ def test_resolve_relative_subpaths_notset():
     resolved = resolve_relative_paths_in_container_config(config, Path("/tmp"))
 
     assert resolved.subpaths is NOTSET
+
+
+def test_default_container_from_config_file():
+    """Test that default_container is loaded from config file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        config_file = tmpdir / "ctenv.toml"
+        config_content = """
+default_container = "dev"
+
+[containers.dev]
+image = "node:18"
+
+[containers.prod]
+image = "node:18-slim"
+"""
+        config_file.write_text(config_content)
+
+        from ctenv.config import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
+
+        assert ctenv_config.default_container == "dev"
+
+
+def test_default_container_none_when_not_set():
+    """Test that default_container is None when not configured."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        config_file = tmpdir / "ctenv.toml"
+        config_content = """
+[containers.dev]
+image = "node:18"
+"""
+        config_file.write_text(config_content)
+
+        from ctenv.config import CtenvConfig
+
+        ctenv_config = CtenvConfig.load(tmpdir, explicit_config_files=[config_file])
+
+        assert ctenv_config.default_container is None
+
+
+def test_default_container_priority():
+    """Test that explicit config file default_container takes priority over user config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Create project config with default_container
+        project_config = tmpdir / "project.toml"
+        project_config_content = """
+default_container = "project-dev"
+
+[containers.project-dev]
+image = "node:18"
+"""
+        project_config.write_text(project_config_content)
+
+        # Create user config with different default_container
+        user_config = tmpdir / "user.toml"
+        user_config_content = """
+default_container = "user-dev"
+
+[containers.user-dev]
+image = "python:3.11"
+"""
+        user_config.write_text(user_config_content)
+
+        from ctenv.config import CtenvConfig
+
+        # Project config listed first = higher priority
+        ctenv_config = CtenvConfig.load(
+            tmpdir, explicit_config_files=[project_config, user_config]
+        )
+
+        # Project config's default_container should take precedence
+        assert ctenv_config.default_container == "project-dev"
+
+
+def test_configfile_default_container_parsing():
+    """Test that ConfigFile correctly parses default_container."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        config_file = tmpdir / "ctenv.toml"
+        config_content = """
+default_container = "mycontainer"
+
+[containers.mycontainer]
+image = "alpine:latest"
+"""
+        config_file.write_text(config_content)
+
+        config = ConfigFile.load(config_file, tmpdir)
+
+        assert config.default_container == "mycontainer"
+
+
+def test_configfile_default_container_none():
+    """Test that ConfigFile.default_container is None when not set."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        config_file = tmpdir / "ctenv.toml"
+        config_content = """
+[containers.test]
+image = "alpine:latest"
+"""
+        config_file.write_text(config_content)
+
+        config = ConfigFile.load(config_file, tmpdir)
+
+        assert config.default_container is None

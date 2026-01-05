@@ -101,12 +101,15 @@ def _resolve_container_config(args, command, runtime):
         runtime.cwd,
     )
 
+    container = (args.container or ctenv_config.default_container)
     # Get merged ContainerConfig
-    if args.container is None:
+    if container is None:
         container_config = ctenv_config.get_default(overrides=cli_overrides)
     else:
+        # If the container doesn't exist, it will (and should) fail,
+        # which is handled by get_container raising.
         container_config = ctenv_config.get_container(
-            container=args.container, overrides=cli_overrides
+            container=container, overrides=cli_overrides
         )
 
     return container_config

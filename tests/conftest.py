@@ -5,6 +5,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 
+@pytest.fixture(autouse=True)
+def isolated_environment(tmp_path, monkeypatch):
+    """Isolate all tests from user's ~/.ctenv.toml and project's .ctenv.toml.
+
+    - Sets HOME to temp directory (no user config)
+    - Changes cwd to temp directory (no project config)
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
 @pytest.fixture
 def temp_workspace():
     """Create temporary directory and change to it for test isolation."""

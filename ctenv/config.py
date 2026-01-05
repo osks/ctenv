@@ -622,6 +622,7 @@ class ConfigFile:
     containers: Dict[str, ContainerConfig]
     defaults: Optional[ContainerConfig]
     path: Optional[Path]  # None for built-in defaults
+    default_container: Optional[str] = None  # Name of container to use when none specified
 
     @classmethod
     def load(cls, config_path: Path, project_dir: Path) -> "ConfigFile":
@@ -666,10 +667,14 @@ class ConfigFile:
             )
             container_configs[name] = container_config
 
+        # Parse top-level default_container setting
+        default_container = config_data.get("default_container")
+
         return cls(
             containers=container_configs,
             defaults=defaults_config,
             path=config_path,
+            default_container=default_container,
         )
 
 
@@ -723,6 +728,7 @@ class CtenvConfig:
 
     defaults: ContainerConfig  # System + file defaults as ContainerConfig
     containers: Dict[str, ContainerConfig]  # Container configs from all files
+    default_container: Optional[str] = None  # Container to use when none specified
 
     def get_default(self, overrides: Optional[ContainerConfig] = None) -> ContainerConfig:
         """Get default configuration with optional overrides.
@@ -845,7 +851,14 @@ class CtenvConfig:
                 # Simply overwrite - no merging between config files
                 containers[name] = container_config
 
-        return cls(defaults=defaults, containers=containers)
+        # Find default_container (first config file that sets it wins)
+        default_container = None
+        for config_file in config_files:
+            if config_file.default_container is not None:
+                default_container = config_file.default_container
+                break
+
+        return cls(defaults=defaults, containers=containers, default_container=default_container)
 
 
 def _substitute_variables(text: str, variables: Dict[str, str], environ: Dict[str, str]) -> str:

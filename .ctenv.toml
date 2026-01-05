@@ -1,4 +1,4 @@
-# ctenv configuration for this project
+default_container = "dev"
 
 [containers.dev]
 build = { dockerfile = "Dockerfile.dev" }
@@ -11,9 +11,3 @@ post_start_commands = [
     "iptables -A OUTPUT -d 192.168.0.0/16 -j DROP",
 ]
 command = "bash"
-
-
-#[containers.claude]
-#build = { dockerfile = "Dockerfile.dev" }
-#volumes = ["~/.claude.json", "~/.claude/"]
-#command = "claude"

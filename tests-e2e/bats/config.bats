@@ -50,3 +50,58 @@ teardown() {
     # Fixture has ubuntu:22.04 for test container
     [[ "$output" == *"ubuntu:22.04"* ]]
 }
+
+@test "config: default_container uses specified container when no container arg provided" {
+    cd "$TEMP_WORKSPACE"
+
+    # Create config with default_container
+    cat > .ctenv.toml << 'EOF'
+default_container = "mydev"
+
+[containers.mydev]
+image = "alpine:latest"
+command = "echo from-default-container"
+EOF
+
+    # Run without specifying container - should use mydev
+    run $CTENV run --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"alpine:latest"* ]]
+}
+
+@test "config: explicit container arg overrides default_container" {
+    cd "$TEMP_WORKSPACE"
+
+    # Create config with default_container and another container
+    cat > .ctenv.toml << 'EOF'
+default_container = "mydev"
+
+[containers.mydev]
+image = "alpine:latest"
+
+[containers.other]
+image = "ubuntu:22.04"
+EOF
+
+    # Run with explicit container - should use 'other', not 'mydev'
+    run $CTENV run --dry-run other
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ubuntu:22.04"* ]]
+}
+
+@test "config: default_container with non-existent container gives error" {
+    cd "$TEMP_WORKSPACE"
+
+    # Create config pointing to non-existent container
+    cat > .ctenv.toml << 'EOF'
+default_container = "doesnotexist"
+
+[containers.dev]
+image = "alpine:latest"
+EOF
+
+    # Should fail because default_container references unknown container
+    run $CTENV run --dry-run
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown container"* ]] || [[ "$output" == *"doesnotexist"* ]]
+}

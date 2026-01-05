@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Global config option `default_container` for specifing which
+  container to run by default (none specified). If no default
+  container is specified, it will still run a container using the
+  default options.
+
 
 ## v0.8
 
