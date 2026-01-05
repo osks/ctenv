@@ -1,0 +1,10 @@
+# Invalid config: multiple containers marked as default
+# This should cause an error when ctenv tries to determine the default container
+
+[containers.dev]
+image = "alpine:latest"
+default = true
+
+[containers.prod]
+image = "ubuntu:22.04"
+default = true
