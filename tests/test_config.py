@@ -1192,6 +1192,155 @@ image = "alpine:latest"
         config_file.write_text(config_content)
 
         from ctenv.config import NOTSET
+
         config = ConfigFile.load(config_file, tmpdir)
 
         assert config.containers["test"].default is NOTSET
+
+
+def test_cli_false_boolean_does_not_override_config_true():
+    """Test that CLI boolean flags (False by default) don't override config True values.
+
+    When --detach or --sudo is NOT passed on CLI, args.detach/args.sudo is False.
+    This False should NOT override a True value from config file.
+    """
+    from unittest.mock import Mock
+    from ctenv.cli import _resolve_container_config
+    from ctenv.config import RuntimeContext
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Create config file with detach=true and sudo=true
+        config_file = tmpdir / ".ctenv.toml"
+        config_content = """
+[containers.dev]
+image = "alpine:latest"
+detach = true
+sudo = true
+"""
+        config_file.write_text(config_content)
+
+        # Mock args as if CLI did NOT pass --detach or --sudo
+        args = Mock()
+        args.container = "dev"
+        args.config = [str(config_file)]
+        args.verbosity = 0
+        args.project_dir = str(tmpdir)
+        # These are None because store_true with default=None
+        args.detach = None
+        args.sudo = None
+        # Other required args
+        args.image = None
+        args.name = None
+        args.project_target = None
+        args.no_auto_project_mount = False
+        args.subpaths = None
+        args.workdir = None
+        args.env = None
+        args.volumes = None
+        args.network = None
+        args.gosu_path = None
+        args.platform = None
+        args.post_start_commands = None
+        args.run_args = None
+        args.runtime = None
+        args.build_dockerfile = None
+        args.build_dockerfile_content = None
+        args.build_context = None
+        args.build_tag = None
+        args.build_args = None
+
+        # Create runtime context
+        runtime = RuntimeContext(
+            user_name="testuser",
+            user_id=1000,
+            user_home="/home/testuser",
+            group_name="testgroup",
+            group_id=1000,
+            cwd=tmpdir,
+            tty=False,
+            project_dir=tmpdir,
+            pid=12345,
+        )
+
+        # Resolve config
+        container_config = _resolve_container_config(args, "bash", runtime)
+
+        # Config file values should NOT be overridden by CLI False defaults
+        assert container_config.detach is True, (
+            "Config detach=true should not be overridden by CLI default False"
+        )
+        assert container_config.sudo is True, (
+            "Config sudo=true should not be overridden by CLI default False"
+        )
+
+
+def test_cli_true_boolean_overrides_config_false():
+    """Test that explicitly passing --detach or --sudo overrides config False values."""
+    from unittest.mock import Mock
+    from ctenv.cli import _resolve_container_config
+    from ctenv.config import RuntimeContext
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Create config file with detach=false and sudo=false
+        config_file = tmpdir / ".ctenv.toml"
+        config_content = """
+[containers.dev]
+image = "alpine:latest"
+detach = false
+sudo = false
+"""
+        config_file.write_text(config_content)
+
+        # Mock args as if CLI passed --detach and --sudo
+        args = Mock()
+        args.container = "dev"
+        args.config = [str(config_file)]
+        args.verbosity = 0
+        args.project_dir = str(tmpdir)
+        # These are True because user passed the flags
+        args.detach = True
+        args.sudo = True
+        # Other required args
+        args.image = None
+        args.name = None
+        args.project_target = None
+        args.no_auto_project_mount = False
+        args.subpaths = None
+        args.workdir = None
+        args.env = None
+        args.volumes = None
+        args.network = None
+        args.gosu_path = None
+        args.platform = None
+        args.post_start_commands = None
+        args.run_args = None
+        args.runtime = None
+        args.build_dockerfile = None
+        args.build_dockerfile_content = None
+        args.build_context = None
+        args.build_tag = None
+        args.build_args = None
+
+        # Create runtime context
+        runtime = RuntimeContext(
+            user_name="testuser",
+            user_id=1000,
+            user_home="/home/testuser",
+            group_name="testgroup",
+            group_id=1000,
+            cwd=tmpdir,
+            tty=False,
+            project_dir=tmpdir,
+            pid=12345,
+        )
+
+        # Resolve config
+        container_config = _resolve_container_config(args, "bash", runtime)
+
+        # CLI True values should override config False
+        assert container_config.detach is True, "CLI --detach should override config detach=false"
+        assert container_config.sudo is True, "CLI --sudo should override config sudo=false"

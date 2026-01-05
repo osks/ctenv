@@ -384,11 +384,14 @@ class ContainerConfig:
     project_target: Union[str, NotSetType] = (
         NOTSET  # Target path in container for project (e.g., "/repo")
     )
-    auto_project_mount: Union[bool, NotSetType] = NOTSET  # Auto-mount project directory (default: True)
+    auto_project_mount: Union[bool, NotSetType] = (
+        NOTSET  # Auto-mount project directory (default: True)
+    )
     workdir: Union[str, NotSetType] = NOTSET
     gosu_path: Union[str, NotSetType] = NOTSET
     container_name: Union[str, NotSetType] = NOTSET
     tty: Union[str, bool, NotSetType] = NOTSET
+    detach: Union[bool, NotSetType] = NOTSET  # Run container in background
     sudo: Union[bool, NotSetType] = NOTSET
 
     # Network and platform settings
@@ -735,8 +738,7 @@ class CtenvConfig:
             ValueError: If multiple containers are marked as default.
         """
         default_containers = [
-            name for name, config in self.containers.items()
-            if config.default is True
+            name for name, config in self.containers.items() if config.default is True
         ]
 
         if len(default_containers) > 1:

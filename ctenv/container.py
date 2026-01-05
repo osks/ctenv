@@ -468,6 +468,7 @@ class ContainerSpec:
     container_name: str  # Always generated if not specified
     tty: bool  # From defaults (stdin.isatty()) or config
     sudo: bool  # From defaults (False) or config
+    detach: bool = False  # Run container in background
     runtime: ContainerRuntime = ContainerRuntime.DOCKER_ROOTFUL
 
     # Lists (use empty list as default instead of None)
@@ -852,6 +853,7 @@ def parse_container_config(
         "command",
         "container_name",
         "sudo",
+        "detach",
         "post_start_commands",
         "run_args",
         "network",
@@ -1012,8 +1014,14 @@ class ContainerRunner:
             # Default: use Docker's default networking (no --network flag)
             print("Network mode: default (Docker default)", file=sys.stderr)
 
-        # TTY flags if running interactively
-        if spec.tty:
+        # Detach mode (run in background)
+        if spec.detach:
+            args.append("-d")
+            if verbosity >= Verbosity.VERBOSE:
+                print("Detach mode: enabled (running in background)", file=sys.stderr)
+
+        # TTY flags if running interactively (not compatible with detach)
+        if spec.tty and not spec.detach:
             args.extend(["-t", "-i"])
             if verbosity >= Verbosity.VERBOSE:
                 print("TTY mode: enabled", file=sys.stderr)

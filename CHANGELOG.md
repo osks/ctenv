@@ -20,6 +20,9 @@
   default options. An error is raised if multiple containers are
   marked as default.
 
+- `--detach`/`-d` option to run containers in the background (detached
+  mode). TTY is automatically disabled when running detached.
+
 
 ## v0.8
 

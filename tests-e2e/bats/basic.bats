@@ -72,3 +72,53 @@ _test_dry_run() {
 }
 register_runtime_test _test_dry_run "dry-run shows correct runtime command"
 
+_test_detach_dry_run() {
+    _require_runtime
+    cd "$PROJECT1"
+    run $CTENV --runtime "$RUNTIME" run --dry-run --detach test -- sleep 60
+    [ "$status" -eq 0 ]
+    # Should include -d flag
+    [[ "$output" == *" -d "* ]]
+    # Should NOT include -t -i (TTY disabled when detached)
+    [[ "$output" != *" -t -i "* ]]
+}
+register_runtime_test _test_detach_dry_run "detach mode shows -d flag and disables TTY"
+
+_test_detach_short_flag_dry_run() {
+    _require_runtime
+    cd "$PROJECT1"
+    run $CTENV --runtime "$RUNTIME" run --dry-run -d test -- sleep 60
+    [ "$status" -eq 0 ]
+    # Should include -d flag
+    [[ "$output" == *" -d "* ]]
+}
+register_runtime_test _test_detach_short_flag_dry_run "detach short flag -d works"
+
+_test_detach_runs_in_background() {
+    _require_runtime
+    cd "$PROJECT1"
+
+    # Run detached container
+    run $CTENV --quiet --runtime "$RUNTIME" run --detach test -- sleep 300
+    [ "$status" -eq 0 ]
+
+    # Find container by label
+    container_id=""
+    for i in {1..10}; do
+        container_id=$($RUNTIME ps --filter "label=se.osd.ctenv.managed=true" --format '{{.ID}}' | head -1)
+        [ -n "$container_id" ] && break
+        sleep 1
+    done
+
+    # Verify container is running in background
+    [ -n "$container_id" ]
+    run $RUNTIME inspect "$container_id" --format '{{.State.Running}}'
+    [ "$status" -eq 0 ]
+    [ "$output" = "true" ]
+
+    # Clean up
+    $RUNTIME stop "$container_id" >/dev/null 2>&1 || true
+    $RUNTIME rm -f "$container_id" >/dev/null 2>&1 || true
+}
+register_runtime_test _test_detach_runs_in_background "detach mode runs container in background"
+

@@ -43,8 +43,9 @@ def _resolve_container_config(args, command, runtime):
         runtime.project_dir, explicit_config_files=explicit_configs, verbosity=args.verbosity
     )
 
-    # Convert CLI overrides to ContainerConfig and resolve paths
-    # convert "NOTSET" string to NOTSET sentinel
+    # Convert CLI overrides to ContainerConfig and resolve paths.
+    # Values of None are converted to NOTSET by ContainerConfig.from_dict(),
+    # which means "not set by CLI, use config file value".
     cli_args_dict = {
         "image": args.image,
         "container_name": args.name,
@@ -57,6 +58,7 @@ def _resolve_container_config(args, command, runtime):
         "env": args.env,
         "volumes": args.volumes,
         "sudo": args.sudo,
+        "detach": args.detach,
         "network": args.network,
         "gosu_path": args.gosu_path,
         "platform": args.platform,
@@ -108,9 +110,7 @@ def _resolve_container_config(args, command, runtime):
     else:
         # If the container doesn't exist, it will (and should) fail,
         # which is handled by get_container raising.
-        container_config = ctenv_config.get_container(
-            container=container, overrides=cli_overrides
-        )
+        container_config = ctenv_config.get_container(container=container, overrides=cli_overrides)
 
     return container_config
 
@@ -394,6 +394,7 @@ Note: Use '--' to separate commands from container/options.""",
     container_group.add_argument(
         "--sudo",
         action="store_true",
+        default=None,
         help="Add user to sudoers with NOPASSWD inside container",
     )
     container_group.add_argument(
@@ -407,6 +408,13 @@ Note: Use '--' to separate commands from container/options.""",
         action="append",
         dest="post_start_commands",
         help="Add extra command to run after container starts, but before the COMMAND is executed. Will be executed as the root user. (can be used multiple times)",
+    )
+    container_group.add_argument(
+        "-d",
+        "--detach",
+        action="store_true",
+        default=None,
+        help="Run container in the background (detached mode)",
     )
 
     # Volume options group
