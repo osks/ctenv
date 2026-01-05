@@ -98,29 +98,114 @@ dynamically to handle user creation and environment setup.
 
 ## Configuration
 
-ctenv supports having a `.ctenv.toml` either in HOME or in project
-directories. When located in a project, it will use the path to the
-config file as project root.
+Create `.ctenv.toml` in your project root (also marks the project directory) or `~/.ctenv.toml` for user-wide settings. Run with `ctenv run <container>`.
 
-Create `.ctenv.toml` for reusable container setups:
+### Config File Priority
+
+1. Explicit `--config` files (in order specified)
+2. Project config (`.ctenv.toml` found via upward search)
+3. User config (`~/.ctenv.toml`)
+4. Built-in defaults
+
+### Container Options
+
+| Option                | Default         | Description |
+|-----------------------|-----------------|-------------|
+| `image`               | `ubuntu:latest` | Container image (mutually exclusive with `build`) |
+| `command`             | `bash`          | Command to execute |
+| `name`                | (auto)          | Container name, default: `ctenv-{container}-{pid}` |
+| `default`             | -               | Mark as default container (only one allowed) |
+| `workdir`             | `auto`          | Working directory (`auto` = preserve relative position) |
+| `project_target`      | same as host    | Where to mount project (e.g., `/repo`) |
+| `auto_project_mount`  | `true`          | Auto-mount project directory |
+| `volumes`             | `[]`            | Volume mounts (see syntax below) |
+| `subpaths`            | `[]`            | Mount only these subpaths (disables auto mount) |
+| `env`                 | `[]`            | Environment: `NAME=value` or `NAME` (pass from host) |
+| `sudo`                | `false`         | Add user to sudoers with NOPASSWD |
+| `tty`                 | `auto`          | TTY allocation |
+| `detach`              | `false`         | Run in background |
+| `post_start_commands` | `[]`            | Commands to run as root before user command |
+| `runtime`             | `docker`        | Runtime: `docker` or `podman` |
+| `network`             | -               | Network: `bridge`, `none`, `host`, or custom |
+| `platform`            | -               | Platform: `linux/amd64` or `linux/arm64` |
+| `run_args`            | `[]`            | Extra `docker run` arguments |
+| `labels`              | `{}`            | Container labels |
+| `ulimits`             | -               | Resource limits: `{ nofile = 4096 }` |
+
+### Build Options
+
+Use `[containers.NAME.build]` to build images on-demand instead of pulling:
+
+| Option                | Default         | Description |
+|-----------------------|-----------------|-------------|
+| `dockerfile`          | `Dockerfile`    | Path to Dockerfile |
+| `dockerfile_content`  | -               | Inline Dockerfile (mutually exclusive with above) |
+| `context`             | `.`             | Build context directory |
+| `tag`                 | (auto)          | Image tag, default: `ctenv-{project_dir|slug}:latest` |
+| `args`                | `{}`            | Build arguments |
+
+### Volume Syntax
+
+```toml
+volumes = [
+    "~/.gitconfig",              # Mount at same path
+    "./data:/app/data",          # Host:Container
+    "./src:/app/src:ro",         # Read-only
+    "named-cache-volume:/cache:rw,chown",   # Fix ownership to user
+]
+```
+
+Options: `ro` (read-only), `rw` (read-write), `chown` (fix ownership), `z` (SELinux, auto-added)
+
+Path handling: `~/` expands to home, `./` is relative to config file (or cwd on CLI), absolute paths as-is.
+
+### Template Variables
+
+| Variable                       | Description |
+|--------------------------------|-------------|
+| `${container}`                 | Container name from config |
+| `${image}`                     | Image name |
+| `${user_name}`, `${user_home}` | Current user's name and home directory |
+| `${project_dir}`               | Project root path |
+| `${pid}`                       | Process ID |
+| `${env.VAR}`                   | Environment variable value |
+
+Filter: `${var|slug}` converts to filesystem-safe string (lowercase, `/` and `:` become `-`)
+
+### Defaults & Merging
+
+The `[defaults]` section applies to all containers:
+- Scalars (image, command, sudo, etc.): container value overrides default
+- Lists (env, volumes, run_args, etc.): concatenated (defaults + container)
+- Dicts (labels, ulimits): merged (container keys override)
+
+### Example
 
 ```toml
 [defaults]
-command = "zsh" # Run a shell for interactive use
+network = "bridge"
+env = ["TERM=xterm-256color"]
 
-[containers.python]
-image = "python:3.14"
-env = [
-    "MY_API_KEY", # passed from environment when run
-    "ENV=dev",
-]
-volumes = ["~/.cache/pip"]
+[containers.dev]
+default = true
+image = "python:3.11"
+volumes = ["~/.gitconfig:ro", "./data:/app/data:rw,chown"]
+env = ["DEBUG=1", "API_KEY"]
+post_start_commands = ["pip install -r requirements.txt"]
 
+[containers.builder]
+sudo = true
+run_args = ["--memory=4g"]
+
+[containers.builder.build]
+dockerfile = "Dockerfile.build"
+tag = "myapp-builder:${user_name}"
+args = { BASE_IMAGE = "ubuntu:22.04" }
 ```
 
-Then run:
 ```bash
-$ ctenv run python -- python script.py
+$ ctenv run              # Uses 'dev' (default)
+$ ctenv run builder -- make build
 ```
 
 ## Common Use Cases
