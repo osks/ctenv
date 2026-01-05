@@ -96,6 +96,44 @@ dynamically to handle user creation and environment setup.
 - Bundled gosu binaries for privilege dropping
 - Interactive and non-interactive command execution
 
+## Common Use Cases
+
+### Build Systems
+Use containerized build environments:
+```toml
+[containers.build-system]
+image = "some-build-system:v17"
+volumes = ["build-cache:/var/cache:rw,chown"]
+```
+
+### Development Tools
+Run linters, formatters, or compilers from containers:
+```bash
+$ ctenv run --image rust:latest -- cargo fmt
+$ ctenv run --image my-node-env -- eslint src/
+```
+
+### Claude Code
+Run Claude Code in a container for isolation with configuration for convenient usage:
+
+`~/.ctenv.toml`:
+```
+# Run Claude Code in container
+[containers.claude]
+volumes = ["~/.claude.json", "~/.claude/"]
+command = "claude" # Run claude directly
+
+# Builds an image so you don't have to reinstall every time
+[containers.claude.build]
+dockerfile_content = """
+FROM node:20
+RUN npm install -g @anthropic-ai/claude-code
+"""
+```
+
+Then start with: `ctenv run claude`
+
+
 ## Configuration
 
 Create `.ctenv.toml` in your project root (also marks the project directory) or `~/.ctenv.toml` for user-wide settings. Run with `ctenv run <container>`.
@@ -306,44 +344,6 @@ args = { BASE_IMAGE = "ubuntu:22.04" }
 $ ctenv run              # Uses 'dev' (default)
 $ ctenv run builder -- make build
 ```
-
-## Common Use Cases
-
-### Build Systems
-Use containerized build environments:
-```toml
-[containers.build-system]
-image = "some-build-system:v17"
-volumes = ["build-cache:/var/cache:rw,chown"]
-```
-
-### Development Tools
-Run linters, formatters, or compilers from containers:
-```bash
-$ ctenv run --image rust:latest -- cargo fmt
-$ ctenv run --image my-node-env -- eslint src/
-```
-
-### Claude Code
-Run Claude Code in a container for isolation with configuration for convenient usage:
-
-`~/.ctenv.toml`:
-```
-# Run Claude Code in container
-[containers.claude]
-volumes = ["~/.claude.json", "~/.claude/"]
-command = "claude" # Run claude directly
-
-# Builds an image so you don't have to reinstall every time
-[containers.claude.build]
-dockerfile_content = """
-FROM node:20
-RUN npm install -g @anthropic-ai/claude-code
-"""
-```
-
-Then start with: `ctenv run claude`
-
 
 ## Detailed Examples
 
