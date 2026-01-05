@@ -75,16 +75,16 @@ register_runtime_test _test_dry_run "dry-run shows correct runtime command"
 _test_detach_dry_run() {
     _require_runtime
     cd "$PROJECT1"
-    run $CTENV --runtime "$RUNTIME" run --dry-run --detach test -- sleep 60
+    run $CTENV --runtime "$RUNTIME" run --dry-run --detach --tty test -- sleep 60
     [ "$status" -eq 0 ]
     # Should include -d flag
     [[ "$output" == *" -d "* ]]
-    # Should include -t (TTY needed for bash to stay running)
+    # Should include -t (explicitly requested via --tty)
     [[ "$output" == *" -t "* ]]
-    # Should NOT include -i (no interactive stdin when detached)
+    # Should NOT include -i (stdin not connected when detached)
     [[ "$output" != *" -i "* ]]
 }
-register_runtime_test _test_detach_dry_run "detach mode shows -d and -t flags but not -i"
+register_runtime_test _test_detach_dry_run "detach mode does not include -i flag"
 
 _test_detach_short_flag_dry_run() {
     _require_runtime

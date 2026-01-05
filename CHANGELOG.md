@@ -13,7 +13,7 @@
 
 - Config `labels` / CLI `--labels`: Add labels to containers.
 
-- CLI `--no-tty` for explicitly skipping TTY. Default is detecting if
+- CLI `--tty`/`--no-tty` for explicitly TTY handling. Default is detecting if
   stdin is a TTY or not.
 
 

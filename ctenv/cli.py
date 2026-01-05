@@ -59,7 +59,7 @@ def _resolve_container_config(args, command, runtime):
         "volumes": args.volumes,
         "sudo": args.sudo,
         "detach": args.detach,
-        "tty": False if args.no_tty else None,
+        "tty": True if args.tty else (False if args.no_tty else None),
         "network": args.network,
         "gosu_path": args.gosu_path,
         "platform": args.platform,
@@ -550,7 +550,16 @@ Note: Use '--' to separate commands from container/options.""",
         default=None,
         help="Run container in the background (detached mode)",
     )
-    container_group.add_argument(
+    tty_group = container_group.add_mutually_exclusive_group()
+    tty_group.add_argument(
+        "-t",
+        "--tty",
+        action="store_true",
+        dest="tty",
+        default=None,
+        help="Allocate a pseudo-TTY",
+    )
+    tty_group.add_argument(
         "--no-tty",
         action="store_true",
         dest="no_tty",
