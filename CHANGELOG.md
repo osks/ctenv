@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+
+## v0.11
+
 ### Fixed
 
 - Fixed mistake in validation so that named volumes work again.
