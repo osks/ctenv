@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Post start commands no longer runs in sub shells, making it possible
+  to affect the environment of the command. For example modify PATH or
+  load virtualenvs or source nvm.sh.
+
 
 ## v0.11
 

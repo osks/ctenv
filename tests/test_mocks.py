@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from ctenv.container import ContainerRunner, parse_container_config, build_entrypoint_script
+from ctenv.container import ContainerRunner, parse_container_config, build_entrypoint_script, ENTRYPOINT_PATH
 from ctenv.config import RuntimeContext, Verbosity
 
 
@@ -74,7 +74,7 @@ def test_docker_command_examples():
         assert "--volume=/test/gosu:/ctenv/gosu:" in " ".join(args)  # Gosu mount
         assert "--workdir=" in " ".join(args)  # Working directory set
         assert "--entrypoint" in args
-        assert "/ctenv/entrypoint.sh" in args
+        assert ENTRYPOINT_PATH in args
         assert "ubuntu:latest" in args
 
         # Print the command for documentation purposes

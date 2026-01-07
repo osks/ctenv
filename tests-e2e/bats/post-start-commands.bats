@@ -67,3 +67,14 @@ _test_post_start_writes_workspace() {
     [[ "$output" == *"from-post-start"* ]]
 }
 register_runtime_test _test_post_start_writes_workspace "post-start: can write to mounted workspace"
+
+_test_post_start_env_persistence() {
+    _require_runtime
+    # Post-start command exports env var, main command reads it
+    run $CTENV --quiet --runtime "$RUNTIME" --project-dir "$TEMP_WORKSPACE" run \
+        --post-start-command 'export TEST_VAR=hello_from_post_start' \
+        -- sh -c 'echo $TEST_VAR'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"hello_from_post_start"* ]]
+}
+register_runtime_test _test_post_start_env_persistence "post-start: environment variables persist to main command"

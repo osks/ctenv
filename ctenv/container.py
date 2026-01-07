@@ -37,6 +37,9 @@ from .image import parse_build_spec, BuildImageSpec
 # Default PS1 prompt for containers
 DEFAULT_PS1 = "[ctenv] $ "
 
+# Path where entrypoint script is mounted inside container
+ENTRYPOINT_PATH = "/.ctenv__generated/entrypoint.sh"
+
 # Pinned gosu version for security and reproducibility
 GOSU_VERSION = "1.17"
 
@@ -643,12 +646,13 @@ run_post_start_commands() {{
         return
     fi
 
-    # Use printf and read loop for reliable line-by-line processing
-    printf '%s\\n' "$POST_START_COMMANDS" | while IFS= read -r cmd || [ -n "$cmd" ]; do
-        [ -n "$cmd" ] || continue  # Skip empty commands
-        log_debug "Executing post-start command: $cmd"
-        eval "$cmd"
-    done
+    # Write commands to temp script and source it
+    # Sourcing (vs pipe) allows env changes to persist to main command
+    POST_START_SCRIPT=$(mktemp)
+    printf '%s\\n' "$POST_START_COMMANDS" > "$POST_START_SCRIPT"
+    log_debug "Sourcing post-start script: $POST_START_SCRIPT"
+    . "$POST_START_SCRIPT"
+    rm -f "$POST_START_SCRIPT"
 }}
 
 # Detect if we're using BusyBox utilities
@@ -998,7 +1002,7 @@ class ContainerRunner:
         # Volume mounts (includes project/subpath mounts + explicit volumes)
         volume_args = [
             f"--volume={spec.gosu.to_string()}",
-            f"--volume={entrypoint_script_path}:/ctenv/entrypoint.sh:z,ro",
+            f"--volume={entrypoint_script_path}:{ENTRYPOINT_PATH}:z,ro",
             f"--workdir={spec.workdir}",
         ]
 
@@ -1014,7 +1018,7 @@ class ContainerRunner:
             print(f"  Working directory: {spec.workdir}", file=sys.stderr)
             print(f"  Gosu binary: {spec.gosu.to_string()}", file=sys.stderr)
             print(
-                f"  Entrypoint script: {entrypoint_script_path} -> /ctenv/entrypoint.sh",
+                f"  Entrypoint script: {entrypoint_script_path} -> {ENTRYPOINT_PATH}",
                 file=sys.stderr,
             )
 
@@ -1082,7 +1086,7 @@ class ContainerRunner:
                     print(f"  {run_arg}", file=sys.stderr)
 
         # Set entrypoint to our script
-        args.extend(["--entrypoint", "/ctenv/entrypoint.sh"])
+        args.extend(["--entrypoint", ENTRYPOINT_PATH])
 
         # Container image
         args.append(spec.image)
