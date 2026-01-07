@@ -275,6 +275,21 @@ def _parse_project_target(project_target_str: str) -> tuple[str, list[str]]:
     return (target_path, options)
 
 
+def _is_named_volume(host_path: str) -> bool:
+    """Check if host_path is a Docker named volume (not a filesystem path).
+
+    Named volumes are simple identifiers without path separators.
+    Bind mounts start with /, ./, ../, ~, or contain path separators.
+    """
+    if not host_path:
+        return False
+    if host_path.startswith(("/", "./", "../", "~")):
+        return False
+    if "/" in host_path or "\\" in host_path:
+        return False
+    return True
+
+
 def _parse_volume(vol_str: str, project_dir: Path, project_target: str) -> VolumeSpec:
     """Parse volume specification with project-aware path defaulting.
 
@@ -866,10 +881,7 @@ def parse_container_config(
         # Check for chown option and handle it
         if "chown" in vol_spec.options:
             vol_spec.options = [opt for opt in vol_spec.options if opt != "chown"]
-            if container_runtime == ContainerRuntime.PODMAN_ROOTLESS:
-                vol_spec.options.append("U")
-            else:
-                chown_paths.append(vol_spec.container_path)
+            chown_paths.append(vol_spec.container_path)
 
         # Add 'z' option for SELinux if not present
         if "z" not in vol_spec.options:
@@ -1125,10 +1137,14 @@ class ContainerRunner:
         if not gosu_path.is_file():
             raise FileNotFoundError(f"gosu path {spec.gosu.host_path} is not a file.")
 
-        # Verify volume paths exist
+        # Verify volume paths exist (skip named volumes - Docker manages those)
         for vol in spec.volumes:
+            if _is_named_volume(vol.host_path):
+                if verbosity >= Verbosity.VERY_VERBOSE:
+                    print(f"Skipping verification for named volume: {vol.host_path}", file=sys.stderr)
+                continue
             vol_path = Path(vol.host_path)
-            if verbosity >= Verbosity.VERBOSE:
+            if verbosity >= Verbosity.VERY_VERBOSE:
                 print(f"Verifying volume: {vol_path}", file=sys.stderr)
             if not vol_path.exists():
                 raise FileNotFoundError(f"Volume path {vol_path} does not exist.")

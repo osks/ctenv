@@ -74,3 +74,69 @@ _test_volume_external() {
     rm -rf "$test_dir"
 }
 register_runtime_test _test_volume_external "volume: external volume with explicit container path"
+
+# Named volume name - clearly identifies it belongs to ctenv tests
+NAMED_VOLUME="ctenv-test-named-volume"
+
+# Helper to clean up named volume
+_cleanup_named_volume() {
+    $RUNTIME volume rm -f "$NAMED_VOLUME" >/dev/null 2>&1 || true
+}
+
+_test_named_volume_requires_chown() {
+    _require_runtime
+    _cleanup_named_volume
+    cd "$PROJECT1"
+
+    # Without :chown, writing to named volume fails (root-owned volume, non-root user)
+    run $CTENV --quiet --runtime "$RUNTIME" run \
+        --volume "$NAMED_VOLUME:/test-vol" test -- \
+        sh -c "echo 'test' > /test-vol/test.txt"
+
+    _cleanup_named_volume
+
+    # Should fail with permission denied
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Permission denied"* ]] || [[ "$output" == *"permission denied"* ]]
+}
+register_runtime_test _test_named_volume_requires_chown "volume: named volume without chown fails (documents chown purpose)"
+
+_test_named_volume_basic() {
+    _require_runtime
+    _cleanup_named_volume
+    cd "$PROJECT1"
+
+    # Write data to named volume (chown fixes ownership)
+    run $CTENV --quiet --runtime "$RUNTIME" run \
+        --volume "$NAMED_VOLUME:/test-vol:chown" test -- \
+        sh -c "echo 'named volume works' > /test-vol/test.txt && cat /test-vol/test.txt"
+
+    _cleanup_named_volume
+
+    [ "$status" -eq 0 ]
+    assert_last_line "named volume works"
+}
+register_runtime_test _test_named_volume_basic "volume: named volume with chown works"
+
+_test_named_volume_persistence() {
+    _require_runtime
+    _cleanup_named_volume
+    cd "$PROJECT1"
+
+    # First run: write data (chown fixes ownership)
+    run $CTENV --quiet --runtime "$RUNTIME" run \
+        --volume "$NAMED_VOLUME:/test-vol:chown" test -- \
+        sh -c "echo 'persistent data' > /test-vol/persist.txt"
+    [ "$status" -eq 0 ]
+
+    # Second run: read data back (chown not needed for read, but keeps it consistent)
+    run $CTENV --quiet --runtime "$RUNTIME" run \
+        --volume "$NAMED_VOLUME:/test-vol:chown" test -- \
+        cat /test-vol/persist.txt
+
+    _cleanup_named_volume
+
+    [ "$status" -eq 0 ]
+    assert_last_line "persistent data"
+}
+register_runtime_test _test_named_volume_persistence "volume: named volume persists data across runs"

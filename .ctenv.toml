@@ -1,5 +1,6 @@
 [containers.dev]
-default = true
+# Don't set any default - makes it annoying to use for manual testing.
+#default = true
 build = { dockerfile = "Dockerfile.dev" }
 volumes = ["~/.claude.json", "~/.claude/"]
 network = "bridge"

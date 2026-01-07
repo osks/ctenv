@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed mistake in validation so that named volumes work again.
+
+- Fixed volume :chown to work for Podman. It does not work to map it to `:U`.
+
 
 ## v0.10
 

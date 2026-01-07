@@ -11,6 +11,7 @@ from ctenv.container import (
     expand_tilde_in_path,
     check_podman_rootless_ready,
     ContainerRunner,
+    _is_named_volume,
 )
 from ctenv.config import VolumeSpec, Verbosity, ContainerRuntime
 
@@ -367,3 +368,56 @@ class TestPodmanRootlessCheck:
             ready, error = check_podman_rootless_ready()
             assert ready is True
             assert error is None
+
+
+class TestNamedVolumeDetection:
+    """Tests for Docker named volume vs bind mount detection."""
+
+    def test_named_volume_simple_name(self):
+        """Test simple name is detected as named volume."""
+        assert _is_named_volume("oskar") is True
+        assert _is_named_volume("myvolume") is True
+
+    def test_named_volume_with_hyphen(self):
+        """Test name with hyphen is detected as named volume."""
+        assert _is_named_volume("my-volume") is True
+
+    def test_named_volume_with_underscore(self):
+        """Test name with underscore is detected as named volume."""
+        assert _is_named_volume("my_volume") is True
+
+    def test_named_volume_with_dot(self):
+        """Test name with dot is detected as named volume."""
+        assert _is_named_volume("my.volume") is True
+
+    def test_bind_mount_absolute_path(self):
+        """Test absolute path is detected as bind mount."""
+        assert _is_named_volume("/path/to/dir") is False
+        assert _is_named_volume("/home/user/data") is False
+
+    def test_bind_mount_relative_path_dot(self):
+        """Test relative path starting with ./ is detected as bind mount."""
+        assert _is_named_volume("./relative") is False
+        assert _is_named_volume("./path/to/dir") is False
+
+    def test_bind_mount_relative_path_dotdot(self):
+        """Test relative path starting with ../ is detected as bind mount."""
+        assert _is_named_volume("../parent") is False
+        assert _is_named_volume("../path/to/dir") is False
+
+    def test_bind_mount_tilde_path(self):
+        """Test tilde path is detected as bind mount."""
+        assert _is_named_volume("~/documents") is False
+        assert _is_named_volume("~/.config") is False
+
+    def test_bind_mount_path_with_slash(self):
+        """Test path containing slash is detected as bind mount."""
+        assert _is_named_volume("path/to/something") is False
+
+    def test_empty_string(self):
+        """Test empty string returns False."""
+        assert _is_named_volume("") is False
+
+    def test_windows_path_backslash(self):
+        """Test Windows-style path with backslash is detected as bind mount."""
+        assert _is_named_volume("C:\\Users\\data") is False
