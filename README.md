@@ -51,14 +51,14 @@ Recommend [installing uv](https://docs.astral.sh/uv/getting-started/installation
 ## Usage
 
 ```bash
-# Interactive shell in ubuntu container
-$ ctenv run --image ubuntu:latest -- bash
+# Interactive shell in ubuntu container, mounting my-project (read-write)
+$ ctenv -p ./my-project run --image ubuntu:latest -- bash
 
 # Run a configured container
 $ ctenv run my-node
 
 # Run a custom command and mount a volume
-$ ctenv run my-node --volume ./tests -- npm test
+$ ctenv run my-node -v ./tests -- npm test
 ```
 
 ## Why ctenv?
